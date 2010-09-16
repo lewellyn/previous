@@ -476,7 +476,7 @@ void Configuration_SetDefault(void)
 	strcpy(ConfigureParams.Rom.szCartridgeImageFileName, "");
 
 	/* Set defaults for System */
-	ConfigureParams.System.nCpuLevel = 0;
+	ConfigureParams.System.nCpuLevel = 4;
 	ConfigureParams.System.nCpuFreq = 8;
 	ConfigureParams.System.bCompatibleCpu = true;
 	/*ConfigureParams.System.bAddressSpace24 = true;*/
