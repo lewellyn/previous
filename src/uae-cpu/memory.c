@@ -64,7 +64,7 @@ uae_u32	NEXTmem_size;
 #define NEXT_SCREEN_SIZE	0x00040000
 #define NEXTvideo_size NEXT_SCREEN_SIZE
 #define NEXTvideo_mask		0x0003FFFF
-uae_u32 NEXTVideo[NEXT_SCREEN_SIZE];
+uae_u8  NEXTVideo[256*1024];
 
 #define IOmem_mask 			0x0001FFFF
 #define	IOmem_size			0x0001C000

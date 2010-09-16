@@ -20,7 +20,7 @@
 #define call_mem_put_func(func, addr, v) ((*func)(addr, v))
 
 #define NEXT_SCREEN_SIZE	0x00040000
-uae_u32 NEXTVideo[NEXT_SCREEN_SIZE];
+extern uae_u8 NEXTVideo[256*1024];
 
 
 /* Enabling this adds one additional native memory reference per 68k memory
