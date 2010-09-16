@@ -31,7 +31,7 @@ const char Main_fileid[] = "Hatari main.c : " __DATE__ " " __TIME__;
 #include "video.h"
 #include "avi_record.h"
 #include "debugui.h"
-
+#include "keymap.h"
 #include "hatari-glue.h"
 
 
@@ -415,7 +415,9 @@ void Main_EventHandler(void)
 			break;
 
 		 case SDL_KEYDOWN:
+		fprintf(stderr, "keydwn\n");
 			Keymap_KeyDown(&event.key.keysym);
+			ShortCut_ActKey();
 			break;
 
 		 case SDL_KEYUP:
@@ -461,8 +463,9 @@ static void Main_Init(void)
 	{
 		/* If loading of the TOS failed, we bring up the GUI to let the
 		 * user choose another TOS ROM file. */
-		Dialog_DoProperty();
 	}
+	/* call menu at startup */
+	Dialog_DoProperty();
 	if (bQuitProgram)
 	{
 		fprintf(stderr, "Failed to load TOS image!\n");

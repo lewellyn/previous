@@ -36,7 +36,7 @@ bool bInFullScreen = false;   /* true if in full screen */
 
 
 /* extern for video.c */
-Uint8 pNEXTScreen[(1024*768)/8];
+Uint8 pNEXTScreen[(1120*832)*2];
 FRAMEBUFFER *pFrameBuffer;    /* Pointer into current 'FrameBuffer' */
 
 static FRAMEBUFFER FrameBuffers[NUM_FRAMEBUFFERS]; /* Store frame buffer details to tell how to update */
@@ -47,7 +47,7 @@ static int PCScreenBytesPerLine;
 static int NEXTScreenWidthBytes;
 static SDL_Rect NEXTScreenRect;                      /* screen size without statusbar */
 
-static int NEXTScreenLineOffset[768];  /* Offsets for ST screen lines eg, 0,160,320... */
+static int NEXTScreenLineOffset[910];  /* Offsets for ST screen lines eg, 0,160,320... */
 
 static void (*ScreenDrawFunctionsNormal[3])(void); /* Screen draw functions */
 
@@ -69,6 +69,8 @@ static void Screen_SetupRGBTable(void)
 {
 }
 
+SDL_Color sdlColors[16];
+Uint32 colors[32];
 
 /*-----------------------------------------------------------------------*/
 /**
@@ -76,11 +78,11 @@ static void Screen_SetupRGBTable(void)
  */
 static void Screen_CreatePalette(void)
 {
-    SDL_Color sdlColors[16];
 
-	sdlColors[0].r = sdlColors[0].g = sdlColors[0].b = 255;
-	sdlColors[1].r = sdlColors[1].g = sdlColors[1].b = 0;
-    SDL_SetColors(sdlscrn, sdlColors, 10, 2);
+	sdlColors[0].r = sdlColors[0].g = sdlColors[0].b = 0;
+	sdlColors[1].r = sdlColors[1].g = sdlColors[1].b = 80;
+	sdlColors[2].r = sdlColors[2].g = sdlColors[2].b = 160;
+	sdlColors[3].r = sdlColors[3].g = sdlColors[3].b = 255;
 }
 
 
@@ -293,6 +295,7 @@ void Screen_Init(void)
 
 	Video_SetScreenRasters();                       /* Set rasters ready for first screen */
 
+	Screen_CreatePalette();
 	/* Configure some SDL stuff: */
 	SDL_WM_SetCaption(PROG_NAME, "Previous");
 	SDL_ShowCursor(SDL_DISABLE);
@@ -590,42 +593,15 @@ static void Screen_Blit(void)
 
 /*-----------------------------------------------------------------------*/
 /**
- * Draw ST screen to window/full-screen framebuffer
- * @param  bForceFlip  Force screen update, even if contents did not change
- * @return  true if screen contents changed
  */
 static bool Screen_DrawFrame(bool bForceFlip)
 {
 	int new_res;
 	void (*pDrawFunction)(void);
-	static bool bPrevFrameWasSpec512 = false;
-
-	/* Scan palette/resolution masks for each line and build up palette/difference tables */
-	new_res = Screen_ComparePaletteMask(0);
-	/* Do require palette? Check if changed and update */
-	Screen_Handle8BitPalettes();
-	/* Did we change resolution this frame - allocate new screen if did so */
-	Screen_DidResolutionChange(new_res);
-	/* Is need full-update, tag as such */
-	if (pFrameBuffer->bFullUpdate)
-		Screen_SetFullUpdateMask();
-
-	/* restore area potentially left under overlay led
-	 * and saved by Statusbar_OverlayBackup()
-	 */
-	Statusbar_OverlayRestore(sdlscrn);
 	
 	/* Lock screen ready for drawing */
 	if (Screen_Lock())
 	{
-		bScreenContentsChanged = false;      /* Did change (ie needs blit?) */
-
-		/* Set details */
-		Screen_SetConvertDetails();
-		
-		/* Clear screen on full update to clear out borders and also interleaved lines */
-		if (pFrameBuffer->bFullUpdate)
-			Screen_ClearScreen();
 		
 		pDrawFunction = ScreenDrawFunctionsNormal[ST_HIGH_RES];
 
@@ -638,12 +614,8 @@ static bool Screen_DrawFrame(bool bForceFlip)
 		/* draw statusbar or overlay led(s) after unlock */
 		Statusbar_OverlayBackup(sdlscrn);
 		Statusbar_Update(sdlscrn);
-		
-		/* Clear flags, remember type of overscan as if change need screen full update */
-		pFrameBuffer->bFullUpdate = false;
 
-		/* And show to user */
-			Screen_Blit();
+		Screen_Blit();
 
 		return bScreenContentsChanged;
 	}
@@ -661,7 +633,8 @@ bool Screen_Draw(void)
 	if (!bQuitProgram)
 	{
 		/* And draw (if screen contents changed) */
-		return Screen_DrawFrame(false);
+		Screen_DrawFrame(false);
+		return true;
 	}
 
 	return false;
@@ -669,27 +642,11 @@ bool Screen_Draw(void)
 
 
 /* -------------- screen conversion routines --------------------------------
-  Screen conversion routines. We have a number of routines to convert ST screen
-  to PC format. We split these into Low, Medium and High each with 8/16-bit
-  versions. To gain extra speed, as almost half of the processing time can be
-  spent in these routines, we check for any changes from the previously
-  displayed frame. AdjustLinePaletteRemap() sets a flag to tell the routines
-  if we need to totally update a line (ie full update, or palette/res change)
-  or if we just can do a difference check.
-  We convert each screen 16 pixels at a time by use of a couple of look-up
-  tables. These tables convert from 2-plane format to bbp and then we can add
-  two of these together to get 4-planes. This keeps the tables small and thus
-  improves speed. We then look these bbp values up as an RGB/Index value to
-  copy to the screen.
 */
 
 
 /*-----------------------------------------------------------------------*/
 /**
- * Update the STRGBPalette[] array with current colours for this raster line.
- *
- * Return 'ScrUpdateFlag', 0x80000000=Full update, 0x40000000=Update
- * as palette changed
  */
 static int AdjustLinePaletteRemap(int y)
 {
@@ -699,16 +656,9 @@ static int AdjustLinePaletteRemap(int y)
 
 /*-----------------------------------------------------------------------*/
 /**
- * Run updates to palette(STRGBPalette[]) until get to screen line
- * we are to convert from
  */
 static void Convert_StartFrame(void)
 {
-	int y = 0;
-	/* Get #lines before conversion starts */
-	int lines = 0;
-	while (lines--)
-		AdjustLinePaletteRemap(y++);     /* Update palette */
 }
 
 /* lookup tables and conversion macros */

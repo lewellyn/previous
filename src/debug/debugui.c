@@ -878,14 +878,14 @@ void DebugUI_Init(void)
 
 	/* on first time copy the command structures to a single table */
 	debugCommands = ARRAYSIZE(uicommand);
-	debugCommand = malloc(sizeof(dbgcommand_t) * (dspcmds + cpucmds + debugCommands));
+	debugCommand = malloc(sizeof(dbgcommand_t) * (cpucmds + debugCommands));
 	assert(debugCommand);
 	
 	memcpy(debugCommand, uicommand, sizeof(dbgcommand_t) * debugCommands);
 	memcpy(&debugCommand[debugCommands], cpucmd, sizeof(dbgcommand_t) * cpucmds);
 	debugCommands += cpucmds;
-	memcpy(&debugCommand[debugCommands], dspcmd, sizeof(dbgcommand_t) * dspcmds);
-	debugCommands += dspcmds;
+//	memcpy(&debugCommand[debugCommands], dspcmd, sizeof(dbgcommand_t) * dspcmds);
+//	debugCommands += dspcmds;
 
 	if (parseFileName)
 		DebugUI_ParseFile(parseFileName);

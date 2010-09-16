@@ -320,7 +320,9 @@ int ShortCut_CheckKeys(int modkey, int symkey, bool press)
 
 	if (key == SHORTCUT_NONE)
 		return 0;
-	if (press)
+	if (press) {
 		ShortCutKey = key;
+		fprintf(stderr,"Short :%x\n",ShortCutKey);
+	}
 	return 1;
 }

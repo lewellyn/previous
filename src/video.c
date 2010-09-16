@@ -58,7 +58,7 @@ static void	Video_AddInterruptHBL ( int Pos );
 
 static void	Video_ColorReg_WriteWord(Uint32 addr);
 
-int nScanlinesPerFrame = 313;                   /* Number of scan lines per frame */
+int nScanlinesPerFrame = 400;                   /* Number of scan lines per frame */
 int nCyclesPerLine = 512;
 
 /*-----------------------------------------------------------------------*/
@@ -76,6 +76,7 @@ void Video_MemorySnapShot_Capture(bool bSave)
  */
 void Video_Reset(void)
 {
+	Video_StartInterrupts(0);
 }
 
 
@@ -96,6 +97,7 @@ void Video_Reset_Glue(void)
  */
 static void	Video_SetSystemTimings(void)
 {
+	Video_StartInterrupts(0);
 }
 
 
@@ -407,7 +409,8 @@ bool Video_RenderTTScreen(void)
  */
 static void Video_DrawScreen(void)
 {
-        memcpy(pNEXTScreen, NEXTVideo, (1024*768)/8);
+//        memcpy(pNEXTScreen, NEXTVideo, (1024*768)/8);
+Screen_Draw();
 }
 
 
@@ -445,7 +448,7 @@ void Video_StartInterrupts ( int PendingCyclesOver )
 	int CyclesPerVBL;
 	
         CyclesPerVBL = CYCLES_PER_FRAME;
-        CycInt_AddRelativeInterrupt(CyclesPerVBL - PendingCyclesOver, INT_CPU_CYCLE, INTERRUPT_VIDEO_VBL);
+        CycInt_AddRelativeInterrupt(CyclesPerVBL, INT_CPU_CYCLE, INTERRUPT_VIDEO_VBL);
 }
 
 
@@ -456,8 +459,10 @@ void Video_StartInterrupts ( int PendingCyclesOver )
  */
 void Video_InterruptHandler_VBL ( void )
 {
-Video_DrawScreen();
-ShortCut_ActKey();
+	CycInt_AcknowledgeInterrupt();
+	Video_DrawScreen();
+        Main_EventHandler();
+        CycInt_AddRelativeInterrupt(CYCLES_PER_FRAME, INT_CPU_CYCLE, INTERRUPT_VIDEO_VBL);
 }
 
 

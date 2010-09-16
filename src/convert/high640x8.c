@@ -7,59 +7,92 @@
   Screen Conversion, High Res to 640x8Bit
 */
 
+static inline void putpixel(SDL_Surface * surface, Uint16 x, Uint16 y, Uint32 col)
+
+{
+
+    /* Nombre de bits par pixels de la surface d'écran */
+    Uint8 bpp = surface->format->BytesPerPixel;
+    /* Pointeur vers le pixel à remplacer (pitch correspond à la taille
+       d'une ligne d'écran, c'est à dire (longueur * bitsParPixel)
+       pour la plupart des cas) */
+
+    Uint8 * p1 = ((Uint8 *)surface->pixels) + y * surface->pitch + x * bpp;
+
+
+	Uint32 color = colors[col];
+
+	switch(bpp) {
+		case 1:
+
+			*p1 = color;
+
+			break;
+
+		case 2:
+
+			*(Uint16 *)p1 = color;
+
+			break;
+
+		case 3:
+			if(SDL_BYTEORDER == SDL_BIG_ENDIAN) {
+
+				p1[0] = (color >> 16) & 0xff;
+				p1[1] = (color >> 8) & 0xff;
+				p1[2] = color & 0xff;
+
+			} else {
+
+				p1[0] = color & 0xff;
+				p1[1] = (color >> 8) & 0xff;
+				p1[2] = (color >> 16) & 0xff;
+
+			}
+			break;
+
+		case 4:
+
+			*(Uint32 *)p1 = color;
+			break;
+		}
+
+}
+
 
 static void ConvertHighRes_640x8Bit(void)
 {
-	Uint16 *edi, *ebp;
-	Uint32 *esi;
-	Uint16 eax, ebx;
-	int y, x, update;
+	int y, x;
+	int	col;
+	static int first=1;
+	
+	if (first) {
+		first=0;
+		for (x=0;x<4;x++)
+			colors[x] = SDL_MapRGB(sdlscrn->format, sdlColors[x].r, sdlColors[x].g, sdlColors[x].b);
+	}
 
-	edi = (Uint16 *)pNEXTScreen;        /* ST format screen */
-	ebp = (Uint16 *)pNEXTScreenCopy;    /* Previous ST format screen */
-	esi = (Uint32 *)pPCScreenDest;    /* PC format screen */
-
-	/* NOTE 'ScrUpdateFlag' is already set (to full update or check, no palettes) */
-	update = ScrUpdateFlag & PALETTEMASK_UPDATEMASK;
-
-	for (y = 0; y < 768; y++)
+	for (y = 0; y < 400; y++)
 	{
 
-		for (x = 0; x < 40; x++)
+		for (x = 0; x < 640; x++)
 		{
-
-			/* Do 16 pixels at one time */
-			ebx = *edi;
-
-				bScreenContentsChanged = true;
-
-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-				/* Plot in 'right-order' on big endian systems */
-				HIGH_BUILD_PIXELS_0 ;               /* Generate pixels [4,5,6,7] */
-				PLOT_HIGH_640_8BIT(3) ;
-				HIGH_BUILD_PIXELS_1 ;               /* Generate pixels [0,1,2,3] */
-				PLOT_HIGH_640_8BIT(2) ;
-				HIGH_BUILD_PIXELS_2 ;               /* Generate pixels [12,13,14,15] */
-				PLOT_HIGH_640_8BIT(1) ;
-				HIGH_BUILD_PIXELS_3 ;               /* Generate pixels [8,9,10,11] */
-				PLOT_HIGH_640_8BIT(0) ;
-#else
-				/* Plot in 'wrong-order', as ebx is 68000 endian */
-				HIGH_BUILD_PIXELS_0 ;               /* Generate pixels [4,5,6,7] */
-				PLOT_HIGH_640_8BIT(1) ;
-				HIGH_BUILD_PIXELS_1 ;               /* Generate pixels [0,1,2,3] */
-				PLOT_HIGH_640_8BIT(0) ;
-				HIGH_BUILD_PIXELS_2 ;               /* Generate pixels [12,13,14,15] */
-				PLOT_HIGH_640_8BIT(3) ;
-				HIGH_BUILD_PIXELS_3 ;               /* Generate pixels [8,9,10,11] */
-				PLOT_HIGH_640_8BIT(2) ;
-#endif
+			switch (x&0x3)
+			{
+			case 0x0:
+				col=(NEXTVideo[(x/2)+y*560]&0xC0)>>6;
+				break;
+			case 0x1:
+				col=(NEXTVideo[(x/2)+y*560]&0x30)>>4;
+				break;
+			case 0x2:
+				col=(NEXTVideo[(x/2)+y*560]&0x0C)>>2;
+				break;
+			case 0x3:
+				col=(NEXTVideo[(x/2)+y*560]&0x03);
+				break;
 			}
-
-			esi += 4;                               /* Next PC pixels */
-			edi += 1;                               /* Next ST pixels */
-			ebp += 1;                               /* Next ST copy pixels */
-
-		/*??  esi = esi -40*8 +PCScreenBytesPerLine/2;*/   /* Back to start of line + Offset to next line */
+			putpixel(sdlscrn,x,y,col);
+		}
 	}
 }
