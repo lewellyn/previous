@@ -118,7 +118,7 @@ static uae_u32 dummy_lget(uaecptr addr)
 {
     if (illegal_mem)
 	write_log ("Illegal lget at %08lx PC=%08x\n", (long)addr,regs.pc);
-	DebugUI();
+	// DebugUI();
 
     return 0;
 }
@@ -127,7 +127,7 @@ static uae_u32 dummy_wget(uaecptr addr)
 {
     if (illegal_mem)
 	write_log ("Illegal wget at %08lx PC=%08x\n", (long)addr,regs.pc);
-	DebugUI();
+	// DebugUI();
 
     return 0;
 }
@@ -136,7 +136,7 @@ static uae_u32 dummy_bget(uaecptr addr)
 {
     if (illegal_mem)
 	write_log ("Illegal bget at %08lx PC=%08x\n", (long)addr,regs.pc);
-	DebugUI();
+	// DebugUI();
 
     return 0;
 }
@@ -145,21 +145,21 @@ static void dummy_lput(uaecptr addr, uae_u32 l)
 {
     if (illegal_mem)
 	write_log ("Illegal lput at %08lx PC=%08x\n", (long)addr,regs.pc);
-	DebugUI();
+	// DebugUI();
 }
 
 static void dummy_wput(uaecptr addr, uae_u32 w)
 {
     if (illegal_mem)
 	write_log ("Illegal wput at %08lx PC=%08x\n", (long)addr,regs.pc);
-	DebugUI();
+	// DebugUI();
 }
 
 static void dummy_bput(uaecptr addr, uae_u32 b)
 {
     if (illegal_mem)
 	write_log ("Illegal bput at %08lx PC=%08x\n", (long)addr,regs.pc);
-	DebugUI();
+	// DebugUI();
 }
 
 static int dummy_check(uaecptr addr, uae_u32 size)
@@ -352,7 +352,7 @@ static int NEXTvideo_check(uaecptr addr, uae_u32 size)
 static uae_u8 *NEXTvideo_xlate(uaecptr addr)
 {
     addr &= NEXTvideo_mask;
-    return NEXTVideo + addr;
+    return (uae_u8*)NEXTVideo + addr;
 }
 
 /*
@@ -576,7 +576,9 @@ void memory_init(uae_u32 nNewNEXTMemSize)
 	{
 		FILE* fin;
 		int ret;
-		fin=fopen("./Rev_2.5_v66.BIN","rb");
+//		fin=fopen("./Rev_2.5_v66.BIN","rb");
+//		fin=fopen("./Rev_3.3_v74.BIN","rb");
+		fin=fopen("./Rev_1.2.BIN","rb");
 		ret=fread(ROMmemory,1,0x20000,fin);
 		write_log("Read ROM %d\n",ret);
 		fclose(fin);
@@ -584,7 +586,7 @@ void memory_init(uae_u32 nNewNEXTMemSize)
 	
 	{
 		int i;
-		for (i=0;i<NEXT_SCREEN_SIZE;i++) NEXTVideo[i]=0xAA;
+		for (i=0;i<sizeof(NEXTVideo);i++) NEXTVideo[i]=0xAA;
 	}
 
 }
