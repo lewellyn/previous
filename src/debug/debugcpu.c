@@ -31,8 +31,8 @@ const char DebugCpu_fileid[] = "Hatari debugcpu.c : " __DATE__ " " __TIME__;
 #define MEMDUMP_COLS   16      /* memdump, number of bytes per row */
 #define NON_PRINT_CHAR '.'     /* character to display for non-printables */
 
-static Uint32 disasm_addr;     /* disasm address */
-static Uint32 memdump_addr;    /* memdump address */
+static Uint32 disasm_addr=0;     /* disasm address */
+static Uint32 memdump_addr=0;    /* memdump address */
 
 static int nCpuActiveCBs = 0;  /* Amount of active conditional breakpoints */
 static int nCpuSteps = 0;      /* Amount of steps for CPU single-stepping */
@@ -59,7 +59,6 @@ static int DebugCpu_LoadBin(int nArgc, char *psArgs[])
 		fprintf(stderr, "Invalid address!\n");
 		return DEBUGGER_CMDDONE;
 	}
-	address &= 0x00FFFFFF;
 
 	if ((fp = fopen(psArgs[1], "rb")) == NULL)
 	{
@@ -102,7 +101,6 @@ static int DebugCpu_SaveBin(int nArgc, char *psArgs[])
 		fprintf(stderr, "  Invalid address!\n");
 		return DEBUGGER_CMDDONE;
 	}
-	address &= 0x00FFFFFF;
 
 	if (!Eval_Number(psArgs[3], &bytes))
 	{
@@ -148,6 +146,7 @@ int DebugCpu_DisAsm(int nArgc, char *psArgs[])
 	Uint32 disasm_upper = 0;
 	int insts, max_insts;
 	uaecptr nextpc;
+	FILE* mydebugOutput=debugOutput;
 
 	if (nArgc > 1)
 	{
@@ -161,8 +160,15 @@ int DebugCpu_DisAsm(int nArgc, char *psArgs[])
 			break;
 		case 1:
 			/* range */
-			disasm_upper &= 0x00FFFFFF;
 			break;
+		}
+		if (nArgc > 2) {
+			mydebugOutput=fopen(psArgs[2],"w");
+			if (mydebugOutput==NULL)
+			{
+				fprintf(debugOutput,"Cannot open %s abort\n",psArgs[2]);
+				return DEBUGGER_CMDDONE;
+			}
 		}
 	}
 	else
@@ -171,7 +177,6 @@ int DebugCpu_DisAsm(int nArgc, char *psArgs[])
 		if(!disasm_addr)
 			disasm_addr = M68000_GetPC();
 	}
-	disasm_addr &= 0x00FFFFFF;
 
 	/* limit is topmost address or instruction count */
 	if (disasm_upper)
@@ -180,18 +185,19 @@ int DebugCpu_DisAsm(int nArgc, char *psArgs[])
 	}
 	else
 	{
-		disasm_upper = 0x00FFFFFF;
-		max_insts = ConfigureParams.Debugger.nDisasmLines;
+//		max_insts = ConfigureParams.Debugger.nDisasmLines;
+		max_insts=5;
 	}
 
 	/* output a range */
 	for (insts = 0; insts < max_insts && disasm_addr < disasm_upper; insts++)
 	{
 		DebugCpu_ShowMatchedSymbol(disasm_addr);
-		m68k_disasm(debugOutput, (uaecptr)disasm_addr, &nextpc, 1);
+		m68k_disasm(mydebugOutput, (uaecptr)disasm_addr, &nextpc, 1);
 		disasm_addr = nextpc;
 	}
-	fflush(debugOutput);
+	fflush(mydebugOutput);
+	if (mydebugOutput!=debugOutput) {fclose(mydebugOutput);}
 
 	return DEBUGGER_CMDCONT;
 }
@@ -382,13 +388,11 @@ int DebugCpu_MemDump(int nArgc, char *psArgs[])
 			break;
 		}
 	} /* continue */
-//	memdump_addr &= 0x00FFFFFF;
 
 	if (!memdump_upper)
 	{
 		memdump_upper = memdump_addr + MEMDUMP_COLS * ConfigureParams.Debugger.nMemdumpLines;
 	}
-//	memdump_upper &= 0x00FFFFFF;
 
 	while (memdump_addr < memdump_upper)
 	{
@@ -433,7 +437,6 @@ static int DebugCpu_MemWrite(int nArgc, char *psArgs[])
 		return DEBUGGER_CMDDONE;
 	}
 
-	write_addr &= 0x00FFFFFF;
 	numBytes = 0;
 
 	/* get bytes data */

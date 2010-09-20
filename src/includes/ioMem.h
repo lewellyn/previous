@@ -25,7 +25,7 @@ extern int nIoMemAccessSize;
  */
 static inline Uint32 IoMem_ReadLong(Uint32 Address)
 {
-	Address &= 0x0ffffff;
+	Address &= 0x01ffff;
 	return do_get_mem_long(&IoMem[Address]);
 }
 
@@ -36,7 +36,7 @@ static inline Uint32 IoMem_ReadLong(Uint32 Address)
  */
 static inline Uint16 IoMem_ReadWord(Uint32 Address)
 {
-	Address &= 0x0ffffff;
+	Address &= 0x01ffff;
 	return do_get_mem_word(&IoMem[Address]);
 }
 
@@ -46,7 +46,7 @@ static inline Uint16 IoMem_ReadWord(Uint32 Address)
  */
 static inline Uint8 IoMem_ReadByte(Uint32 Address)
 {
-	Address &= 0x0ffffff;
+	Address &= 0x01ffff;
  	return IoMem[Address];
 }
 
@@ -57,7 +57,7 @@ static inline Uint8 IoMem_ReadByte(Uint32 Address)
  */
 static inline void IoMem_WriteLong(Uint32 Address, Uint32 Var)
 {
-	Address &= 0x0ffffff;
+	Address &= 0x01ffff;
 	do_put_mem_long(&IoMem[Address], Var);
 }
 
@@ -68,7 +68,7 @@ static inline void IoMem_WriteLong(Uint32 Address, Uint32 Var)
  */
 static inline void IoMem_WriteWord(Uint32 Address, Uint16 Var)
 {
-	Address &= 0xffffff;
+	Address &= 0x01ffff;
 	do_put_mem_word(&IoMem[Address], Var);
 }
 
@@ -78,7 +78,7 @@ static inline void IoMem_WriteWord(Uint32 Address, Uint16 Var)
  */
 static inline void IoMem_WriteByte(Uint32 Address, Uint8 Var)
 {
-	Address &= 0x0ffffff;
+	Address &= 0x01ffff;
 	IoMem[Address] = Var;
 }
 
@@ -102,5 +102,7 @@ extern void IoMem_VoidRead(void);
 extern void IoMem_VoidWrite(void);
 extern void IoMem_WriteWithoutInterception(void);
 extern void IoMem_ReadWithoutInterception(void);
+extern void IoMem_WriteWithoutInterceptionButTrace(void);
+extern void IoMem_ReadWithoutInterceptionButTrace(void);
 
 #endif

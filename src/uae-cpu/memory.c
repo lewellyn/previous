@@ -57,20 +57,30 @@ SCREEN
 #define	ROMmem_size			0x00020000
 #define NEXT_EPROM_SIZE		0x00020000
 #define NEXT_RAM_START   	0x04000000
-#define NEXT_RAM_SIZE		0x00800000
+#define NEXT_RAM_SIZE		0x00400000
+#define NEXT_RAM_START2   	0x05000000
+#define NEXT_RAM_SIZE2		0x00400000
 uae_u32	NEXTmem_size;
-#define NEXTmem_mask		0x03FFFFFF
+#define NEXTmem_mask		0x00FFFFFF
 #define NEXT_SCREEN			0x0B000000
 #define NEXT_SCREEN_SIZE	0x00040000
 #define NEXTvideo_size NEXT_SCREEN_SIZE
 #define NEXTvideo_mask		0x0003FFFF
 uae_u8  NEXTVideo[256*1024];
 
+
+
 #define IOmem_mask 			0x0001FFFF
 #define	IOmem_size			0x0001C000
 #define NEXT_IO_START   	0x02000000
-#define NEXT_IO2_START   	0x02000000
+#define NEXT_IO2_START   	0x02100000
 #define NEXT_IO_SIZE		0x00020000
+
+#define NEXT_BMAP_START		0x020C0000
+#define NEXT_BMAP_SIZE		0x10000
+#define	NEXTbmap_size		NEXT_BMAP_SIZE
+#define	NEXTbmap_mask		0x0000FFFF
+uae_u8  NEXTbmap[NEXT_BMAP_SIZE];
 
 #ifdef SAVE_MEMORY_BANKS
 addrbank *mem_banks[65536];
@@ -294,7 +304,7 @@ static void NEXTmem_bput(uaecptr addr, uae_u32 b)
 static int NEXTmem_check(uaecptr addr, uae_u32 size)
 {
     addr &= NEXTmem_mask;
-    return (addr + size) <= NEXTmem_size;
+    return (addr + size) <= 0x00400000;
 }
 
 static uae_u8 *NEXTmem_xlate(uaecptr addr)
@@ -303,6 +313,55 @@ static uae_u8 *NEXTmem_xlate(uaecptr addr)
     return NEXTRam + addr;
 }
 
+/* bank2 */
+
+static uae_u32 NEXTmem2_lget(uaecptr addr)
+{
+    addr &= NEXTmem_mask;
+    return do_get_mem_long(NEXTRam + 0x00400000 + addr);
+}
+
+static uae_u32 NEXTmem2_wget(uaecptr addr)
+{
+    addr &= NEXTmem_mask;
+    return do_get_mem_word(NEXTRam + 0x00400000 + addr);
+}
+
+static uae_u32 NEXTmem2_bget(uaecptr addr)
+{
+    addr &= NEXTmem_mask;
+    return NEXTRam[addr+0x00400000];
+}
+
+static void NEXTmem2_lput(uaecptr addr, uae_u32 l)
+{
+    addr &= NEXTmem_mask;
+    do_put_mem_long(NEXTRam + addr + 0x00400000, l);
+}
+
+static void NEXTmem2_wput(uaecptr addr, uae_u32 w)
+{
+    addr &= NEXTmem_mask;
+    do_put_mem_word(NEXTRam + addr + 0x00400000, w);
+}
+
+static void NEXTmem2_bput(uaecptr addr, uae_u32 b)
+{
+    addr &= NEXTmem_mask;
+    NEXTRam[addr+0x00400000] = b;
+}
+
+static int NEXTmem2_check(uaecptr addr, uae_u32 size)
+{
+    addr &= NEXTmem_mask;
+    return (addr + size) <= 0x00400000;
+}
+
+static uae_u8 *NEXTmem2_xlate(uaecptr addr)
+{
+    addr &= NEXTmem_mask;
+    return NEXTRam + addr + 0x00400000;
+}
 
 
 /* **** NEXT VRAM memory **** */
@@ -355,6 +414,55 @@ static uae_u8 *NEXTvideo_xlate(uaecptr addr)
     return (uae_u8*)NEXTVideo + addr;
 }
 
+/* **** NEXT BMAP memory **** */
+
+static uae_u32 NEXTbmap_lget(uaecptr addr)
+{
+    addr &= NEXTbmap_mask;
+    return do_get_mem_long(NEXTbmap + addr);
+}
+
+static uae_u32 NEXTbmap_wget(uaecptr addr)
+{
+    addr &= NEXTbmap_mask;
+    return do_get_mem_word(NEXTbmap + addr);
+}
+
+static uae_u32 NEXTbmap_bget(uaecptr addr)
+{
+    addr &= NEXTbmap_mask;
+    return NEXTbmap[addr];
+}
+
+static void NEXTbmap_lput(uaecptr addr, uae_u32 l)
+{
+    addr &= NEXTbmap_mask;
+    do_put_mem_long(NEXTbmap + addr, l);
+}
+
+static void NEXTbmap_wput(uaecptr addr, uae_u32 w)
+{
+    addr &= NEXTbmap_mask;
+    do_put_mem_word(NEXTbmap + addr, w);
+}
+
+static void NEXTbmap_bput(uaecptr addr, uae_u32 b)
+{
+    addr &= NEXTbmap_mask;
+    NEXTbmap[addr] = b;
+}
+
+static int NEXTbmap_check(uaecptr addr, uae_u32 size)
+{
+    addr &= NEXTbmap_mask;
+    return (addr + size) <= NEXTbmap_size;
+}
+
+static uae_u8 *NEXTbmap_xlate(uaecptr addr)
+{
+    addr &= NEXTbmap_mask;
+    return (uae_u8*)NEXTbmap + addr;
+}
 /*
  * **** Void memory ****
  * lots of free space in next's full 32bits memory map
@@ -505,6 +613,12 @@ static addrbank NEXTmem_bank =
     NEXTmem_xlate, NEXTmem_check
 };
 
+static addrbank NEXTmem_bank2 =
+{
+    NEXTmem2_lget, NEXTmem2_wget, NEXTmem2_bget,
+    NEXTmem2_lput, NEXTmem2_wput, NEXTmem2_bput,
+    NEXTmem2_xlate, NEXTmem2_check
+};
 
 static addrbank VoidMem_bank =
 {
@@ -518,6 +632,13 @@ static addrbank Video_bank =
     NEXTvideo_lget, NEXTvideo_wget, NEXTvideo_bget,
     NEXTvideo_lput, NEXTvideo_wput, NEXTvideo_bput,
     NEXTvideo_xlate, NEXTvideo_check
+};
+
+static addrbank bmap_bank =
+{
+    NEXTbmap_lget, NEXTbmap_wget, NEXTbmap_bget,
+    NEXTbmap_lput, NEXTbmap_wput, NEXTbmap_bput,
+    NEXTbmap_xlate, NEXTbmap_check
 };
 
 static addrbank ROMmem_bank =
@@ -560,26 +681,33 @@ void memory_init(uae_u32 nNewNEXTMemSize)
 
     map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
 
+    map_banks(&NEXTmem_bank2, NEXT_RAM_START2>>16, NEXT_RAM_SIZE2 >> 16);
+
+
     map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
 
     map_banks(&ROMmem_bank, NEXT_EPROM_START >> 16, NEXT_EPROM_SIZE>>16);
     map_banks(&ROMmem_bank, NEXT_EPROM2_START >> 16, NEXT_EPROM_SIZE>>16);
 
 
-//    map_banks(&IOmem_bank, NEXT_IO_START >> 16, NEXT_IO_SIZE>>16);
-//    map_banks(&IOmem_bank, NEXT_IO2_START >> 16, NEXT_IO_SIZE>>16);
-	map_banks(&VoidMem_bank, NEXT_IO_START >> 16, NEXT_IO_SIZE>>16);
-    map_banks(&VoidMem_bank, NEXT_IO2_START >> 16, NEXT_IO_SIZE>>16);
+    map_banks(&IOmem_bank, NEXT_IO_START >> 16, NEXT_IO_SIZE>>16);
+    map_banks(&IOmem_bank, NEXT_IO2_START >> 16, NEXT_IO_SIZE>>16);
+//	map_banks(&VoidMem_bank, NEXT_IO_START >> 16, NEXT_IO_SIZE>>16);
+//    map_banks(&VoidMem_bank, NEXT_IO2_START >> 16, NEXT_IO_SIZE>>16);
+
+    map_banks(&bmap_bank, NEXT_BMAP_START >> 16, NEXT_BMAP_SIZE>>16);
 
 	ROMmemory=NEXTRom;
 	IOmemory=NEXTIo;
 	{
 		FILE* fin;
 		int ret;
-//		fin=fopen("./Rev_2.5_v66.BIN","rb");
+		fin=fopen("./Rev_2.5_v66.BIN","rb");
 //		fin=fopen("./Rev_3.3_v74.BIN","rb");
-		fin=fopen("./Rev_1.2.BIN","rb");
+//		fin=fopen("./Rev_1.2.BIN","rb");
+//		fin=fopen("./Rev_1.0_v41.BIN","rb");
 		ret=fread(ROMmemory,1,0x20000,fin);
+
 		write_log("Read ROM %d\n",ret);
 		fclose(fin);
 	}

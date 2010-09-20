@@ -79,10 +79,10 @@ Uint32 colors[32];
 static void Screen_CreatePalette(void)
 {
 
-	sdlColors[0].r = sdlColors[0].g = sdlColors[0].b = 0;
-	sdlColors[1].r = sdlColors[1].g = sdlColors[1].b = 80;
-	sdlColors[2].r = sdlColors[2].g = sdlColors[2].b = 160;
-	sdlColors[3].r = sdlColors[3].g = sdlColors[3].b = 255;
+	sdlColors[0].r = sdlColors[0].g = sdlColors[0].b = 255;
+	sdlColors[1].r = sdlColors[1].g = sdlColors[1].b = 160;
+	sdlColors[2].r = sdlColors[2].g = sdlColors[2].b = 80;
+	sdlColors[3].r = sdlColors[3].g = sdlColors[3].b = 0;
 }
 
 
@@ -101,18 +101,7 @@ static void Screen_Handle8BitPalettes(void)
  */
 static void Screen_SetDrawFunctions(int nBitCount, bool bDoubleLowRes)
 {
-	if (nBitCount == 8)
-	{
 		ScreenDrawFunctionsNormal[ST_HIGH_RES] = ConvertHighRes_640x8Bit;
-	}
-	else if (nBitCount <= 16)
-	{
-		ScreenDrawFunctionsNormal[ST_HIGH_RES] = ConvertHighRes_640x8Bit;
-	}
-	else /* Assume 32 bit drawing functions */
-	{
-		ScreenDrawFunctionsNormal[ST_HIGH_RES] = ConvertHighRes_640x8Bit;
-	}
 }
 
 
@@ -152,12 +141,12 @@ static void Screen_SetResolution(void)
 	nScreenZoomX = 1;
 	nScreenZoomY = 1;
 
-	Width = 640;
-	Height = 400;
-	nZoom = 2;
+	Width = 1024;
+	Height = 600;
+	nZoom = 1;
 
 	/* Statusbar height for doubled screen size */
-	SBarHeight = Statusbar_GetHeightForSize(640, 400);
+	SBarHeight = Statusbar_GetHeightForSize(1024, 600);
 	Resolution_GetLimits(&maxW, &maxH, &BitCount);
 		
 	

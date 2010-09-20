@@ -16,8 +16,8 @@ const char IoMem_fileid[] = "Hatari ioMem.c : " __DATE__ " " __TIME__;
 #include "sysdeps.h"
 
 #define IO_SEG_MASK 0x0001FFFF
-#define IO_MASK 0x0001BFFF
-#define IO_SIZE 0x0001C000
+#define IO_MASK 0x0001FFFF
+#define IO_SIZE 0x00020000
 
 static void (*pInterceptReadTable[IO_SIZE])(void);     /* Table with read access handlers */
 static void (*pInterceptWriteTable[IO_SIZE])(void);    /* Table with write access handlers */
@@ -40,13 +40,13 @@ static void IoMem_SetBusErrorRegion(Uint32 startaddr, Uint32 endaddr)
 	{
 		if (a & 1)
 		{
-			pInterceptReadTable[a & 0x1BFFF] = IoMem_BusErrorOddReadAccess;     /* For 'read' */
-			pInterceptWriteTable[a & 0x1BFFF] = IoMem_BusErrorOddWriteAccess;   /* and 'write' */
+			pInterceptReadTable[a & 0x1FFFF] = IoMem_BusErrorOddReadAccess;     /* For 'read' */
+			pInterceptWriteTable[a & 0x1FFFF] = IoMem_BusErrorOddWriteAccess;   /* and 'write' */
 		}
 		else
 		{
-			pInterceptReadTable[a & 0x1BFFF] = IoMem_BusErrorEvenReadAccess;    /* For 'read' */
-			pInterceptWriteTable[a & 0x1BFFF] = IoMem_BusErrorEvenWriteAccess;  /* and 'write' */
+			pInterceptReadTable[a & 0x1FFFF] = IoMem_BusErrorEvenReadAccess;    /* For 'read' */
+			pInterceptWriteTable[a & 0x1FFFF] = IoMem_BusErrorEvenWriteAccess;  /* and 'write' */
 		}
 	}
 }
@@ -63,9 +63,32 @@ void IoMem_Init(void)
 	const INTERCEPT_ACCESS_FUNC *pInterceptAccessFuncs = NULL;
 
 	/* Set default IO access handler (-> bus error) */
-	IoMem_SetBusErrorRegion(0x02000000, 0x0201BFFF);
+	IoMem_SetBusErrorRegion(0x02000000, 0x0201FFFF);
 
 	pInterceptAccessFuncs=IoMemTable_NEXT;
+
+	/* Now set the correct handlers */
+	for (addr=0x02000000; addr <= 0x0201FFFF; addr++)
+	{
+		/* Does this hardware location/span appear in our list of possible intercepted functions? */
+		for (i=0; pInterceptAccessFuncs[i].Address != 0; i++)
+		{
+			if (addr >= pInterceptAccessFuncs[i].Address
+			    && addr < pInterceptAccessFuncs[i].Address+pInterceptAccessFuncs[i].SpanInBytes)
+			{
+				/* Security checks... */
+				if (pInterceptReadTable[addr & 0x1FFFF] != IoMem_BusErrorEvenReadAccess && pInterceptReadTable[addr&0x1FFFF] != IoMem_BusErrorOddReadAccess)
+					fprintf(stderr, "IoMem_Init: Warning: $%x (R) already defined\n", addr);
+				if (pInterceptWriteTable[addr& 0x1FFFF] != IoMem_BusErrorEvenWriteAccess && pInterceptWriteTable[addr&0x1FFFF] != IoMem_BusErrorOddWriteAccess)
+					fprintf(stderr, "IoMem_Init: Warning: $%x (W) already defined\n", addr);
+
+				/* This location needs to be intercepted, so add entry to list */
+				pInterceptReadTable[addr& 0x1FFFF] = pInterceptAccessFuncs[i].ReadFunc;
+				pInterceptWriteTable[addr& 0x1FFFF] = pInterceptAccessFuncs[i].WriteFunc;
+			}
+		}
+	}
+
 
 }
 
@@ -262,7 +285,7 @@ void IoMem_wput(uaecptr addr, uae_u32 val)
 	Uint32 idx;
 
 
-	LOG_TRACE(TRACE_IOMEM_WR, "IO write.w $%06x = $%04x\n", addr, val&0x0ffff);
+	LOG_TRACE(TRACE_IOMEM_WR, "IO write.w $%06x = $%04x\n", addr, val&0xffff);
 
 	if ((addr & IO_SEG_MASK) >= IO_SIZE)
 	{
@@ -442,4 +465,24 @@ void IoMem_ReadWithoutInterception(void)
 void IoMem_WriteWithoutInterception(void)
 {
 	/* Nothing... */
+}
+
+/*-------------------------------------------------------------------------*/
+/**
+ * A dummy function that does nothing at all - for memory regions that don't
+ * need a special handler for read access.
+ */
+void IoMem_ReadWithoutInterceptionButTrace(void)
+{
+	Log_Printf(LOG_WARN,"IO read at $%08x PC=$%08x\n", IoAccessCurrentAddress,regs.pc);
+}
+
+/*-------------------------------------------------------------------------*/
+/**
+ * A dummy function that does nothing at all - for memory regions that don't
+ * need a special handler for write access.
+ */
+void IoMem_WriteWithoutInterceptionButTrace(void)
+{
+	Log_Printf(LOG_WARN,"IO write at $%08x val=%02x PC=$%08x\n", IoAccessCurrentAddress,IoMem[IoAccessCurrentAddress & IO_SEG_MASK],regs.pc);
 }

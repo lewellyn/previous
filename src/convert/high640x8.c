@@ -72,24 +72,24 @@ static void ConvertHighRes_640x8Bit(void)
 			colors[x] = SDL_MapRGB(sdlscrn->format, sdlColors[x].r, sdlColors[x].g, sdlColors[x].b);
 	}
 
-	for (y = 0; y < 400; y++)
+	for (y = 0; y < 600; y++)
 	{
 
-		for (x = 0; x < 640; x++)
+		for (x = 0; x < 1024; x++)
 		{
 			switch (x&0x3)
 			{
 			case 0x0:
-				col=(NEXTVideo[(x/2)+y*560]&0xC0)>>6;
+				col=(NEXTVideo[(x/4)+y*288]&0xC0)>>6;
 				break;
 			case 0x1:
-				col=(NEXTVideo[(x/2)+y*560]&0x30)>>4;
+				col=(NEXTVideo[(x/4)+y*288]&0x30)>>4;
 				break;
 			case 0x2:
-				col=(NEXTVideo[(x/2)+y*560]&0x0C)>>2;
+				col=(NEXTVideo[(x/4)+y*288]&0x0C)>>2;
 				break;
 			case 0x3:
-				col=(NEXTVideo[(x/2)+y*560]&0x03);
+				col=(NEXTVideo[(x/4)+y*288]&0x03);
 				break;
 			}
 			putpixel(sdlscrn,x,y,col);
