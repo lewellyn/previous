@@ -11,7 +11,7 @@
   * This file is distributed under the GNU Public License, version 2 or at
   * your option any later version. Read the file gpl.txt for details.
   */
-const char Memory_fileid[] = "Hatari memory.c : " __DATE__ " " __TIME__;
+const char Memory_fileid[] = "Previous memory.c : " __DATE__ " " __TIME__;
 
 #include "config.h"
 #include "sysdeps.h"
@@ -29,7 +29,7 @@ const char Memory_fileid[] = "Hatari memory.c : " __DATE__ " " __TIME__;
 
 
 /* Set illegal_mem to 1 for debug output: */
-#define illegal_mem 1
+#define illegal_mem 0
 
 /*
 approximative next memory map (source netbsd/next68k file cpu.h)
@@ -56,12 +56,16 @@ SCREEN
 #define ROMmem_mask			0x0001FFFF
 #define	ROMmem_size			0x00020000
 #define NEXT_EPROM_SIZE		0x00020000
+
+// we define 2 ram banks of 4mb
 #define NEXT_RAM_START   	0x04000000
+#define NEXT_RAM_SPACE		0x40000000
 #define NEXT_RAM_SIZE		0x00400000
 #define NEXT_RAM_START2   	0x05000000
 #define NEXT_RAM_SIZE2		0x00400000
-uae_u32	NEXTmem_size;
+uae_u32	NEXTmem_size; // unused
 #define NEXTmem_mask		0x00FFFFFF
+// for a mono screen
 #define NEXT_SCREEN			0x0B000000
 #define NEXT_SCREEN_SIZE	0x00040000
 #define NEXTvideo_size NEXT_SCREEN_SIZE
@@ -81,6 +85,12 @@ uae_u8  NEXTVideo[256*1024];
 #define	NEXTbmap_size		NEXT_BMAP_SIZE
 #define	NEXTbmap_mask		0x0000FFFF
 uae_u8  NEXTbmap[NEXT_BMAP_SIZE];
+
+#define NEXT_X06_START		0x06000000
+#define NEXT_X06_SIZE		0x10000
+#define	NEXTx06_size		NEXT_X06_SIZE
+#define	NEXTx06_mask		0x0000FFFF
+uae_u8  NEXTx06[NEXT_X06_SIZE];
 
 #ifdef SAVE_MEMORY_BANKS
 addrbank *mem_banks[65536];
@@ -127,55 +137,55 @@ static uae_u8 *NEXTmem_xlate (uaecptr addr) REGPARAM;
 static uae_u32 dummy_lget(uaecptr addr)
 {
     if (illegal_mem)
-	write_log ("Illegal lget at %08lx PC=%08x\n", (long)addr,regs.pc);
+	write_log ("Illegal lget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
 	// DebugUI();
 
-    return 0;
+    return 0xFFFFFFFF;
 }
 
 static uae_u32 dummy_wget(uaecptr addr)
 {
     if (illegal_mem)
-	write_log ("Illegal wget at %08lx PC=%08x\n", (long)addr,regs.pc);
+	write_log ("Illegal wget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
 	// DebugUI();
 
-    return 0;
+    return 0xFFFF;
 }
 
 static uae_u32 dummy_bget(uaecptr addr)
 {
     if (illegal_mem)
-	write_log ("Illegal bget at %08lx PC=%08x\n", (long)addr,regs.pc);
+	write_log ("Illegal bget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
 	// DebugUI();
 
-    return 0;
+    return 0xFF;
 }
 
 static void dummy_lput(uaecptr addr, uae_u32 l)
 {
     if (illegal_mem)
-	write_log ("Illegal lput at %08lx PC=%08x\n", (long)addr,regs.pc);
+	write_log ("Illegal lput %08x at %08lx PC=%08x\n",l, (long)addr,m68k_getpc());
 	// DebugUI();
 }
 
 static void dummy_wput(uaecptr addr, uae_u32 w)
 {
     if (illegal_mem)
-	write_log ("Illegal wput at %08lx PC=%08x\n", (long)addr,regs.pc);
+	write_log ("Illegal wput %04x at %08lx PC=%08x\n",w, (long)addr,m68k_getpc());
 	// DebugUI();
 }
 
 static void dummy_bput(uaecptr addr, uae_u32 b)
 {
     if (illegal_mem)
-	write_log ("Illegal bput at %08lx PC=%08x\n", (long)addr,regs.pc);
+	write_log ("Illegal bput %02x at %08lx PC=%08x\n",b, (long)addr,m68k_getpc());
 	// DebugUI();
 }
 
 static int dummy_check(uaecptr addr, uae_u32 size)
 {
     if (illegal_mem)
-	write_log ("Illegal check at %08lx PC=%08x\n", (long)addr,regs.pc);
+	write_log ("Illegal check at %08lx PC=%08x\n", (long)addr,m68k_getpc());
 
     return 0;
 }
@@ -184,7 +194,7 @@ static uae_u8 *dummy_xlate(uaecptr addr)
 {
     static uae_u8 dummy[16];
     write_log("Your Next program just did something terribly stupid:"
-              " dummy_xlate($%x) PC=%08x\n", addr,regs.pc);
+              " dummy_xlate($%x) PC=%08x\n", addr,m68k_getpc());
  //   Reset_Warm();
 	DebugUI();
     return dummy;
@@ -197,7 +207,7 @@ static uae_u8 *dummy_xlate(uaecptr addr)
 static uae_u32 BusErrMem_lget(uaecptr addr)
 {
     if (illegal_mem)
-	write_log ("Bus error lget at %08lx\n", (long)addr);
+	write_log ("Bus error lget at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
     M68000_BusError(addr, 1);
     return 0;
@@ -206,7 +216,7 @@ static uae_u32 BusErrMem_lget(uaecptr addr)
 static uae_u32 BusErrMem_wget(uaecptr addr)
 {
     if (illegal_mem)
-	write_log ("Bus error wget at %08lx\n", (long)addr);
+	write_log ("Bus error wget at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
     M68000_BusError(addr, 1);
     return 0;
@@ -215,7 +225,7 @@ static uae_u32 BusErrMem_wget(uaecptr addr)
 static uae_u32 BusErrMem_bget(uaecptr addr)
 {
     if (illegal_mem)
-	write_log ("Bus error bget at %08lx\n", (long)addr);
+	write_log ("Bus error bget at %08lx  pc=%08x\n", (long)addr,m68k_getpc());
 
     M68000_BusError(addr, 1);
     return 0;
@@ -224,7 +234,7 @@ static uae_u32 BusErrMem_bget(uaecptr addr)
 static void BusErrMem_lput(uaecptr addr, uae_u32 l)
 {
     if (illegal_mem)
-	write_log ("Bus error lput at %08lx\n", (long)addr);
+	write_log ("Bus error lput at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
     M68000_BusError(addr, 0);
 }
@@ -232,7 +242,7 @@ static void BusErrMem_lput(uaecptr addr, uae_u32 l)
 static void BusErrMem_wput(uaecptr addr, uae_u32 w)
 {
     if (illegal_mem)
-	write_log ("Bus error wput at %08lx\n", (long)addr);
+	write_log ("Bus error wput at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
     M68000_BusError(addr, 0);
 }
@@ -240,7 +250,7 @@ static void BusErrMem_wput(uaecptr addr, uae_u32 w)
 static void BusErrMem_bput(uaecptr addr, uae_u32 b)
 {
     if (illegal_mem)
-	write_log ("Bus error bput at %08lx\n", (long)addr);
+	write_log ("Bus error bput at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
     M68000_BusError(addr, 0);
 }
@@ -248,7 +258,7 @@ static void BusErrMem_bput(uaecptr addr, uae_u32 b)
 static int BusErrMem_check(uaecptr addr, uae_u32 size)
 {
     if (illegal_mem)
-	write_log ("Bus error check at %08lx\n", (long)addr);
+	write_log ("Bus error check at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
     return 0;
 }
@@ -258,7 +268,7 @@ static uae_u8 *BusErrMem_xlate (uaecptr addr)
     write_log("Your Next program just did something terribly stupid:"
               " BusErrMem_xlate($%x)\n", addr);
 
-    /*M68000_BusError(addr);*/
+//    M68000_BusError(addr);*/
     return NEXTmem_xlate(addr);  /* So we don't crash. */
 }
 
@@ -304,7 +314,7 @@ static void NEXTmem_bput(uaecptr addr, uae_u32 b)
 static int NEXTmem_check(uaecptr addr, uae_u32 size)
 {
     addr &= NEXTmem_mask;
-    return (addr + size) <= 0x00400000;
+    return (addr + size) <= 0x003FFFFF;
 }
 
 static uae_u8 *NEXTmem_xlate(uaecptr addr)
@@ -354,7 +364,7 @@ static void NEXTmem2_bput(uaecptr addr, uae_u32 b)
 static int NEXTmem2_check(uaecptr addr, uae_u32 size)
 {
     addr &= NEXTmem_mask;
-    return (addr + size) <= 0x00400000;
+    return (addr + size) <= 0x003FFFFF;
 }
 
 static uae_u8 *NEXTmem2_xlate(uaecptr addr)
@@ -418,36 +428,42 @@ static uae_u8 *NEXTvideo_xlate(uaecptr addr)
 
 static uae_u32 NEXTbmap_lget(uaecptr addr)
 {
+	write_log ("bmap lget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
     addr &= NEXTbmap_mask;
     return do_get_mem_long(NEXTbmap + addr);
 }
 
 static uae_u32 NEXTbmap_wget(uaecptr addr)
 {
+	write_log ("bmap wget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
     addr &= NEXTbmap_mask;
     return do_get_mem_word(NEXTbmap + addr);
 }
 
 static uae_u32 NEXTbmap_bget(uaecptr addr)
 {
+	write_log ("bmap bget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
     addr &= NEXTbmap_mask;
     return NEXTbmap[addr];
 }
 
 static void NEXTbmap_lput(uaecptr addr, uae_u32 l)
 {
+	write_log ("bmap lput at %08lx val=%x PC=%08x\n", (long)addr,l,m68k_getpc());
     addr &= NEXTbmap_mask;
     do_put_mem_long(NEXTbmap + addr, l);
 }
 
 static void NEXTbmap_wput(uaecptr addr, uae_u32 w)
 {
+	write_log ("bmap wput at %08lx val=%x PC=%08x\n", (long)addr,w,m68k_getpc());
     addr &= NEXTbmap_mask;
     do_put_mem_word(NEXTbmap + addr, w);
 }
 
 static void NEXTbmap_bput(uaecptr addr, uae_u32 b)
 {
+	write_log ("bmap bput at %08lx val=%x PC=%08x\n", (long)addr,b,m68k_getpc());
     addr &= NEXTbmap_mask;
     NEXTbmap[addr] = b;
 }
@@ -463,6 +479,67 @@ static uae_u8 *NEXTbmap_xlate(uaecptr addr)
     addr &= NEXTbmap_mask;
     return (uae_u8*)NEXTbmap + addr;
 }
+
+/* **** NEXT x06 memory **** */
+
+static uae_u32 NEXTx06_lget(uaecptr addr)
+{
+	write_log ("x06 lget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
+    addr &= NEXTx06_mask;
+//    return do_get_mem_long(NEXTx06 + addr);
+	return 0xFFFFFFFF;
+}
+
+static uae_u32 NEXTx06_wget(uaecptr addr)
+{
+	write_log ("x06 wget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
+    addr &= NEXTx06_mask;
+//    return do_get_mem_word(NEXTx06 + addr);
+	return 0xFFFF;
+}
+
+static uae_u32 NEXTx06_bget(uaecptr addr)
+{
+	write_log ("x06 bget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
+    addr &= NEXTx06_mask;
+//    return NEXTx06[addr];
+	return 0xFF;
+}
+
+static void NEXTx06_lput(uaecptr addr, uae_u32 l)
+{
+	write_log ("x06 lput at %08lx val=%x PC=%08x\n", (long)addr,l,m68k_getpc());
+    addr &= NEXTx06_mask;
+    do_put_mem_long(NEXTx06 + addr, l);
+}
+
+static void NEXTx06_wput(uaecptr addr, uae_u32 w)
+{
+	write_log ("x06 wput at %08lx val=%x PC=%08x\n", (long)addr,w,m68k_getpc());
+    addr &= NEXTx06_mask;
+    do_put_mem_word(NEXTx06 + addr, w);
+}
+
+static void NEXTx06_bput(uaecptr addr, uae_u32 b)
+{
+	write_log ("x06 bput at %08lx val=%x PC=%08x\n", (long)addr,b,m68k_getpc());
+    addr &= NEXTx06_mask;
+    NEXTx06[addr] = b;
+}
+
+static int NEXTx06_check(uaecptr addr, uae_u32 size)
+{
+    addr &= NEXTx06_mask;
+    return (addr + size) <= NEXTx06_size;
+}
+
+static uae_u8 *NEXTx06_xlate(uaecptr addr)
+{
+    addr &= NEXTx06_mask;
+    return (uae_u8*)NEXTx06 + addr;
+}
+
+
 /*
  * **** Void memory ****
  * lots of free space in next's full 32bits memory map
@@ -641,6 +718,13 @@ static addrbank bmap_bank =
     NEXTbmap_xlate, NEXTbmap_check
 };
 
+static addrbank x06_bank =
+{
+    NEXTx06_lget, NEXTx06_wget, NEXTx06_bget,
+    NEXTx06_lput, NEXTx06_wput, NEXTx06_bput,
+    NEXTx06_xlate, NEXTx06_check
+};
+
 static addrbank ROMmem_bank =
 {
     ROMmem_lget, ROMmem_wget, ROMmem_bget,
@@ -679,11 +763,16 @@ void memory_init(uae_u32 nNewNEXTMemSize)
 	/* fill every 65536 bank with dummy */
     init_mem_banks(); 
 
+    // map_banks(&BusErrMem_bank,NEXT_RAM_START>>16,NEXT_RAM_SPACE>>16);
+
     map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
 
     map_banks(&NEXTmem_bank2, NEXT_RAM_START2>>16, NEXT_RAM_SIZE2 >> 16);
 
 
+    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
+    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
+    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
     map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
 
     map_banks(&ROMmem_bank, NEXT_EPROM_START >> 16, NEXT_EPROM_SIZE>>16);
@@ -696,6 +785,8 @@ void memory_init(uae_u32 nNewNEXTMemSize)
 //    map_banks(&VoidMem_bank, NEXT_IO2_START >> 16, NEXT_IO_SIZE>>16);
 
     map_banks(&bmap_bank, NEXT_BMAP_START >> 16, NEXT_BMAP_SIZE>>16);
+    map_banks(&x06_bank, NEXT_X06_START >> 16, NEXT_X06_SIZE>>16);
+    map_banks(&x06_bank, 0x07000000 >> 16, NEXT_X06_SIZE>>16);
 
 	ROMmemory=NEXTRom;
 	IOmemory=NEXTIo;
@@ -715,6 +806,7 @@ void memory_init(uae_u32 nNewNEXTMemSize)
 	{
 		int i;
 		for (i=0;i<sizeof(NEXTVideo);i++) NEXTVideo[i]=0xAA;
+		for (i=0;i<sizeof(NEXTRam);i++) NEXTRam[i]=0xAA;
 	}
 
 }

@@ -81,15 +81,19 @@ static void ConvertHighRes_640x8Bit(void)
 			{
 			case 0x0:
 				col=(NEXTVideo[(x/4)+y*288]&0xC0)>>6;
+//				col=(NEXTVideo[(x/4)+y*280]&0xC0)>>6;
 				break;
 			case 0x1:
 				col=(NEXTVideo[(x/4)+y*288]&0x30)>>4;
+//				col=(NEXTVideo[(x/4)+y*280]&0x30)>>4;
 				break;
 			case 0x2:
 				col=(NEXTVideo[(x/4)+y*288]&0x0C)>>2;
+//				col=(NEXTVideo[(x/4)+y*280]&0x0C)>>2;
 				break;
 			case 0x3:
 				col=(NEXTVideo[(x/4)+y*288]&0x03);
+//				col=(NEXTVideo[(x/4)+y*280]&0x03);
 				break;
 			}
 			putpixel(sdlscrn,x,y,col);
