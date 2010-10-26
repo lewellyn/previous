@@ -18,7 +18,7 @@ const char STMemory_fileid[] = "Hatari stMemory.c : " __DATE__ " " __TIME__;
 /*
  * main RAM buffer (8mb for stock Next)
  */
-Uint8 NEXTRam[8*1024*1024];
+Uint8 NEXTRam[64*1024*1024];
 
 Uint32 NEXTRamEnd;            /* End of ST Ram, above this address is no-mans-land and ROM/IO memory */
 

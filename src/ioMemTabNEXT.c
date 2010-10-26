@@ -28,7 +28,7 @@ static Uint8 scr2_2=0;
 static Uint8 scr2_3=0;
 
 static Uint32 intStat=0x04;
-static Uint32 intMask=0xFF;
+static Uint32 intMask=0x00000000;
 
 void SCR2_Write0(void)
 {	
@@ -62,7 +62,188 @@ void SCR2_Read1(void)
 #define SCR2_LED		0x01
 #define SCR2_ROM		0x80
 
-Uint8 rtc_ram[32];
+
+// file mon/nvram.h
+// struct nvram_info {
+// #define	NI_RESET	9
+// 	u_int	ni_reset : 4,
+// #define	SCC_ALT_CONS	0x08000000
+// 		ni_alt_cons : 1,
+// #define	ALLOW_EJECT	0x04000000
+// 		ni_allow_eject : 1,
+// 		ni_vol_r : 6,
+// 		ni_brightness : 6,
+// #define	HW_PWD	0x6
+// 		ni_hw_pwd : 4,
+// 		ni_vol_l : 6,
+// 		ni_spkren : 1,
+// 		ni_lowpass : 1,
+// #define	BOOT_ANY	0x00000002
+// 		ni_boot_any : 1,
+// #define	ANY_CMD		0x00000001
+// 		ni_any_cmd : 1;
+// #define	NVRAM_HW_PASSWD	6
+// 	u_char ni_ep[NVRAM_HW_PASSWD];
+// #define	ni_enetaddr	ni_ep
+// #define	ni_hw_passwd	ni_ep
+// 	u_short ni_simm;		/* 4 SIMMs, 4 bits per SIMM */
+// 	char ni_adobe[2];
+// 	u_char ni_pot[3];
+// 	u_char	ni_new_clock_chip : 1,
+// 		ni_auto_poweron : 1,
+// 		ni_use_console_slot : 1,	/* Console slot was set by user. */
+// 		ni_console_slot : 2,		/* Preferred console dev slot>>1 */
+// 		ni_use_parity_mem : 1,	/* Use parity RAM if available? */
+// 		: 2;
+// #define	NVRAM_BOOTCMD	12
+// 	char ni_bootcmd[NVRAM_BOOTCMD];
+// 	u_short ni_cksum;
+// };
+
+// #define	N_brightness	0
+// #define	N_volume_l	1
+// #define	N_volume_r	2
+
+/* nominal values during self test */
+// #define	BRIGHT_NOM	20
+// #define	VOL_NOM		0
+
+/* bits in ni_pot[0] */
+// #define POT_ON			0x01
+// #define EXTENDED_POT		0x02
+// #define LOOP_POT		0x04
+// #define	VERBOSE_POT		0x08
+// #define	TEST_DRAM_POT		0x10
+// #define	BOOT_POT		0x20
+// #define	TEST_MONITOR_POT	0x40
+
+// Uint8 rtc_ram[32];
+
+Uint8 rtc_ram[32]={
+0x94,0x0f,0x40,0x00,0x00,0x00,0x00,0x00,
+0x00,0x00,0xfb,0x6d,0x00,0x00,0x7B,0x00,
+0x00,0x00,0x65,0x6e,0x00,0x00,0x00,0x00,
+0x00,0x00,0x00,0x00,0x00,0x00,0x50,0x13
+};
+
+static char rtc_ram_info[1024];
+char * get_rtc_ram_info(void) {
+	char buf[256];
+	int sum;
+	int i;
+	int ni_vol_l,ni_vol_r,ni_brightness;
+	int ni_hw_pwd,ni_spkren,ni_lowpass;
+	sprintf(buf,"Rtc info:\n");
+	strcpy(rtc_ram_info,buf);
+
+// struct nvram_info {
+// #define	NI_RESET	9
+// 	u_int	ni_reset : 4,
+
+	sprintf(buf,"RTC RESET:x%1X ",rtc_ram[0]>>4);
+	strcat(rtc_ram_info,buf);	
+
+// #define	SCC_ALT_CONS	0x08000000
+// 		ni_alt_cons : 1,
+	if (rtc_ram[0]&0x08) strcat(rtc_ram_info,"ALT_CONS ");
+// #define	ALLOW_EJECT	0x04000000
+// 		ni_allow_eject : 1,
+	if (rtc_ram[0]&0x04) strcat(rtc_ram_info,"ALLOW_EJECT ");
+// 		ni_vol_r : 6,
+// 		ni_brightness : 6,
+// #define	HW_PWD	0x6
+// 		ni_hw_pwd : 4,
+// 		ni_vol_l : 6,
+// 		ni_spkren : 1,
+// 		ni_lowpass : 1,
+// #define	BOOT_ANY	0x00000002
+// 		ni_boot_any : 1,
+// #define	ANY_CMD		0x00000001	
+// 		ni_any_cmd : 1;
+
+	ni_vol_r=(((rtc_ram[0]&0x3)<<4)|((rtc_ram[1]&0xF0)>>4));
+	ni_brightness=(((rtc_ram[1]&0xF)<<2)|((rtc_ram[2]&0xC0)>>6));
+	ni_vol_l=((rtc_ram[2]&0x3F)<<2);
+	ni_hw_pwd=(rtc_ram[3]&0xF0)>>4;
+	sprintf(buf,"VOL_R:x%1X BRIGHT:x%1X HWPWD:x%1X VOL_L:x%1X",ni_vol_r,ni_brightness,ni_vol_l,ni_hw_pwd);
+	strcat(rtc_ram_info,buf);	
+
+	if (rtc_ram[3]&0x08) strcat(rtc_ram_info,"SPK_ENABLE ");
+	if (rtc_ram[3]&0x04) strcat(rtc_ram_info,"LOW_PASS ");
+	if (rtc_ram[3]&0x02) strcat(rtc_ram_info,"BOOT_ANY ");
+	if (rtc_ram[3]&0x01) strcat(rtc_ram_info,"ANY_CMD ");
+	
+	
+
+// #define	NVRAM_HW_PASSWD	6
+// 	u_char ni_ep[NVRAM_HW_PASSWD];
+
+	sprintf(buf,"NVRAM_HW_PASSWD:%2X %2X %2X %2X %2X %2X ",rtc_ram[4],rtc_ram[5],rtc_ram[6],rtc_ram[7],rtc_ram[8],rtc_ram[9]);
+	strcat(rtc_ram_info,buf);	
+// #define	ni_enetaddr	ni_ep
+// #define	ni_hw_passwd	ni_ep
+// 	u_short ni_simm;		/* 4 SIMMs, 4 bits per SIMM */
+	sprintf(buf,"SIMM:%1X %1X %1X %1X ",rtc_ram[10]>>4,rtc_ram[10]&0x0F,rtc_ram[11]>>4,rtc_ram[11]&0x0F);
+	strcat(rtc_ram_info,buf);
+
+
+// 	char ni_adobe[2];
+	sprintf(buf,"ADOBE:%2X %2X ",rtc_ram[12],rtc_ram[13]);
+	strcat(rtc_ram_info,buf);
+
+// 	u_char ni_pot[3];
+	sprintf(buf,"POT:%2X %2X %2X ",rtc_ram[14],rtc_ram[15],rtc_ram[16]);
+	strcat(rtc_ram_info,buf);
+
+// 	u_char	ni_new_clock_chip : 1,
+// 		ni_auto_poweron : 1,
+// 		ni_use_console_slot : 1,	/* Console slot was set by user. */
+// 		ni_console_slot : 2,		/* Preferred console dev slot>>1 */
+// 		ni_use_parity_mem : 1,	/* Use parity RAM if available? */
+// 		: 2;
+	if (rtc_ram[17]&0x80) strcat(rtc_ram_info,"NEW_CLOCK_CHIP ");
+	if (rtc_ram[17]&0x40) strcat(rtc_ram_info,"AUTO_POWERON ");
+	if (rtc_ram[17]&0x20) strcat(rtc_ram_info,"CONSOLE_SLOT ");
+
+	sprintf(buf,"console_slot:%X ",(rtc_ram[17]&0x18)>>3);
+	strcat(rtc_ram_info,buf);
+
+	if (rtc_ram[17]&0x04) strcat(rtc_ram_info,"USE_PARITY ");
+
+
+	strcat(rtc_ram_info,"boot_command:");
+	for (i=0;i<12;i++) {
+		if ((rtc_ram[18+i]>=0x20) && (rtc_ram[18+i]<=0x7F)) {
+			sprintf(buf,"%c",rtc_ram[18+i]);
+			strcat(rtc_ram_info,buf);
+		}
+	}
+
+	strcat(rtc_ram_info," ");
+	sprintf(buf,"CKSUM:%2X %2X ",rtc_ram[30],rtc_ram[31]);
+	strcat(rtc_ram_info,buf);
+
+
+	sum=0;
+	for (i=0;i<30;i+=2) {
+		sum+=(rtc_ram[i]<<8)|(rtc_ram[i+1]);
+		if (sum>=0x10000) { sum-=0x10000;
+			sum+=1;
+		}
+	}
+
+	sum=0xFFFF-sum;
+
+	sprintf(buf,"CALC_CKSUM:%04X ",sum&0xFFFF);
+	strcat(rtc_ram_info,buf);
+
+// #define	NVRAM_BOOTCMD	12
+// 	char ni_bootcmd[NVRAM_BOOTCMD];
+// 	u_short ni_cksum;
+// };
+
+	return rtc_ram_info;
+}
 
 void SCR2_Write2(void)
 {	
@@ -163,7 +344,8 @@ void SCR2_Write2(void)
 void SCR2_Read2(void)
 {
 //	Log_Printf(LOG_WARN,"SCR2 read at $%08x PC=$%08x\n", IoAccessCurrentAddress,m68k_getpc());
-	IoMem[IoAccessCurrentAddress & 0x1FFFF]=(scr2_2 & (SCR2_RTDATA|SCR2_RTCLK|SCR2_RTCE))|0x08; // + data
+//	IoMem[IoAccessCurrentAddress & 0x1FFFF]=scr2_2 & (SCR2_RTDATA|SCR2_RTCLK|SCR2_RTCE)); // + data
+	IoMem[IoAccessCurrentAddress & 0x1FFFF]=scr2_2;
 }
 
 void SCR2_Write3(void)
@@ -188,11 +370,14 @@ void SCR2_Read3(void)
 
 /*
 *
-bits 0:2 cpu speed 110 25MHz
-bits 4:5 mem speed 01 70ns
-bits 8:11 board revision
-bits 12:15 cpu type 1000 cubeBW
-bits 28:31 field:0
+bits 0:2 cpu speed 02 25MHz
+bits 3:4 mem speed 0 120ns
+bits 5:6 video mem speed 0 120ns
+bits 8:11 board revision 0
+bits 12:15 cpu type 30 : station non turbo rev 0
+bits 16:23 dma type 01
+bits 24:27 reserved 0
+bits 28:31 slot id 0
 
 			
 0000 xxxxxxxxxx 0001  0001 xx 10 011
@@ -204,22 +389,22 @@ bits 28:31 field:0
 void SCR1_Read0(void)
 {
 	Log_Printf(LOG_WARN,"SCR1 read at $%08x PC=$%08x\n", IoAccessCurrentAddress,m68k_getpc());
-	IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x0F; // $FF
+	IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x00; 
 }
 void SCR1_Read1(void)
 {
 	Log_Printf(LOG_WARN,"SCR1 read at $%08x PC=$%08x\n", IoAccessCurrentAddress,m68k_getpc());
-	IoMem[IoAccessCurrentAddress & 0x1FFFF]=0xFF; // $FF
+	IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x01; // dma rev
 }
 void SCR1_Read2(void)
 {
 	Log_Printf(LOG_WARN,"SCR1 read at $%08x PC=$%08x\n", IoAccessCurrentAddress,m68k_getpc());
-	IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x5F; // $5F
+	IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x20; // cpu type + rev
 }
 void SCR1_Read3(void)
 {
 	Log_Printf(LOG_WARN,"SCR1 read at $%08x PC=$%08x\n", IoAccessCurrentAddress,m68k_getpc());
-	IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x23; // $CF
+	IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x02; // speed + memory
 }
 
 void IntRegStatRead(void) {
@@ -230,6 +415,13 @@ void IntRegStatWrite(void) {
 	intStat=IoMem[IoAccessCurrentAddress & 0x1FFFF];
 }
 
+void IntRegMaskRead(void) {
+	IoMem[IoAccessCurrentAddress & 0x1FFFF]=intMask;
+}
+
+void IntRegMaskWrite(void) {
+	intMask=IoMem[IoAccessCurrentAddress & 0x1FFFF];
+}
 
 
 /*-----------------------------------------------------------------------*/
@@ -238,14 +430,36 @@ void IntRegStatWrite(void) {
 */
 const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 {
+	{ 0x02000150, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02004150, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02004154, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02004158, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x0200415c, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x02004188, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02006000, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x02006001, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x02006002, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x02006003, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x02006004, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x02006005, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x02006006, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x02006008, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x02006009, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200600a, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200600b, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200600a, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200600b, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200600c, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200600d, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200600e, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200600f, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 	{ 0x02006010, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 	{ 0x02006011, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 	{ 0x02006012, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 	{ 0x02006013, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 	{ 0x02006014, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 	{ 0x02007000, SIZE_LONG, IntRegStatRead, IntRegStatWrite },
-	{ 0x02007800, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x02007800, SIZE_BYTE, IntRegMaskRead, IntRegMaskWrite },
 	{ 0x0200c000, SIZE_BYTE, SCR1_Read0, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200c001, SIZE_BYTE, SCR1_Read1, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200c002, SIZE_BYTE, SCR1_Read2, IoMem_WriteWithoutInterceptionButTrace },
@@ -255,11 +469,19 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 	{ 0x0200d001, SIZE_BYTE, SCR2_Read1, SCR2_Write1 },
 	{ 0x0200d002, SIZE_BYTE, SCR2_Read2, SCR2_Write2 },
 	{ 0x0200d003, SIZE_BYTE, SCR2_Read3, SCR2_Write3 },
-	{ 0x0200e002, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0200e003, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0200e004, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0200e005, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x0200e001, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200e002, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200e003, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200e004, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200e005, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200e006, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 	{ 0x02010000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x02012004, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02012005, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02012007, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02014003, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02018000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02018001, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02018004, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0, 0, NULL, NULL }
 };

@@ -72,10 +72,10 @@ static void ConvertHighRes_640x8Bit(void)
 			colors[x] = SDL_MapRGB(sdlscrn->format, sdlColors[x].r, sdlColors[x].g, sdlColors[x].b);
 	}
 
-	for (y = 0; y < 600; y++)
+	for (y = 0; y < 832; y++)
 	{
 
-		for (x = 0; x < 1024; x++)
+		for (x = 0; x < 1120; x++)
 		{
 			switch (x&0x3)
 			{

@@ -76,16 +76,16 @@ static void DebugInfo_OSHeader(Uint32 dummy)
 
 
 /* ------------------------------------------------------------------
- * Falcon HW information
+ * Next HW information
  */
 
 /**
- * DebugInfo_Videl : display the Videl registers values.
+ * DebugInfo_Rtc : display the Videl registers values.
  */
-static void DebugInfo_Videl(Uint32 dummy)
+static void DebugInfo_Rtc(Uint32 dummy)
 {
-	
 	Screen_Draw();
+	fprintf(stdout,"%s",get_rtc_ram_info());
 }
 
 /**
@@ -245,7 +245,7 @@ static const struct {
 	{ false,"osheader",  DebugInfo_OSHeader,   NULL, "Show TOS OS header information" },
 	{ true, "regaddr",   DebugInfo_RegAddr, DebugInfo_RegAddrArgs, "Show <disasm|memdump> from CPU/DSP address pointed by <register>" },
 	{ true, "registers", DebugInfo_CpuRegister,NULL, "Show CPU register values" },
-	{ false,"videl",     DebugInfo_Videl,      NULL, "Show Falcon Videl HW register values" }
+	{ false,"rtc",     DebugInfo_Rtc,      NULL, "Show Next's RTC registers" }
 };
 
 static int LockedFunction = 2; /* index for the "default" function */

@@ -141,12 +141,12 @@ static void Screen_SetResolution(void)
 	nScreenZoomX = 1;
 	nScreenZoomY = 1;
 
-	Width = 1024;
-	Height = 600;
+	Width = 1120;
+	Height = 832;
 	nZoom = 1;
 
 	/* Statusbar height for doubled screen size */
-	SBarHeight = Statusbar_GetHeightForSize(1024, 600);
+	SBarHeight = Statusbar_GetHeightForSize(1120, 832);
 	Resolution_GetLimits(&maxW, &maxH, &BitCount);
 		
 	

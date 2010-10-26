@@ -29,7 +29,7 @@ const char Memory_fileid[] = "Previous memory.c : " __DATE__ " " __TIME__;
 
 
 /* Set illegal_mem to 1 for debug output: */
-#define illegal_mem 0
+#define illegal_mem 1
 
 /*
 approximative next memory map (source netbsd/next68k file cpu.h)
@@ -57,12 +57,12 @@ SCREEN
 #define	ROMmem_size			0x00020000
 #define NEXT_EPROM_SIZE		0x00020000
 
-// we define 2 ram banks of 4mb
+// ram is flat?
 #define NEXT_RAM_START   	0x04000000
 #define NEXT_RAM_SPACE		0x40000000
-#define NEXT_RAM_SIZE		0x00400000
-#define NEXT_RAM_START2   	0x05000000
-#define NEXT_RAM_SIZE2		0x00400000
+// #define NEXT_RAM_SIZE		0x007FE000
+#define NEXT_RAM_SIZE		0x07FFE000
+
 uae_u32	NEXTmem_size; // unused
 #define NEXTmem_mask		0x00FFFFFF
 // for a mono screen
@@ -767,7 +767,7 @@ void memory_init(uae_u32 nNewNEXTMemSize)
 
     map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
 
-    map_banks(&NEXTmem_bank2, NEXT_RAM_START2>>16, NEXT_RAM_SIZE2 >> 16);
+    // map_banks(&NEXTmem_bank2, NEXT_RAM_START2>>16, NEXT_RAM_SIZE2 >> 16);
 
 
     map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
@@ -785,8 +785,8 @@ void memory_init(uae_u32 nNewNEXTMemSize)
 //    map_banks(&VoidMem_bank, NEXT_IO2_START >> 16, NEXT_IO_SIZE>>16);
 
     map_banks(&bmap_bank, NEXT_BMAP_START >> 16, NEXT_BMAP_SIZE>>16);
-    map_banks(&x06_bank, NEXT_X06_START >> 16, NEXT_X06_SIZE>>16);
-    map_banks(&x06_bank, 0x07000000 >> 16, NEXT_X06_SIZE>>16);
+//    map_banks(&x06_bank, NEXT_X06_START >> 16, NEXT_X06_SIZE>>16);
+//    map_banks(&x06_bank, 0x07000000 >> 16, NEXT_X06_SIZE>>16);
 
 	ROMmemory=NEXTRom;
 	IOmemory=NEXTIo;
