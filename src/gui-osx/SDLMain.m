@@ -13,11 +13,9 @@
 // for Hatari
 
 #include "dialog.h"
-#include "floppy.h"
 #include "reset.h"
 #include "screenSnapShot.h"
 #include "memorySnapShot.h"
-#include "sound.h"
 #include "video.h"
 #include "avi_record.h"
 
@@ -381,8 +379,8 @@ static void CustomApplicationMain (int argc, char **argv)
 		char szPath[cbPath];
 		strncpy(szPath, constSzPath, cbPath);
 
-		Floppy_SetDiskFileName(0, szPath, NULL);
-		Floppy_InsertDiskIntoDrive(0);
+//		Floppy_SetDiskFileName(0, szPath, NULL);
+//		Floppy_InsertDiskIntoDrive(0);
 	}
 }
 
@@ -405,8 +403,8 @@ static void CustomApplicationMain (int argc, char **argv)
 		char szPath[cbPath];
 		strncpy(szPath, constSzPath, cbPath);	
 
-		Floppy_SetDiskFileName(1, szPath, NULL);
-		Floppy_InsertDiskIntoDrive(1);
+//		Floppy_SetDiskFileName(1, szPath, NULL);
+//		Floppy_InsertDiskIntoDrive(1);
 	}
 }
 
@@ -418,19 +416,19 @@ static void CustomApplicationMain (int argc, char **argv)
 {
 	if (item == beginCaptureAnim)
 	{
-		return !Avi_AreWeRecording();
+//		return !Avi_AreWeRecording();
 	}
 	if (item == endCaptureAnim)
 	{
-		return Avi_AreWeRecording();
+//		return Avi_AreWeRecording();
 	}
 	if (item == beginCaptureSound)
 	{
-		return !Sound_AreWeRecording();
+//		return !Sound_AreWeRecording();
 	}
 	if (item == endCaptureSound)
 	{
-		return Sound_AreWeRecording();
+//		return Sound_AreWeRecording();
 	}
 
 	return YES;
@@ -446,14 +444,14 @@ static void CustomApplicationMain (int argc, char **argv)
 - (IBAction)captureAnimation:(id)sender
 {
 	GuiOsx_Pause();
-	Avi_StartRecording ( AviRecordFile , AviRecordDefaultCrop , nScreenRefreshRate , AviRecordDefaultVcodec );
+//	Avi_StartRecording ( AviRecordFile , AviRecordDefaultCrop , nScreenRefreshRate , AviRecordDefaultVcodec );
 	GuiOsx_Resume();
 }
 
 - (IBAction)endCaptureAnimation:(id)sender
 {
 	GuiOsx_Pause();
-	Avi_StopRecording();
+//	Avi_StopRecording();
 	GuiOsx_Resume();
 }
 
@@ -496,7 +494,7 @@ static void CustomApplicationMain (int argc, char **argv)
 		GuiOsx_ExportPathString(path, ConfigureParams.Sound.szYMCaptureFileName, sizeof(ConfigureParams.Sound.szYMCaptureFileName));
 		
 		// Begin capture
-		Sound_BeginRecording(ConfigureParams.Sound.szYMCaptureFileName);
+//		Sound_BeginRecording(ConfigureParams.Sound.szYMCaptureFileName);
 	}
 
 	GuiOsx_Resume();
@@ -505,7 +503,7 @@ static void CustomApplicationMain (int argc, char **argv)
 - (IBAction)endCaptureSound:(id)sender
 {
 	GuiOsx_Pause();
-	Sound_EndRecording();
+//	Sound_EndRecording();
 	GuiOsx_Resume();
 }
 

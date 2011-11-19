@@ -9,6 +9,16 @@ set(SOURCES
 	statusbar.c str.c zip.c unzip.c utils.c 
 	video.c )
 
+# When building for OSX, define specific sources for gui and ressources
+if(ENABLE_OSX_BUNDLE)
+	set(GUIOSX_SOURCES
+	    gui-osx/AlertHooks.m gui-osx/PrefsController.m gui-osx/Shared.m
+	    gui-osx/CreateFloppyController.m gui-osx/SDLMain.m)
+	set_source_files_properties(${GUIOSX_SOURCES} PROPERTIES LANGUAGE C)
+	set(GUIOSX_RSRCS
+	    gui-osx/Previous.icns gui-osx/English.lproj gui-osx/French.lproj)
+endif(ENABLE_OSX_BUNDLE)
+
 
 # When building for Windows, define specific sources for gui and ressources
 if(WIN32)
@@ -32,14 +42,33 @@ if(X11_FOUND)
 endif(X11_FOUND)
 
 
-link_directories(debug gui-sdl uae-cpu) 
+link_directories(${CMAKE_CURRENT_BINARY_DIR}/debug ${CMAKE_CURRENT_BINARY_DIR}/gui-sdl ${CMAKE_CURRENT_BINARY_DIR}/uae-cpu) 
 
 add_subdirectory(debug)
 add_subdirectory(gui-sdl)
 add_subdirectory(uae-cpu)
 
+# When building for OSX, add specific sources
+if(ENABLE_OSX_BUNDLE)
+	add_executable(previous MACOSX_BUNDLE ${GUIOSX_RSRCS} ${SOURCES} ${GUIOSX_SOURCES})
+	set_target_properties(previous PROPERTIES MACOSX_BUNDLE_INFO_PLIST
+			      ${CMAKE_CURRENT_SOURCE_DIR}/gui-osx/Info-Previous.plist)
+	set(MACOSX_BUNDLE_ICON_FILE Previous.icns)
+	# Create Previous.app bundle
+	add_custom_target(osx_bundle_dirs
+			COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/Previous.app/Contents/Resources
+			COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/Previous.app/Contents/MacOS
+			COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/gui-osx/${MACOSX_BUNDLE_ICON_FILE}
+				   ${CMAKE_CURRENT_BINARY_DIR}/Previous.app/Contents/Resources/${MACOSX_BUNDLE_ICON_FILE}
+			# Copy Localized .nib to Bundle
+			COMMAND cp -R ${CMAKE_CURRENT_SOURCE_DIR}/gui-osx/*.lproj ${CMAKE_CURRENT_BINARY_DIR}/Previous.app/Contents/Resources/
+	)	
+	add_dependencies(previous osx_bundle_dirs)
+	set_source_files_properties(${GUIOSX_RSRCS}
+			PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
 # When building for Windows, add specific sources + method to compile .rc files
-if(WIN32)
+elseif(WIN32)
 	# Set a default rc compiler if it was not defined yet
 	if(NOT CMAKE_RC_COMPILER)
 		set(CMAKE_RC_COMPILER windres)
@@ -52,7 +81,7 @@ if(WIN32)
 # Other targets, use default sources
 else()
 	add_executable(previous ${SOURCES})
-endif()
+endif(ENABLE_OSX_BUNDLE)
 
 target_link_libraries(previous Debug GuiSdl UaeCpu ${SDL_LIBRARY})
 
@@ -89,6 +118,13 @@ if(WIN32)
 	target_link_libraries(hatari ws2_32)
 endif(WIN32)
 
-
+if(ENABLE_OSX_BUNDLE)
+	install(TARGETS previous BUNDLE DESTINATION /Applications)
+else()
 	install(TARGETS previous RUNTIME DESTINATION ${BINDIR})
 	install(FILES previous-icon.bmp DESTINATION ${DATADIR})
+	file(GLOB TOS_IMG_FILE tos.img)
+	if(TOS_IMG_FILE)
+		install(FILES tos.img DESTINATION ${DATADIR})
+	endif(TOS_IMG_FILE)
+endif(ENABLE_OSX_BUNDLE)

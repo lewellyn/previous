@@ -22,7 +22,6 @@
 #include "change.h"
 #include "dialog.h"
 #include "file.h"
-#include "floppy.h"
 #include "screen.h"
 #include "sdlgui.h"
 
@@ -280,7 +279,7 @@ static const int nSoundFreqs[] =
 		strncpy(szPath, constSzPath, cbPath);
 
 		// Insert the floppy image at this path
-		Floppy_SetDiskFileName(drive, szPath, NULL);
+//		Floppy_SetDiskFileName(drive, szPath, NULL);
 	}
 }
 
@@ -366,7 +365,7 @@ static const int nSoundFreqs[] =
 */
 - (IBAction)ejectFloppyA:(id)sender
 {
-	Floppy_SetDiskFileNameNone(0);
+//	Floppy_SetDiskFileNameNone(0);
 	
 	// Refresh the control
 	[floppyImageA setStringValue:@""];
@@ -374,7 +373,7 @@ static const int nSoundFreqs[] =
 
 - (IBAction)ejectFloppyB:(id)sender
 {
-	Floppy_SetDiskFileNameNone(1);
+//	Floppy_SetDiskFileNameNone(1);
 
 	// Refresh the control
 	[floppyImageB setStringValue:@""];
