@@ -19,11 +19,9 @@ const char Memory_fileid[] = "Hatari memory.c : " __DATE__ " " __TIME__;
 #include "memory.h"
 
 #include "main.h"
-#include "tos.h"
-#include "ide.h"
 #include "ioMem.h"
 #include "reset.h"
-#include "stMemory.h"
+#include "nextMemory.h"
 #include "m68000.h"
 
 #include "newcpu.h"
@@ -33,23 +31,66 @@ const char Memory_fileid[] = "Hatari memory.c : " __DATE__ " " __TIME__;
 #define illegal_mem 1
 
 
-static uae_u32 STmem_size, TTmem_size = 0;
-static uae_u32 TTmem_mask;
+/*
+ approximative next memory map (source netbsd/next68k file cpu.h)
+ 
+ EPROM 128k (>cube 040)
+ 0x00000000-0x0001FFFF
+ mirrored at
+ 0x01000000-0x0101FFFF
+ 
+ RAM (16x4=64Mb max)
+ 0x04000000-0x07FFFFFF (0x047FFFFF for 8Mb)
+ 
+ device
+ 0x02000000-0x0201BFFF
+ mirrored at
+ 0x02100000-0x0211BFFF
+ 
+ SCREEN
+ 0x0B000000-0x0B03A7FF
+ 
+ */
+#define NEXT_EPROM_START 	0x00000000
+#define NEXT_EPROM2_START 	0x01000000
+#define ROMmem_mask			0x0001FFFF
+#define	ROMmem_size			0x00020000
+#define NEXT_EPROM_SIZE		0x00020000
 
-#define STmem_start  0x00000000
-#define ROMmem_start 0x00E00000
-#define IdeMem_start 0x00F00000
-#define IOmem_start  0x00FF0000
-#define TTmem_start  0x01000000
+// ram is flat?
+#define NEXT_RAM_START   	0x04000000
+#define NEXT_RAM_SPACE		0x40000000
+// #define NEXT_RAM_SIZE		0x007FE000
+#define NEXT_RAM_SIZE		0x07FFE000
 
-#define IdeMem_size  65536
-#define IOmem_size  65536
-#define ROMmem_size (0x00FF0000 - 0x00E00000)  /* So we cover both possible ROM regions + cartridge */
+uae_u32	NEXTmem_size; // unused
+#define NEXTmem_mask		0x00FFFFFF
+// for a mono screen
+#define NEXT_SCREEN			0x0B000000
+#define NEXT_SCREEN_SIZE	0x00040000
+#define NEXTvideo_size NEXT_SCREEN_SIZE
+#define NEXTvideo_mask		0x0003FFFF
+uae_u8  NEXTVideo[256*1024];
 
-#define STmem_mask  0x00ffffff
-#define ROMmem_mask 0x00ffffff
-#define IdeMem_mask  (IdeMem_size - 1)
-#define IOmem_mask  (IOmem_size - 1)
+
+
+#define IOmem_mask 			0x0001FFFF
+#define	IOmem_size			0x0001C000
+#define NEXT_IO_START   	0x02000000
+#define NEXT_IO2_START   	0x02100000
+#define NEXT_IO_SIZE		0x00020000
+
+#define NEXT_BMAP_START		0x020C0000
+#define NEXT_BMAP_SIZE		0x10000
+#define	NEXTbmap_size		NEXT_BMAP_SIZE
+#define	NEXTbmap_mask		0x0000FFFF
+uae_u8  NEXTbmap[NEXT_BMAP_SIZE];
+
+#define NEXT_X06_START		0x06000000
+#define NEXT_X06_SIZE		0x10000
+#define	NEXTx06_size		NEXT_X06_SIZE
+#define	NEXTx06_mask		0x0000FFFF
+uae_u8  NEXTx06[NEXT_X06_SIZE];
 
 
 #ifdef SAVE_MEMORY_BANKS
@@ -88,8 +129,8 @@ __inline__ void byteput (uaecptr addr, uae_u32 b)
 
 /* Some prototypes: */
 extern void SDL_Quit(void);
-static int STmem_check (uaecptr addr, uae_u32 size) REGPARAM;
-static uae_u8 *STmem_xlate (uaecptr addr) REGPARAM;
+static int NEXTmem_check (uaecptr addr, uae_u32 size) REGPARAM;
+static uae_u8 *NEXTmem_xlate (uaecptr addr) REGPARAM;
 
 uae_u8 ce_banktype[65536];
 uae_u8 ce_cachable[65536];
@@ -152,7 +193,7 @@ static uae_u8 *dummy_xlate(uaecptr addr)
     write_log("Your Atari program just did something terribly stupid:"
               " dummy_xlate($%x)\n", addr);
     /*Reset_Warm();*/
-    return STmem_xlate(addr);  /* So we don't crash. */
+ //       return NEXTmem_xlate(addr);  /* So we don't crash. */
 }
 
 
@@ -219,169 +260,284 @@ static int BusErrMem_check(uaecptr addr, uae_u32 size)
 
 static uae_u8 *BusErrMem_xlate (uaecptr addr)
 {
-    write_log("Your Atari program just did something terribly stupid:"
+    write_log("Your NeXT program just did something terribly stupid:"
               " BusErrMem_xlate($%x)\n", addr);
 
     /*M68000_BusError(addr);*/
-    return STmem_xlate(addr);  /* So we don't crash. */
+    return NEXTmem_xlate(addr);  /* So we don't crash. */
 }
 
 
-/* **** ST RAM memory **** */
+/* **** NEXT RAM memory **** */
 
-/*static uae_u8 *STmemory;*/
-#define STmemory STRam
-
-static uae_u32 STmem_lget(uaecptr addr)
+static uae_u32 NEXTmem_lget(uaecptr addr)
 {
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-    return do_get_mem_long(STmemory + addr);
+    addr &= NEXTmem_mask;
+    return do_get_mem_long(NEXTRam + addr);
 }
 
-static uae_u32 STmem_wget(uaecptr addr)
+static uae_u32 NEXTmem_wget(uaecptr addr)
 {
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-    return do_get_mem_word(STmemory + addr);
+    addr &= NEXTmem_mask;
+    return do_get_mem_word(NEXTRam + addr);
 }
 
-static uae_u32 STmem_bget(uaecptr addr)
+static uae_u32 NEXTmem_bget(uaecptr addr)
 {
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-    return STmemory[addr];
+    addr &= NEXTmem_mask;
+    return NEXTRam[addr];
 }
 
-static void STmem_lput(uaecptr addr, uae_u32 l)
+static void NEXTmem_lput(uaecptr addr, uae_u32 l)
 {
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-    do_put_mem_long(STmemory + addr, l);
+    addr &= NEXTmem_mask;
+    do_put_mem_long(NEXTRam + addr, l);
 }
 
-static void STmem_wput(uaecptr addr, uae_u32 w)
+static void NEXTmem_wput(uaecptr addr, uae_u32 w)
 {
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-    do_put_mem_word(STmemory + addr, w);
+    addr &= NEXTmem_mask;
+    do_put_mem_word(NEXTRam + addr, w);
 }
 
-static void STmem_bput(uaecptr addr, uae_u32 b)
+static void NEXTmem_bput(uaecptr addr, uae_u32 b)
 {
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-    STmemory[addr] = b;
+    addr &= NEXTmem_mask;
+    NEXTRam[addr] = b;
 }
 
-static int STmem_check(uaecptr addr, uae_u32 size)
+static int NEXTmem_check(uaecptr addr, uae_u32 size)
 {
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-    return (addr + size) <= STmem_size;
+    addr &= NEXTmem_mask;
+    return (addr + size) <= 0x003FFFFF;
 }
 
-static uae_u8 *STmem_xlate(uaecptr addr)
+static uae_u8 *NEXTmem_xlate(uaecptr addr)
 {
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-    return STmemory + addr;
+    addr &= NEXTmem_mask;
+    return NEXTRam + addr;
+}
+
+/* bank2 */
+
+static uae_u32 NEXTmem2_lget(uaecptr addr)
+{
+    addr &= NEXTmem_mask;
+    return do_get_mem_long(NEXTRam + 0x00400000 + addr);
+}
+
+static uae_u32 NEXTmem2_wget(uaecptr addr)
+{
+    addr &= NEXTmem_mask;
+    return do_get_mem_word(NEXTRam + 0x00400000 + addr);
+}
+
+static uae_u32 NEXTmem2_bget(uaecptr addr)
+{
+    addr &= NEXTmem_mask;
+    return NEXTRam[addr+0x00400000];
+}
+
+static void NEXTmem2_lput(uaecptr addr, uae_u32 l)
+{
+    addr &= NEXTmem_mask;
+    do_put_mem_long(NEXTRam + addr + 0x00400000, l);
+}
+
+static void NEXTmem2_wput(uaecptr addr, uae_u32 w)
+{
+    addr &= NEXTmem_mask;
+    do_put_mem_word(NEXTRam + addr + 0x00400000, w);
+}
+
+static void NEXTmem2_bput(uaecptr addr, uae_u32 b)
+{
+    addr &= NEXTmem_mask;
+    NEXTRam[addr+0x00400000] = b;
+}
+
+static int NEXTmem2_check(uaecptr addr, uae_u32 size)
+{
+    addr &= NEXTmem_mask;
+    return (addr + size) <= 0x003FFFFF;
+}
+
+static uae_u8 *NEXTmem2_xlate(uaecptr addr)
+{
+    addr &= NEXTmem_mask;
+    return NEXTRam + addr + 0x00400000;
 }
 
 
-/*
- * **** ST RAM system memory ****
- * We need a separate mem bank for this region since the first 0x800 bytes on
- * the ST can only be accessed in supervisor mode. Note that the very first
- * 8 bytes of the ST memory are also a mirror of the TOS ROM, so they are write
- * protected!
- */
-static uae_u32 SysMem_lget(uaecptr addr)
+/* **** NEXT VRAM memory **** */
+
+static uae_u32 NEXTvideo_lget(uaecptr addr)
 {
-    if(addr < 0x800 && !regs.s)
-    {
-      M68000_BusError(addr, 1);
-      return 0;
-    }
-
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-
-    return do_get_mem_long(STmemory + addr);
+    addr &= NEXTvideo_mask;
+    return do_get_mem_long(NEXTVideo + addr);
 }
 
-static uae_u32 SysMem_wget(uaecptr addr)
+static uae_u32 NEXTvideo_wget(uaecptr addr)
 {
-    if(addr < 0x800 && !regs.s)
-    {
-      M68000_BusError(addr, 1);
-      return 0;
-    }
-
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-
-    return do_get_mem_word(STmemory + addr);
+    addr &= NEXTvideo_mask;
+    return do_get_mem_word(NEXTVideo + addr);
 }
 
-static uae_u32 SysMem_bget(uaecptr addr)
+static uae_u32 NEXTvideo_bget(uaecptr addr)
 {
-    if(addr < 0x800 && !regs.s)
-    {
-      M68000_BusError(addr, 1);
-      return 0;
-    }
-
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-    return STmemory[addr];
+    addr &= NEXTvideo_mask;
+    return NEXTVideo[addr];
 }
 
-static void SysMem_lput(uaecptr addr, uae_u32 l)
+static void NEXTvideo_lput(uaecptr addr, uae_u32 l)
 {
-    if(addr < 0x8 || (addr < 0x800 && !regs.s))
-    {
-      M68000_BusError(addr, 0);
-      return;
-    }
-
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-
-    do_put_mem_long(STmemory + addr, l);
+    addr &= NEXTvideo_mask;
+    do_put_mem_long(NEXTVideo + addr, l);
 }
 
-static void SysMem_wput(uaecptr addr, uae_u32 w)
+static void NEXTvideo_wput(uaecptr addr, uae_u32 w)
 {
-    if(addr < 0x8 || (addr < 0x800 && !regs.s))
-    {
-      M68000_BusError(addr, 0);
-      return;
-    }
-
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-
-    do_put_mem_word(STmemory + addr, w);
+    addr &= NEXTvideo_mask;
+    do_put_mem_word(NEXTVideo + addr, w);
 }
 
-static void SysMem_bput(uaecptr addr, uae_u32 b)
+static void NEXTvideo_bput(uaecptr addr, uae_u32 b)
 {
-    if(addr < 0x8 || (addr < 0x800 && !regs.s))
-    {
-      M68000_BusError(addr, 0);
-      return;
-    }
+    addr &= NEXTvideo_mask;
+    NEXTVideo[addr] = b;
+}
 
-    addr -= STmem_start & STmem_mask;
-    addr &= STmem_mask;
-    STmemory[addr] = b;
+static int NEXTvideo_check(uaecptr addr, uae_u32 size)
+{
+    addr &= NEXTvideo_mask;
+    return (addr + size) <= NEXTvideo_size;
+}
+
+static uae_u8 *NEXTvideo_xlate(uaecptr addr)
+{
+    addr &= NEXTvideo_mask;
+    return (uae_u8*)NEXTVideo + addr;
+}
+
+/* **** NEXT BMAP memory **** */
+
+static uae_u32 NEXTbmap_lget(uaecptr addr)
+{
+	write_log ("bmap lget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
+    addr &= NEXTbmap_mask;
+    return do_get_mem_long(NEXTbmap + addr);
+}
+
+static uae_u32 NEXTbmap_wget(uaecptr addr)
+{
+	write_log ("bmap wget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
+    addr &= NEXTbmap_mask;
+    return do_get_mem_word(NEXTbmap + addr);
+}
+
+static uae_u32 NEXTbmap_bget(uaecptr addr)
+{
+	write_log ("bmap bget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
+    addr &= NEXTbmap_mask;
+    return NEXTbmap[addr];
+}
+
+static void NEXTbmap_lput(uaecptr addr, uae_u32 l)
+{
+	write_log ("bmap lput at %08lx val=%x PC=%08x\n", (long)addr,l,m68k_getpc());
+    addr &= NEXTbmap_mask;
+    do_put_mem_long(NEXTbmap + addr, l);
+}
+
+static void NEXTbmap_wput(uaecptr addr, uae_u32 w)
+{
+	write_log ("bmap wput at %08lx val=%x PC=%08x\n", (long)addr,w,m68k_getpc());
+    addr &= NEXTbmap_mask;
+    do_put_mem_word(NEXTbmap + addr, w);
+}
+
+static void NEXTbmap_bput(uaecptr addr, uae_u32 b)
+{
+	write_log ("bmap bput at %08lx val=%x PC=%08x\n", (long)addr,b,m68k_getpc());
+    addr &= NEXTbmap_mask;
+    NEXTbmap[addr] = b;
+}
+
+static int NEXTbmap_check(uaecptr addr, uae_u32 size)
+{
+    addr &= NEXTbmap_mask;
+    return (addr + size) <= NEXTbmap_size;
+}
+
+static uae_u8 *NEXTbmap_xlate(uaecptr addr)
+{
+    addr &= NEXTbmap_mask;
+    return (uae_u8*)NEXTbmap + addr;
+}
+
+/* **** NEXT x06 memory **** */
+
+static uae_u32 NEXTx06_lget(uaecptr addr)
+{
+	write_log ("x06 lget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
+    addr &= NEXTx06_mask;
+    //    return do_get_mem_long(NEXTx06 + addr);
+	return 0xFFFFFFFF;
+}
+
+static uae_u32 NEXTx06_wget(uaecptr addr)
+{
+	write_log ("x06 wget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
+    addr &= NEXTx06_mask;
+    //    return do_get_mem_word(NEXTx06 + addr);
+	return 0xFFFF;
+}
+
+static uae_u32 NEXTx06_bget(uaecptr addr)
+{
+	write_log ("x06 bget at %08lx PC=%08x\n", (long)addr,m68k_getpc());
+    addr &= NEXTx06_mask;
+    //    return NEXTx06[addr];
+	return 0xFF;
+}
+
+static void NEXTx06_lput(uaecptr addr, uae_u32 l)
+{
+	write_log ("x06 lput at %08lx val=%x PC=%08x\n", (long)addr,l,m68k_getpc());
+    addr &= NEXTx06_mask;
+    do_put_mem_long(NEXTx06 + addr, l);
+}
+
+static void NEXTx06_wput(uaecptr addr, uae_u32 w)
+{
+	write_log ("x06 wput at %08lx val=%x PC=%08x\n", (long)addr,w,m68k_getpc());
+    addr &= NEXTx06_mask;
+    do_put_mem_word(NEXTx06 + addr, w);
+}
+
+static void NEXTx06_bput(uaecptr addr, uae_u32 b)
+{
+	write_log ("x06 bput at %08lx val=%x PC=%08x\n", (long)addr,b,m68k_getpc());
+    addr &= NEXTx06_mask;
+    NEXTx06[addr] = b;
+}
+
+static int NEXTx06_check(uaecptr addr, uae_u32 size)
+{
+    addr &= NEXTx06_mask;
+    return (addr + size) <= NEXTx06_size;
+}
+
+static uae_u8 *NEXTx06_xlate(uaecptr addr)
+{
+    addr &= NEXTx06_mask;
+    return (uae_u8*)NEXTx06 + addr;
 }
 
 
 /*
  * **** Void memory ****
- * Between the ST-RAM end and the 4 MB barrier, there is a void memory space:
+ * lots of free space in next's full 32bits memory map
  * Reading always returns the same value and writing does nothing at all.
  */
 
@@ -415,78 +571,17 @@ static void VoidMem_bput (uaecptr addr, uae_u32 b)
 static int VoidMem_check(uaecptr addr, uae_u32 size)
 {
     if (illegal_mem)
-	write_log ("Void memory check at %08lx\n", (long)addr);
-
+        write_log ("Void memory check at %08lx\n", (long)addr);
+    
     return 0;
 }
 
 static uae_u8 *VoidMem_xlate (uaecptr addr)
 {
-    write_log("Your Atari program just did something terribly stupid:"
+    write_log("Your Next program just did something terribly stupid:"
               " VoidMem_xlate($%x)\n", addr);
-
-    return STmem_xlate(addr);  /* So we don't crash. */
-}
-
-
-/* **** TT fast memory (not yet supported) **** */
-
-static uae_u8 *TTmemory;
-
-static uae_u32 TTmem_lget(uaecptr addr)
-{
-    addr -= TTmem_start & TTmem_mask;
-    addr &= TTmem_mask;
-    return do_get_mem_long(TTmemory + addr);
-}
-
-static uae_u32 TTmem_wget(uaecptr addr)
-{
-    addr -= TTmem_start & TTmem_mask;
-    addr &= TTmem_mask;
-    return do_get_mem_word(TTmemory + addr);
-}
-
-static uae_u32 TTmem_bget(uaecptr addr)
-{
-    addr -= TTmem_start & TTmem_mask;
-    addr &= TTmem_mask;
-    return TTmemory[addr];
-}
-
-static void TTmem_lput(uaecptr addr, uae_u32 l)
-{
-    addr -= TTmem_start & TTmem_mask;
-    addr &= TTmem_mask;
-    do_put_mem_long(TTmemory + addr, l);
-}
-
-static void TTmem_wput(uaecptr addr, uae_u32 w)
-{
-    addr -= TTmem_start & TTmem_mask;
-    addr &= TTmem_mask;
-    do_put_mem_word(TTmemory + addr, w);
-}
-
-static void TTmem_bput(uaecptr addr, uae_u32 b)
-{
-    addr -= TTmem_start & TTmem_mask;
-    addr &= TTmem_mask;
-    TTmemory[addr] = b;
-}
-
-static int TTmem_check(uaecptr addr, uae_u32 size)
-{
-    addr -= TTmem_start & TTmem_mask;
-    addr &= TTmem_mask;
-    return (addr + size) <= TTmem_size;
-}
-
-static uae_u8 *TTmem_xlate(uaecptr addr)
-{
-    addr -= TTmem_start & TTmem_mask;
-    addr &= TTmem_mask;
-    return TTmemory + addr;
+    
+    return NEXTmem_xlate(addr);  /* So we don't crash. */
 }
 
 
@@ -496,21 +591,18 @@ uae_u8 *ROMmemory;
 
 static uae_u32 ROMmem_lget(uaecptr addr)
 {
-    addr -= ROMmem_start & ROMmem_mask;
     addr &= ROMmem_mask;
     return do_get_mem_long(ROMmemory + addr);
 }
 
 static uae_u32 ROMmem_wget(uaecptr addr)
 {
-    addr -= ROMmem_start & ROMmem_mask;
     addr &= ROMmem_mask;
     return do_get_mem_word(ROMmemory + addr);
 }
 
 static uae_u32 ROMmem_bget(uaecptr addr)
 {
-    addr -= ROMmem_start & ROMmem_mask;
     addr &= ROMmem_mask;
     return ROMmemory[addr];
 }
@@ -518,61 +610,38 @@ static uae_u32 ROMmem_bget(uaecptr addr)
 static void ROMmem_lput(uaecptr addr, uae_u32 b)
 {
     if (illegal_mem)
-	write_log ("Illegal ROMmem lput at %08lx\n", (long)addr);
-
+        write_log ("Illegal ROMmem lput at %08lx\n", (long)addr);
+    
     M68000_BusError(addr, 0);
 }
 
 static void ROMmem_wput(uaecptr addr, uae_u32 b)
 {
     if (illegal_mem)
-	write_log ("Illegal ROMmem wput at %08lx\n", (long)addr);
-
+        write_log ("Illegal ROMmem wput at %08lx\n", (long)addr);
+    
     M68000_BusError(addr, 0);
 }
 
 static void ROMmem_bput(uaecptr addr, uae_u32 b)
 {
     if (illegal_mem)
-	write_log ("Illegal ROMmem bput at %08lx\n", (long)addr);
-
+        write_log ("Illegal ROMmem bput at %08lx\n", (long)addr);
+    
     M68000_BusError(addr, 0);
 }
 
 static int ROMmem_check(uaecptr addr, uae_u32 size)
 {
-    addr -= ROMmem_start & ROMmem_mask;
     addr &= ROMmem_mask;
     return (addr + size) <= ROMmem_size;
 }
 
 static uae_u8 *ROMmem_xlate(uaecptr addr)
 {
-    addr -= ROMmem_start & ROMmem_mask;
     addr &= ROMmem_mask;
     return ROMmemory + addr;
 }
-
-
-/* IDE controller IO memory */
-/* see also ide.c */
-
-static uae_u8 *IdeMemory;
-
-static int IdeMem_check(uaecptr addr, uae_u32 size)
-{
-    addr -= IdeMem_start;
-    addr &= IdeMem_mask;
-    return (addr + size) <= IdeMem_size;
-}
-
-static uae_u8 *IdeMem_xlate(uaecptr addr)
-{
-    addr -= IdeMem_start;
-    addr &= IdeMem_mask;
-    return IdeMemory + addr;
-}
-
 
 /* Hardware IO memory */
 /* see also ioMem.c */
@@ -581,14 +650,12 @@ uae_u8 *IOmemory;
 
 static int IOmem_check(uaecptr addr, uae_u32 size)
 {
-    addr -= IOmem_start;
     addr &= IOmem_mask;
     return (addr + size) <= IOmem_size;
 }
 
 static uae_u8 *IOmem_xlate(uaecptr addr)
 {
-    addr -= IOmem_start;
     addr &= IOmem_mask;
     return IOmemory + addr;
 }
@@ -614,20 +681,21 @@ static addrbank BusErrMem_bank =
     BusErrMem_lget, BusErrMem_wget, ABFLAG_NONE
 };
 
-static addrbank STmem_bank =
+static addrbank NEXTmem_bank =
 {
-    STmem_lget, STmem_wget, STmem_bget,
-    STmem_lput, STmem_wput, STmem_bput,
-    STmem_xlate, STmem_check, NULL, "ST memory",
-    STmem_lget, STmem_wget, ABFLAG_RAM
+    NEXTmem_lget, NEXTmem_wget, NEXTmem_bget,
+    NEXTmem_lput, NEXTmem_wput, NEXTmem_bput,
+    NEXTmem_xlate, NEXTmem_check, NULL, "NEXT memory",
+    NEXTmem_lget, NEXTmem_wget, ABFLAG_RAM
+
 };
 
-static addrbank SysMem_bank =
+static addrbank NEXTmem_bank2 =
 {
-    SysMem_lget, SysMem_wget, SysMem_bget,
-    SysMem_lput, SysMem_wput, SysMem_bput,
-    STmem_xlate, STmem_check, NULL, "Sys memory",
-    SysMem_lget, SysMem_wget, ABFLAG_ROM
+    NEXTmem2_lget, NEXTmem2_wget, NEXTmem2_bget,
+    NEXTmem2_lput, NEXTmem2_wput, NEXTmem2_bput,
+    NEXTmem2_xlate, NEXTmem2_check, NULL, "NEXT memory",
+    NEXTmem2_lget, NEXTmem2_wget, ABFLAG_RAM
 };
 
 static addrbank VoidMem_bank =
@@ -638,12 +706,28 @@ static addrbank VoidMem_bank =
     VoidMem_lget, VoidMem_wget, ABFLAG_NONE
 };
 
-static addrbank TTmem_bank =
+static addrbank Video_bank =
 {
-    TTmem_lget, TTmem_wget, TTmem_bget,
-    TTmem_lput, TTmem_wput, TTmem_bput,
-    TTmem_xlate, TTmem_check, NULL, "TT memory",
-    TTmem_lget, TTmem_wget, ABFLAG_RAM
+    NEXTvideo_lget, NEXTvideo_wget, NEXTvideo_bget,
+    NEXTvideo_lput, NEXTvideo_wput, NEXTvideo_bput,
+    NEXTvideo_xlate, NEXTvideo_check, NULL, "Video memory",
+    NEXTvideo_lget, NEXTvideo_wget, ABFLAG_RAM
+};
+
+static addrbank bmap_bank =
+{
+    NEXTbmap_lget, NEXTbmap_wget, NEXTbmap_bget,
+    NEXTbmap_lput, NEXTbmap_wput, NEXTbmap_bput,
+    NEXTbmap_xlate, NEXTbmap_check, NULL, "bmap memory",
+    NEXTbmap_lget, NEXTbmap_wget, ABFLAG_RAM
+};
+
+static addrbank x06_bank =
+{
+    NEXTx06_lget, NEXTx06_wget, NEXTx06_bget,
+    NEXTx06_lput, NEXTx06_wput, NEXTx06_bput,
+    NEXTx06_xlate, NEXTx06_check, NULL, "x06 memory",
+    NEXTx06_lget, NEXTx06_wget, ABFLAG_RAM
 };
 
 static addrbank ROMmem_bank =
@@ -652,14 +736,6 @@ static addrbank ROMmem_bank =
     ROMmem_lput, ROMmem_wput, ROMmem_bput,
     ROMmem_xlate, ROMmem_check, NULL, "ROM memory",
     ROMmem_lget, ROMmem_wget, ABFLAG_ROM
-};
-
-static addrbank IdeMem_bank =
-{
-    Ide_Mem_lget, Ide_Mem_wget, Ide_Mem_bget,
-    Ide_Mem_lput, Ide_Mem_wput, Ide_Mem_bput,
-    IdeMem_xlate, IdeMem_check, NULL, "IDE memory",
-    Ide_Mem_lget, Ide_Mem_wget, ABFLAG_RAM
 };
 
 static addrbank IOmem_bank =
@@ -676,105 +752,69 @@ static void init_mem_banks (void)
 {
     int i;
     for (i = 0; i < 65536; i++)
-	put_mem_bank (i<<16, &dummy_bank);
+        put_mem_bank (i<<16, &dummy_bank);
 }
 
 
 /*
  * Initialize the memory banks
  */
-void memory_init(uae_u32 nNewSTMemSize, uae_u32 nNewTTMemSize, uae_u32 nNewRomMemStart)
+void memory_init(uae_u32 nNewNEXTMemSize)
 {
-    STmem_size = (nNewSTMemSize + 65535) & 0xFFFF0000;
-    TTmem_size = (nNewTTMemSize + 65535) & 0xFFFF0000;
-
-    /*write_log("memory_init: STmem_size=$%x, TTmem_size=$%x, ROM-Start=$%x,\n",
-              STmem_size, TTmem_size, nNewRomMemStart);*/
-
-#if ENABLE_SMALL_MEM
-
-    /* Allocate memory for ROM areas and IO memory space (0xE00000 - 0xFFFFFF) */
-    ROMmemory = malloc(2*1024*1024);
-    if (!ROMmemory) {
-	fprintf(stderr, "Out of memory (ROM/IO mem)!\n");
-	SDL_Quit();
-	exit(1);
-    }
-    IdeMemory = ROMmemory + 0x100000;
-    IOmemory  = ROMmemory + 0x1f0000;
-
-    /* Allocate memory for normal ST RAM */
-    STmemory = malloc(STmem_size);
-    while (!STmemory && STmem_size > 512*1024) {
-	STmem_size >>= 1;
-	STmemory = (uae_u8 *)malloc (STmem_size);
-	if (STmemory)
-	    write_log ("Reducing STmem size to %dkb\n", STmem_size >> 10);
-    }
-    if (!STmemory) {
-	write_log ("virtual memory exhausted (STmemory)!\n");
-	SDL_Quit();
-	exit(1);
-    }
-
-#else
-
-    /* STmemory points to the 16 MiB STRam array, we just have to set up
-     * the remaining pointers here: */
-    ROMmemory = STRam + ROMmem_start;
-    IdeMemory = STRam + IdeMem_start;
-    IOmemory = STRam + IOmem_start;
-
-#endif
-
-    init_mem_banks();
-
-    /* Map the ST system RAM: */
-    map_banks(&SysMem_bank, 0x00, 1);
-    /* Between STRamEnd and 4MB barrier, there is void space: */
-    map_banks(&VoidMem_bank, 0x08, 0x38);
-    /* Space between 4MB barrier and TOS ROM causes a bus error: */
-    map_banks(&BusErrMem_bank, 0x400000 >> 16, 0xA0);
-    /* Now map main ST RAM, overwriting the void and bus error regions if necessary: */
-    map_banks(&STmem_bank, 0x01, (STmem_size >> 16) - 1);
-
-    /* TT memory isn't really supported yet */
-    if (TTmem_size > 0)
-	TTmemory = (uae_u8 *)malloc (TTmem_size);
-    if (TTmemory != 0)
-	map_banks (&TTmem_bank, TTmem_start >> 16, TTmem_size >> 16);
-    else
-	TTmem_size = 0;
-    TTmem_mask = TTmem_size - 1;
-
-    /* ROM memory: */
-    /* Depending on which ROM version we are using, the other ROM region is illegal! */
-    if(nNewRomMemStart == 0xFC0000)
-    {
-        map_banks(&ROMmem_bank, 0xFC0000 >> 16, 0x3);
-        map_banks(&BusErrMem_bank, 0xE00000 >> 16, 0x10);
-    }
-    else if(nNewRomMemStart == 0xE00000)
-    {
-        map_banks(&ROMmem_bank, 0xE00000 >> 16, 0x10);
-        map_banks(&BusErrMem_bank, 0xFC0000 >> 16, 0x3);
-    }
-    else
-    {
-        write_log("Illegal ROM memory start!\n");
-    }
-
-    /* Cartridge memory: */
-    map_banks(&ROMmem_bank, 0xFA0000 >> 16, 0x2);
-
-    /* IO memory: */
-    map_banks(&IOmem_bank, IOmem_start>>16, 0x1);
-
-    /* IDE controller memory region: */
-    map_banks(&IdeMem_bank, IdeMem_start >> 16, 0x1);  /* IDE controller on the Falcon */
-
-    /* Illegal memory regions cause a bus error on the ST: */
-    map_banks(&BusErrMem_bank, 0xF10000 >> 16, 0x9);
+    NEXTmem_size = (nNewNEXTMemSize + 65535) & 0xFFFF0000;
+    
+    write_log("memory_init: NEXTmem_size=$%x\n",
+              nNewNEXTMemSize);
+    
+	/* fill every 65536 bank with dummy */
+    init_mem_banks(); 
+    
+    // map_banks(&BusErrMem_bank,NEXT_RAM_START>>16,NEXT_RAM_SPACE>>16);
+    
+    map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
+    
+    // map_banks(&NEXTmem_bank2, NEXT_RAM_START2>>16, NEXT_RAM_SIZE2 >> 16);
+    
+    
+    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
+    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
+    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
+    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
+    
+    map_banks(&ROMmem_bank, NEXT_EPROM_START >> 16, NEXT_EPROM_SIZE>>16);
+    map_banks(&ROMmem_bank, NEXT_EPROM2_START >> 16, NEXT_EPROM_SIZE>>16);
+    
+    
+    map_banks(&IOmem_bank, NEXT_IO_START >> 16, NEXT_IO_SIZE>>16);
+    map_banks(&IOmem_bank, NEXT_IO2_START >> 16, NEXT_IO_SIZE>>16);
+    //	map_banks(&VoidMem_bank, NEXT_IO_START >> 16, NEXT_IO_SIZE>>16);
+    //    map_banks(&VoidMem_bank, NEXT_IO2_START >> 16, NEXT_IO_SIZE>>16);
+    
+    map_banks(&bmap_bank, NEXT_BMAP_START >> 16, NEXT_BMAP_SIZE>>16);
+    //    map_banks(&x06_bank, NEXT_X06_START >> 16, NEXT_X06_SIZE>>16);
+    //    map_banks(&x06_bank, 0x07000000 >> 16, NEXT_X06_SIZE>>16);
+    
+	ROMmemory=NEXTRom;
+	IOmemory=NEXTIo;
+	{
+		FILE* fin;
+		int ret;
+		fin=fopen("./Rev_2.5_v66.BIN","rb");
+        //		fin=fopen("./Rev_3.3_v74.BIN","rb");
+        //		fin=fopen("./Rev_1.2.BIN","rb");
+        //		fin=fopen("./Rev_1.0_v41.BIN","rb");
+		ret=fread(ROMmemory,1,0x20000,fin);
+        
+		write_log("Read ROM %d\n",ret);
+		fclose(fin);
+	}
+	
+	{
+		int i;
+		for (i=0;i<sizeof(NEXTVideo);i++) NEXTVideo[i]=0xAA;
+		for (i=0;i<sizeof(NEXTRam);i++) NEXTRam[i]=0xAA;
+	}
+    
 }
 
 
@@ -783,25 +823,6 @@ void memory_init(uae_u32 nNewSTMemSize, uae_u32 nNewTTMemSize, uae_u32 nNewRomMe
  */
 void memory_uninit (void)
 {
-    /* Here, we free allocated memory from memory_init */
-    if (TTmem_size > 0) {
-	free(TTmemory);
-	TTmemory = NULL;
-    }
-
-#if ENABLE_SMALL_MEM
-
-    if (STmemory) {
-	free(STmemory);
-	STmemory = NULL;
-    }
-
-    if (ROMmemory) {
-	free(ROMmemory);
-	ROMmemory = NULL;
-    }
-
-#endif  /* ENABLE_SMALL_MEM */
 }
 
 
@@ -809,18 +830,10 @@ void map_banks (addrbank *bank, int start, int size)
 {
     int bnr;
     unsigned long int hioffs = 0, endhioffs = 0x100;
-
-    if (start >= 0x100) {
+    
 	for (bnr = start; bnr < start + size; bnr++)
 	    put_mem_bank (bnr << 16, bank);
 	return;
-    }
-    /* Some ROMs apparently require a 24 bit address space... */
-    if (currprefs.address_space_24)
-	endhioffs = 0x10000;
-    for (hioffs = 0; hioffs < endhioffs; hioffs += 0x100)
-	for (bnr = start; bnr < start+size; bnr++)
-	    put_mem_bank ((bnr + hioffs) << 16, bank);
 }
 
 void memory_hardreset (void)

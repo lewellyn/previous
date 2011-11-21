@@ -28,6 +28,9 @@ extern void cache_free (uae_u8*);
 #define call_mem_get_func(func, addr) ((*func)(addr))
 #define call_mem_put_func(func, addr, v) ((*func)(addr, v))
 
+#define NEXT_SCREEN_SIZE	0x00040000
+extern uae_u8 NEXTVideo[256*1024];
+
 
 /* Enabling this adds one additional native memory reference per 68k memory
  * access, but saves one shift (on the x86). Enabling this is probably
@@ -96,7 +99,7 @@ extern addrbank mem_banks[65536];
 #define put_mem_bank(addr, b) (mem_banks[bankindex(addr)] = *(b))
 #endif
 
-extern void memory_init(uae_u32 nNewSTMemSize, uae_u32 nNewTTMemSize, uae_u32 nNewRomMemStart);
+extern void memory_init(uae_u32 nNewNEXTMemSize);
 extern void memory_uninit (void);
 extern void map_banks(addrbank *bank, int first, int count);
 

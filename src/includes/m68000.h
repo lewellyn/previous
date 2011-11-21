@@ -126,22 +126,22 @@ static inline void M68000_SetSR(Uint16 v)
 
 #else  /* following code is for WinUAE CPU: */
 
-# define M68000_GetPC()     m68k_getpc(&regs)
-# define M68000_SetPC(val)  m68k_setpc(&regs,val)
+# define M68000_GetPC()     m68k_getpc()
+# define M68000_SetPC(val)  m68k_setpc(val)
 
 static inline Uint16 M68000_GetSR(void)
 {
-	MakeSR(&regs);
+	MakeSR();
 	return regs.sr;
 }
 static inline void M68000_SetSR(Uint16 v)
 {
 	regs.sr = v;
-	MakeFromSR(&regs);
+	MakeFromSR();
 }
 
-# define M68000_SetSpecial(flags)   set_special(&regs,flags)
-# define M68000_UnsetSpecial(flags) unset_special(&regs,flags)
+# define M68000_SetSpecial(flags)   set_special(flags)
+# define M68000_UnsetSpecial(flags) unset_special(flags)
 
 #endif /* defined(UAE_NEWCPU_H) */
 

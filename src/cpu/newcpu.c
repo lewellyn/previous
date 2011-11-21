@@ -54,16 +54,11 @@
 #include "reset.h"
 #include "cycInt.h"
 #include "mfp.h"
-#include "tos.h"
-#include "vdi.h"
 #include "cart.h"
 #include "dialog.h"
-#include "bios.h"
-#include "xbios.h"
 #include "screen.h"
 #include "video.h"
 #include "options.h"
-#include "dsp.h"
 #include "log.h"
 #include "debugui.h"
 #include "debugcpu.h"
@@ -1625,31 +1620,6 @@ static void Exception_normal (int nr, uaecptr oldpc, int ExceptionSource)
 	uae_u32 currpc = m68k_getpc (), newpc;
 	int sv = regs.s;
 
-	if (ExceptionSource == M68000_EXC_SRC_CPU) {
-		if (bVdiAesIntercept && nr == 0x22) {
-			/* Intercept VDI & AES exceptions (Trap #2) */
-			if (VDI_AES_Entry()) {
-				/* Set 'PC' to address of 'VDI_OPCODE' illegal instruction.
-				 * This will call OpCode_VDI() after completion of Trap call!
-				 * This is used to modify specific VDI return vectors contents.
-				*/
-				VDI_OldPC = currpc;
-				currpc = CART_VDI_OPCODE_ADDR;
-			}
-		}
-
-		if (bBiosIntercept) {
-			/* Intercept BIOS or XBIOS trap (Trap #13 or #14) */
-			if (nr == 0x2d) {
-				/* Intercept BIOS calls */
-				if (Bios())  return;
-			}
-			else if (nr == 0x2e) {
-				/* Intercept XBIOS calls */
-				if (XBios())  return;
-			}
-		}
-	}
 
 #if AMIGA_ONLY
 	if (nr >= 24 && nr < 24 + 8 && currprefs.cpu_model <= 68010)
@@ -1673,11 +1643,8 @@ static void Exception_normal (int nr, uaecptr oldpc, int ExceptionSource)
 	if (currprefs.cpu_model > 68000) {
 		/* Build additional exception stack frame for 68010 and higher */
 		/* (special case for MFP) */
-		if (ExceptionSource == M68000_EXC_SRC_INT_MFP || ExceptionSource == M68000_EXC_SRC_INT_DSP) {
-			m68k_areg(regs, 7) -= 2;
-			put_word (m68k_areg(regs, 7), nr * 4);	/* MFP interrupt, 'nr' can be in a different range depending on $fffa17 */
-		}
-		else if (nr == 2 || nr == 3) {
+		
+		if (nr == 2 || nr == 3) {
 			int i;
 			if (currprefs.cpu_model >= 68040) {
 				if (nr == 2) {
@@ -1851,7 +1818,7 @@ kludge_me_do:
       if ( nr == 26 )				/* HBL */
       {
         /* store current cycle pos when then interrupt was received (see video.c) */
-        LastCycleHblException = Cycles_GetCounter(CYCLES_COUNTER_VIDEO);
+  //      LastCycleHblException = Cycles_GetCounter(CYCLES_COUNTER_VIDEO);
         M68000_AddCycles(44+12);		/* Video Interrupt */
       }
       else if ( nr == 28 ) 			/* VBL */
@@ -2780,27 +2747,6 @@ void doint (void)
  */
 STATIC_INLINE void InterruptAddJitter (int Level , int Pending)
 {
-	int cycles = 0;
-
-	if ( Level == 2 )				/* HBL */
-	{
-		if ( Pending )
-			cycles = HblJitterArrayPending[ HblJitterIndex ];
-		else
-			cycles = HblJitterArray[ HblJitterIndex ];
-	}
-	else if ( Level == 4 )			/* VBL */
-	{
-		if ( Pending )
-			cycles = VblJitterArrayPending[ VblJitterIndex ];
-		else
-			cycles = VblJitterArray[ VblJitterIndex ];
-	}
-
-	//fprintf ( stderr , "jitter %d\n" , cycles );
-	//cycles=0;
-	if ( cycles > 0 )				/* no need to call M68000_AddCycles if cycles == 0 */
-		M68000_AddCycles ( cycles );
 }
 
 
@@ -2810,24 +2756,6 @@ STATIC_INLINE void InterruptAddJitter (int Level , int Pending)
 
 static bool do_specialties_interrupt (int Pending)
 {
-    /* Check for MFP ints first (level 6) */
-    if (regs.spcflags & SPCFLAG_MFP) {
-       if (MFP_CheckPendingInterrupts() == true)
-         return true;					/* MFP exception was generated, no higher interrupt can happen */
-    }
-
-    /* No MFP int, check for VBL/HBL ints (levels 4/2) */
-    if (regs.spcflags & (SPCFLAG_INT | SPCFLAG_DOINT)) {
-	int intr = intlev ();
-	/* SPCFLAG_DOINT will be enabled again in MakeFromSR to handle pending interrupts! */
-//	unset_special (SPCFLAG_DOINT);
-	unset_special (SPCFLAG_INT | SPCFLAG_DOINT);
-	if (intr != -1 && intr > regs.intmask) {
-	    do_interrupt (intr , Pending);			/* process the interrupt and add pending jitter if necessary */
-	    return true;
-	}
-    }
-
     return false;					/* no interrupt was found */
 }
 
@@ -2884,20 +2812,6 @@ STATIC_INLINE int do_specialties (int cycles)
             regs.stopped = 0;
             unset_special (SPCFLAG_STOP);
         }
-#if 0
-	if (regs.spcflags & SPCFLAG_MFP)			/* MFP int */
-	    MFP_CheckPendingInterrupts();
-	
-	if (regs.spcflags & (SPCFLAG_INT | SPCFLAG_DOINT)) {	/* VBL/HBL ints */
-	    int intr = intlev ();
-	    unset_special (SPCFLAG_INT | SPCFLAG_DOINT);
-	    if (intr != -1 && intr > regs.intmask) {
-	        Interrupt (intr , true);		/* process the interrupt and add pending jitter */
-		regs.stopped = 0;
-		unset_special (SPCFLAG_STOP);
-	    }
-	}
-#endif
 
 	while (regs.spcflags & SPCFLAG_STOP) {
 
@@ -2919,11 +2833,6 @@ STATIC_INLINE int do_specialties (int cycles)
 				regs.stopped = 0;
 				unset_special (SPCFLAG_STOP);
 				break;
-			}
-
-			/* Then we check if this handler triggered an MFP int to process */
-			if (regs.spcflags & SPCFLAG_MFP) {          /* Check for MFP interrupts */
-				MFP_CheckPendingInterrupts();
 			}
 		
 #if AMIGA_ONLY
@@ -3413,11 +3322,6 @@ retry:
 				if (do_specialties (cpu_cycles* 2 / CYCLE_UNIT))
 					return;
 			}
-	
-			/* Run DSP 56k code if necessary */
-			if (bDspEnabled) {
-				DSP_Run(cpu_cycles* 2 / CYCLE_UNIT);
-			}
 		}
 	
 //	} CATCH (prb) {
@@ -3567,11 +3471,6 @@ static void m68k_run_2p (void)
 			if (do_specialties (cpu_cycles* 2 / CYCLE_UNIT))
 				return;
 		}
-	
-		/* Run DSP 56k code if necessary */
-		if (bDspEnabled) {
-			DSP_Run(cpu_cycles* 2 / CYCLE_UNIT);
-		}
 	}
 }
 
@@ -3630,11 +3529,6 @@ static void m68k_run_2 (void)
 		if (r->spcflags) {
 			if (do_specialties (cpu_cycles* 2 / CYCLE_UNIT))
 				return;   
-		}
-		
-		/* Run DSP 56k code if necessary */
-		if (bDspEnabled) {
-			DSP_Run(cpu_cycles* 2 / CYCLE_UNIT);	
 		}
 	}
 }

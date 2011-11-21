@@ -1,6 +1,6 @@
 set(SOURCES
 	cart.c cfgopts.c
-	configuration.c options.c  change.c
+	clocks_timings.c configuration.c options.c  change.c
 	control.c cycInt.c cycles.c dialog.c file.c
 	ioMem.c ioMemTabNEXT.c memorySnapShot.c keymap.c
 	m68000.c main.c
@@ -26,7 +26,13 @@ if(WIN32)
 	set(GUIWIN_RES gui-win/hatari-winicon.rc)
 endif(WIN32)
 
-include_directories(${CMAKE_BINARY_DIR} includes debug falcon uae-cpu
+if(ENABLE_WINUAE_CPU)
+	set(CPUDIR cpu)
+else()
+	set(CPUDIR uae-cpu)
+endif(ENABLE_WINUAE_CPU)
+
+include_directories(${CMAKE_BINARY_DIR} includes debug ${CPUDIR}
 		    ${SDL_INCLUDE_DIR})
 
 if(ZLIB_FOUND)
@@ -42,11 +48,11 @@ if(X11_FOUND)
 endif(X11_FOUND)
 
 
-link_directories(${CMAKE_CURRENT_BINARY_DIR}/debug ${CMAKE_CURRENT_BINARY_DIR}/gui-sdl ${CMAKE_CURRENT_BINARY_DIR}/uae-cpu) 
+link_directories(${CMAKE_CURRENT_BINARY_DIR}/debug ${CMAKE_CURRENT_BINARY_DIR}/gui-sdl ${CMAKE_CURRENT_BINARY_DIR}/${CPUDIR}) 
 
 add_subdirectory(debug)
 add_subdirectory(gui-sdl)
-add_subdirectory(uae-cpu)
+add_subdirectory(${CPUDIR})
 
 # When building for OSX, add specific sources
 if(ENABLE_OSX_BUNDLE)

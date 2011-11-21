@@ -15,12 +15,8 @@ const char HatariGlue_fileid[] = "Hatari hatari-glue.c : " __DATE__ " " __TIME__
 #include "main.h"
 #include "configuration.h"
 #include "cycInt.h"
-#include "tos.h"
-#include "gemdos.h"
 #include "cart.h"
-#include "vdi.h"
-#include "stMemory.h"
-#include "ikbd.h"
+#include "nextMemory.h"
 #include "screen.h"
 #include "video.h"
 
@@ -45,7 +41,7 @@ void customreset(void)
 
 	/* In case the 6301 was executing a custom program from its RAM */
 	/* we must turn it back to the 'normal' mode. */
-	IKBD_Reset_ExeMode ();
+//	IKBD_Reset_ExeMode ();
 
 	/* Reseting the GLUE video chip should also set freq/res register to 0 */
 	Video_Reset_Glue ();
@@ -117,62 +113,4 @@ void Exit680x0(void)
 
 	free(table68k);
 	table68k = NULL;
-}
-
-/**
- * This function will be called at system init by the cartridge routine
- * (after gemdos init, before booting floppies).
- * The GEMDOS vector (#$84) is setup and we also initialize the connected
- * drive mask and Line-A  variables (for an extended VDI resolution) from here.
- */
-unsigned long OpCode_SysInit(uae_u32 opcode)
-{
-	/* Add any drives mapped by TOS in the interim */
-	ConnectedDriveMask |= STMemory_ReadLong(0x4c2);
-	/* Initialize the connected drive mask */
-	STMemory_WriteLong(0x4c2, ConnectedDriveMask);
-
-	if (!bInitGemDOS)
-	{
-		/* Init on boot - see cart.c */
-		GemDOS_Boot();
-
-		/* Update LineA for extended VDI res
-		 * D0: LineA base, A1: Font base
-		 */
-		VDI_LineA(regs.regs[0], regs.regs[9]);
-	}
-
-	m68k_incpc(2);
-	fill_prefetch_0();
-	return 4;
-}
-
-
-/**
- * Intercept GEMDOS calls.
- * Used for GEMDOS HD emulation (see gemdos.c).
- */
-unsigned long OpCode_GemDos(uae_u32 opcode)
-{
-	GemDOS_OpCode();    /* handler code in gemdos.c */
-
-	m68k_incpc(2);
-	fill_prefetch_0();
-	return 4;
-}
-
-
-/**
- * This is called after completion of each VDI call
- */
-unsigned long OpCode_VDI(uae_u32 opcode)
-{
-	VDI_Complete();
-
-	/* Set PC back to where originated from to continue instruction decoding */
-	m68k_setpc(VDI_OldPC);
-
-	fill_prefetch_0();
-	return 4;
 }
