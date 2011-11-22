@@ -209,7 +209,7 @@ static uae_u32 BusErrMem_lget(uaecptr addr)
     if (illegal_mem)
 	write_log ("Bus error lget at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
-    M68000_BusError(addr, 1);
+    M68000_BusError(addr, BUS_ERROR_READ);
     return 0;
 }
 
@@ -218,7 +218,7 @@ static uae_u32 BusErrMem_wget(uaecptr addr)
     if (illegal_mem)
 	write_log ("Bus error wget at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
-    M68000_BusError(addr, 1);
+    M68000_BusError(addr, BUS_ERROR_READ);
     return 0;
 }
 
@@ -227,7 +227,7 @@ static uae_u32 BusErrMem_bget(uaecptr addr)
     if (illegal_mem)
 	write_log ("Bus error bget at %08lx  pc=%08x\n", (long)addr,m68k_getpc());
 
-    M68000_BusError(addr, 1);
+    M68000_BusError(addr, BUS_ERROR_READ);
     return 0;
 }
 
@@ -236,7 +236,7 @@ static void BusErrMem_lput(uaecptr addr, uae_u32 l)
     if (illegal_mem)
 	write_log ("Bus error lput at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
-    M68000_BusError(addr, 0);
+    M68000_BusError(addr, BUS_ERROR_WRITE);
 }
 
 static void BusErrMem_wput(uaecptr addr, uae_u32 w)
@@ -244,7 +244,7 @@ static void BusErrMem_wput(uaecptr addr, uae_u32 w)
     if (illegal_mem)
 	write_log ("Bus error wput at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
-    M68000_BusError(addr, 0);
+    M68000_BusError(addr, BUS_ERROR_WRITE);
 }
 
 static void BusErrMem_bput(uaecptr addr, uae_u32 b)
@@ -252,7 +252,7 @@ static void BusErrMem_bput(uaecptr addr, uae_u32 b)
     if (illegal_mem)
 	write_log ("Bus error bput at %08lx pc=%08x\n", (long)addr,m68k_getpc());
 
-    M68000_BusError(addr, 0);
+    M68000_BusError(addr, BUS_ERROR_WRITE);
 }
 
 static int BusErrMem_check(uaecptr addr, uae_u32 size)
@@ -618,7 +618,7 @@ static void ROMmem_lput(uaecptr addr, uae_u32 b)
     if (illegal_mem)
 	write_log ("Illegal ROMmem lput at %08lx\n", (long)addr);
 
-    M68000_BusError(addr, 0);
+    M68000_BusError(addr, BUS_ERROR_WRITE);
 }
 
 static void ROMmem_wput(uaecptr addr, uae_u32 b)
@@ -626,7 +626,7 @@ static void ROMmem_wput(uaecptr addr, uae_u32 b)
     if (illegal_mem)
 	write_log ("Illegal ROMmem wput at %08lx\n", (long)addr);
 
-    M68000_BusError(addr, 0);
+    M68000_BusError(addr, BUS_ERROR_WRITE);
 }
 
 static void ROMmem_bput(uaecptr addr, uae_u32 b)
@@ -634,7 +634,7 @@ static void ROMmem_bput(uaecptr addr, uae_u32 b)
     if (illegal_mem)
 	write_log ("Illegal ROMmem bput at %08lx\n", (long)addr);
 
-    M68000_BusError(addr, 0);
+    M68000_BusError(addr, BUS_ERROR_WRITE);
 }
 
 static int ROMmem_check(uaecptr addr, uae_u32 size)
