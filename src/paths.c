@@ -200,7 +200,7 @@ static void Paths_InitHomeDirs(void)
 		sUserHomeDir[FILENAME_MAX-1] = 0;
 
 		/* Try to use a .hatari directory in the users home directory */
-		snprintf(sHatariHomeDir, FILENAME_MAX, "%s%c.hatari",
+		snprintf(sHatariHomeDir, FILENAME_MAX, "%s%c.previous",
 		         sUserHomeDir, PATHSEP);
 		if (!File_DirectoryExists(sHatariHomeDir))
 		{

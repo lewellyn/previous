@@ -424,9 +424,10 @@ void Configuration_SetDefault(void)
 	/* Set defaults for Shortcuts */
 	ConfigureParams.Shortcut.withoutModifier[SHORTCUT_OPTIONS] = SDLK_F12;
 	ConfigureParams.Shortcut.withoutModifier[SHORTCUT_FULLSCREEN] = SDLK_F11;
-	ConfigureParams.Shortcut.withoutModifier[SHORTCUT_PAUSE] = SDLK_PAUSE;
-  
-	ConfigureParams.Shortcut.withModifier[SHORTCUT_DEBUG] = SDLK_PAUSE;
+    
+	ConfigureParams.Shortcut.withModifier[SHORTCUT_PAUSE] = SDLK_p;
+	ConfigureParams.Shortcut.withModifier[SHORTCUT_DEBUG] = SDLK_d;
+    
 	ConfigureParams.Shortcut.withModifier[SHORTCUT_OPTIONS] = SDLK_o;
 	ConfigureParams.Shortcut.withModifier[SHORTCUT_FULLSCREEN] = SDLK_f;
 	ConfigureParams.Shortcut.withModifier[SHORTCUT_MOUSEGRAB] = SDLK_m;
@@ -442,7 +443,7 @@ void Configuration_SetDefault(void)
 	ConfigureParams.Shortcut.withModifier[SHORTCUT_QUIT] = SDLK_q;
 	ConfigureParams.Shortcut.withModifier[SHORTCUT_LOADMEM] = SDLK_l;
 	ConfigureParams.Shortcut.withModifier[SHORTCUT_SAVEMEM] = SDLK_k;
-	ConfigureParams.Shortcut.withModifier[SHORTCUT_INSERTDISKA] = SDLK_d;
+	ConfigureParams.Shortcut.withModifier[SHORTCUT_INSERTDISKA] = SDLK_1;
 
 	/* Set defaults for Memory */
 	ConfigureParams.Memory.nMemorySize = 1;     /* 1 MiB */
@@ -501,7 +502,7 @@ void Configuration_SetDefault(void)
 
 	/* Set defaults for System */
 	ConfigureParams.System.nCpuLevel = 4;
-	ConfigureParams.System.nCpuFreq = 8;
+	ConfigureParams.System.nCpuFreq = 32;
 	ConfigureParams.System.bCompatibleCpu = true;
 	ConfigureParams.System.nMachineType = MACHINE_ST;
 	ConfigureParams.System.bBlitter = false;
@@ -511,11 +512,11 @@ void Configuration_SetDefault(void)
 	ConfigureParams.System.bFastForward = false;
     
 #if ENABLE_WINUAE_CPU
-    ConfigureParams.System.bAddressSpace24 = true;
+    ConfigureParams.System.bAddressSpace24 = false;
     ConfigureParams.System.bCycleExactCpu = false;
-    ConfigureParams.System.n_FPUType = FPU_NONE;
-    ConfigureParams.System.bCompatibleFPU = false;
-    ConfigureParams.System.bMMU = false;
+    ConfigureParams.System.n_FPUType = FPU_CPU;
+    ConfigureParams.System.bCompatibleFPU = true;
+    ConfigureParams.System.bMMU = true;
 #endif
 
     /* Set defaults for Video */
@@ -530,9 +531,9 @@ void Configuration_SetDefault(void)
 
 	/* Initialize the configuration file name */
 	if (strlen(psHomeDir) < sizeof(sConfigFileName)-13)
-		sprintf(sConfigFileName, "%s%chatari.cfg", psHomeDir, PATHSEP);
+		sprintf(sConfigFileName, "%s%cprevious.cfg", psHomeDir, PATHSEP);
 	else
-		strcpy(sConfigFileName, "hatari.cfg");
+		strcpy(sConfigFileName, "previous.cfg");
 
 #if defined(__AMIGAOS4__)
 	/* Fix default path names on Amiga OS */

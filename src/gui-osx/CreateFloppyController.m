@@ -58,6 +58,9 @@
 			{
 				printf("%d\n",ret);
 				if(ret==-1) ret=1; //0=>Drive 0, -1=>Drive 1
+				
+//				Floppy_SetDiskFileName(ret, szPath, NULL);
+//				Floppy_InsertDiskIntoDrive(ret);
 			}
 		}
 			
