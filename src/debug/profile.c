@@ -13,12 +13,10 @@ const char Profile_fileid[] = "Hatari profile.c : " __DATE__ " " __TIME__;
 #include <stdio.h>
 #include "main.h"
 #include "debug_priv.h"
-#include "dsp.h"
 #include "m68000.h"
 #include "profile.h"
-#include "stMemory.h"
+#include "nextMemory.h"
 #include "symbols.h"
-#include "tos.h"
 
 #define MAX_PROFILE_VALUE 0xFFFFFFFF
 
@@ -68,22 +66,22 @@ static inline Uint32 address2index(Uint32 pc)
 	if (unlikely(pc & 1)) {
 		fprintf(stderr, "WARNING: odd CPU profile instruction address 0x%x!\n", pc);
 	}
-	if (pc >= TosAddress && pc < TosAddress + TosSize) {
+//	if (pc >= TosAddress && pc < TosAddress + TosSize) {
 		/* TOS, put it after RAM & ROM data */
-		pc = pc - TosAddress + STRamEnd + 0x20000;
+//		pc = pc - TosAddress + STRamEnd + 0x20000;
 	
-	} else if (pc >= 0xFA0000 && pc < 0xFC0000) {
+//	} else if (pc >= 0xFA0000 && pc < 0xFC0000) {
 		/* ROM, put it after RAM data */
-		pc = pc - 0xFA0000 + STRamEnd;
+//		pc = pc - 0xFA0000 + STRamEnd;
 
-	} else {
+//	} else {
 		/* if in RAM, use as-is */
-		if (unlikely(pc >= STRamEnd)) {
-			fprintf(stderr, "WARNING: 'invalid' CPU PC profile instruction address 0x%x, skipping!\n", pc);
+//		if (unlikely(pc >= STRamEnd)) {
+//			fprintf(stderr, "WARNING: 'invalid' CPU PC profile instruction address 0x%x, skipping!\n", pc);
 			/* extra entry at end reserved for invalid PC values */
-			pc = STRamEnd + 0x20000 + TosSize;
-		}
-	}
+//			pc = STRamEnd + 0x20000 + TosSize;
+//		}
+//	}
 	/* CPU instructions are at even addresses, save space by halving */
 	return (pc >> 1);
 }
@@ -113,16 +111,16 @@ static Uint32 index2address(Uint32 idx)
 {
 	idx <<= 1;
 	/* RAM */
-	if (idx < STRamEnd) {
-		return idx;
-	}
+//	if (idx < nextRamEnd) {
+//		return idx;
+//	}
 	/* ROM */
-	idx -= STRamEnd;
-	if (idx < 0x20000) {
-		return idx + 0xFA0000;
-	}
+//	idx -= nextRamEnd;
+//	if (idx < 0x20000) {
+//		return idx + 0xFA0000;
+//	}
 	/* TOS */
-	return idx - 0x20000 + TosAddress;
+//	return idx - 0x20000 + TosAddress;
 }
 
 
@@ -166,13 +164,13 @@ static void show_cpu_area_stats(profile_area_t *area)
  */
 void Profile_CpuShowStats(void)
 {
-	fprintf(stderr, "Normal RAM (0-0x%X):\n", STRamEnd);
+//	fprintf(stderr, "Normal RAM (0-0x%X):\n", STRamEnd);
 	show_cpu_area_stats(&cpu_profile.ram);
 
 	fprintf(stderr, "Cartridge ROM (0xFA0000-0xFC0000):\n");
 	show_cpu_area_stats(&cpu_profile.rom);
 
-	fprintf(stderr, "ROM TOS (0x%X-0x%X):\n", TosAddress, TosAddress+TosSize);
+//	fprintf(stderr, "ROM TOS (0x%X-0x%X):\n", TosAddress, TosAddress+TosSize);
 	show_cpu_area_stats(&cpu_profile.tos);
 }
 
@@ -331,7 +329,7 @@ bool Profile_CpuStart(void)
 		return false;
 	}
 	/* Shouldn't change within same debug session */
-	cpu_profile.size = (STRamEnd + 0x20000 + TosSize) / 2;
+//	cpu_profile.size = (STRamEnd + 0x20000 + TosSize) / 2;
 
 	/* Add one entry for catching invalid PC values */
 	cpu_profile.data = calloc(cpu_profile.size+1, sizeof(*cpu_profile.data));
@@ -415,7 +413,7 @@ void Profile_CpuStop(void)
 		return;
 	}
 	/* user didn't change RAM or TOS size in the meanwhile? */
-	assert(cpu_profile.size == (STRamEnd + 0x20000 + TosSize) / 2);
+//	assert(cpu_profile.size == (STRamEnd + 0x20000 + TosSize) / 2);
 
 	/* find lowest and highest addresses executed... */
 	item = cpu_profile.data;
@@ -425,18 +423,18 @@ void Profile_CpuStop(void)
 	memset(area, 0, sizeof(profile_area_t));
 	area->lowest = cpu_profile.size;
 
-	for (i = 0; i < STRamEnd/2; i++, item++) {
-		update_area(i, item, area);
-	}
+//	for (i = 0; i < STRamEnd/2; i++, item++) {
+//		update_area(i, item, area);
+//	}
 
 	/* ... for Cartridge ROM */
 	area = &cpu_profile.rom;
 	memset(area, 0, sizeof(profile_area_t));
 	area->lowest = cpu_profile.size;
 
-	for (; i < (STRamEnd + 0x20000)/2; i++, item++) {
-		update_area(i, item, area);
-	}
+//	for (; i < (STRamEnd + 0x20000)/2; i++, item++) {
+//		update_area(i, item, area);
+//	}
 
 	/* ...for ROM TOS */
 	area = &cpu_profile.tos;
@@ -719,17 +717,17 @@ bool Profile_DspStart(void)
  */
 void Profile_DspUpdate(void)
 {
-	Uint16 pc, cycles;
+//	Uint16 pc, cycles;
 
-	pc = DSP_GetPC();
-	if (likely(dsp_profile.data[pc].count < MAX_PROFILE_VALUE)) {
-		dsp_profile.data[pc].count++;
-	}
+//	pc = DSP_GetPC();
+//	if (likely(dsp_profile.data[pc].count < MAX_PROFILE_VALUE)) {
+//		dsp_profile.data[pc].count++;
+//	}
 
-	cycles = DSP_GetInstrCycles();
-	if (likely(dsp_profile.data[pc].cycles < MAX_PROFILE_VALUE - cycles)) {
-		dsp_profile.data[pc].cycles += cycles;
-	}
+//	cycles = DSP_GetInstrCycles();
+//	if (likely(dsp_profile.data[pc].cycles < MAX_PROFILE_VALUE - cycles)) {
+//		dsp_profile.data[pc].cycles += cycles;
+//	}
 }
 
 
