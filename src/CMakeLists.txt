@@ -21,9 +21,11 @@ endif(ENABLE_OSX_BUNDLE)
 
 
 # When building for Windows, define specific sources for gui and ressources
+# and set the subsytem of the resulting .exe to "windows GUI" instead of "console"
 if(WIN32)
 	set(GUIWIN_SOURCES gui-win/opencon.c)
 	set(GUIWIN_RES gui-win/hatari-winicon.rc)
+	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mwindows")
 endif(WIN32)
 
 if(ENABLE_WINUAE_CPU)
@@ -112,7 +114,7 @@ if(PNG_FOUND)
 endif(PNG_FOUND)
 
 if(X11_FOUND)
-	target_link_libraries(previous ${X11_X11_LIB})
+	target_link_libraries(previous ${X11_LIBRARIES})
 endif(X11_FOUND)
 
 if(PORTAUDIO_FOUND)

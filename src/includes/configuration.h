@@ -39,10 +39,12 @@ typedef struct
 /* Sound configuration */
 typedef struct
 {
+  bool bEnableMicrophone;
   bool bEnableSound;
   int nPlaybackFreq;
-  char szYMCaptureFileName[FILENAME_MAX];
   int SdlAudioBufferSize;
+  char szYMCaptureFileName[FILENAME_MAX];
+  int YmVolumeMixing;
 } CNF_SOUND;
 
 
@@ -190,7 +192,6 @@ typedef struct
  * 10 VGA - Colormonitor
  * 11 TV
  */
-#define FALCON_MONITOR_MASK 0x3F
 #define FALCON_MONITOR_MONO 0x00  /* SM124 */
 #define FALCON_MONITOR_RGB  0x40
 #define FALCON_MONITOR_VGA  0x80
@@ -210,6 +211,7 @@ typedef struct
   MONITORTYPE nMonitorType;
   int nFrameSkips;
   bool bFullScreen;
+  bool bKeepResolution;
   bool bAllowOverscan;
   bool bAspectCorrect;
   bool bUseExtVdiResolutions;
@@ -220,7 +222,7 @@ typedef struct
   int nVdiHeight;
   bool bShowStatusbar;
   bool bShowDriveLed;
-  bool bCaptureChange;
+  bool bCrop;
   int nMaxWidth;
   int nMaxHeight;
 } CNF_SCREEN;
@@ -264,10 +266,10 @@ typedef enum
 #if ENABLE_WINUAE_CPU
 typedef enum
 {
-    FPU_NONE,
-    FPU_68881,
-    FPU_68882,
-    FPU_CPU
+  FPU_NONE,
+  FPU_68881,
+  FPU_68882,
+  FPU_CPU
 } FPUTYPE;
 #endif
 
@@ -284,14 +286,22 @@ typedef struct
   bool bFastForward;
     
 #if ENABLE_WINUAE_CPU
-    bool bAddressSpace24;
-    bool bCycleExactCpu;
-    FPUTYPE n_FPUType;
-    bool bCompatibleFPU;            /* More compatible FPU */
-    bool bMMU;                      /* TRUE if MMU is enabled */
+  bool bAddressSpace24;
+  bool bCycleExactCpu;
+  FPUTYPE n_FPUType;
+  bool bCompatibleFPU;            /* More compatible FPU */
+  bool bMMU;                      /* TRUE if MMU is enabled */
 #endif
     
 } CNF_SYSTEM;
+
+typedef struct
+{
+  int AviRecordVcodec;
+  int AviRecordFps;
+  char AviRecordFile[FILENAME_MAX];
+} CNF_VIDEO;
+
 
 
 /* State of system is stored in this structure */
@@ -314,6 +324,7 @@ typedef struct
   CNF_PRINTER Printer;
   CNF_MIDI Midi;
   CNF_SYSTEM System;
+  CNF_VIDEO Video;
 } CNF_PARAMS;
 
 

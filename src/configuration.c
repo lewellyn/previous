@@ -23,6 +23,7 @@ const char Configuration_fileid[] = "Hatari configuration.c : " __DATE__ " " __T
 #include "paths.h"
 #include "screen.h"
 #include "video.h"
+#include "avi_record.h"
 #include "clocks_timings.h"
 
 
@@ -54,9 +55,9 @@ static const struct Config_Tag configs_Debugger[] =
 static const struct Config_Tag configs_Screen[] =
 {
 	{ "nMonitorType", Int_Tag, &ConfigureParams.Screen.nMonitorType },
-	{ "nFrameSkips", Int_Tag, &ConfigureParams.Screen.nFrameSkips },
+//	{ "nFrameSkips", Int_Tag, &ConfigureParams.Screen.nFrameSkips },
 	{ "bFullScreen", Bool_Tag, &ConfigureParams.Screen.bFullScreen },
-//    { "bKeepResolution", Bool_Tag, &ConfigureParams.Screen.bKeepResolution },
+    { "bKeepResolution", Bool_Tag, &ConfigureParams.Screen.bKeepResolution },
 	{ "bAllowOverscan", Bool_Tag, &ConfigureParams.Screen.bAllowOverscan },
 	{ "nSpec512Threshold", Int_Tag, &ConfigureParams.Screen.nSpec512Threshold },
 	{ "nForceBpp", Int_Tag, &ConfigureParams.Screen.nForceBpp },
@@ -67,7 +68,7 @@ static const struct Config_Tag configs_Screen[] =
 	{ "nVdiColors", Int_Tag, &ConfigureParams.Screen.nVdiColors },
 	{ "bShowStatusbar", Bool_Tag, &ConfigureParams.Screen.bShowStatusbar },
 	{ "bShowDriveLed", Bool_Tag, &ConfigureParams.Screen.bShowDriveLed },
-	{ "bCaptureChange", Bool_Tag, &ConfigureParams.Screen.bCaptureChange },
+	{ "bCrop", Bool_Tag, &ConfigureParams.Screen.bCrop },
 	{ "nMaxWidth", Int_Tag, &ConfigureParams.Screen.nMaxWidth },
 	{ "nMaxHeight", Int_Tag, &ConfigureParams.Screen.nMaxHeight },
 	{ NULL , Error_Tag, NULL }
@@ -224,7 +225,7 @@ static const struct Config_Tag configs_ShortCutWithoutMod[] =
 /* Used to load/save sound options */
 static const struct Config_Tag configs_Sound[] =
 {
-//	{ "bEnableMicrophone", Bool_Tag, &ConfigureParams.Sound.bEnableMicrophone },
+    { "bEnableMicrophone", Bool_Tag, &ConfigureParams.Sound.bEnableMicrophone },
   	{ "bEnableSound", Bool_Tag, &ConfigureParams.Sound.bEnableSound },
   	{ "nPlaybackFreq", Int_Tag, &ConfigureParams.Sound.nPlaybackFreq },
   	{ "nSdlAudioBufferSize", Int_Tag, &ConfigureParams.Sound.SdlAudioBufferSize },
@@ -335,9 +336,9 @@ static const struct Config_Tag configs_System[] =
 /* Used to load/save video options */
 static const struct Config_Tag configs_Video[] =
 {
-//    { "AviRecordVcodec", Int_Tag, &ConfigureParams.Video.AviRecordVcodec },
-//    { "AviRecordFps", Int_Tag, &ConfigureParams.Video.AviRecordFps },
-//    { "AviRecordFile", String_Tag, ConfigureParams.Video.AviRecordFile },
+    { "AviRecordVcodec", Int_Tag, &ConfigureParams.Video.AviRecordVcodec },
+    { "AviRecordFps", Int_Tag, &ConfigureParams.Video.AviRecordFps },
+    { "AviRecordFile", String_Tag, ConfigureParams.Video.AviRecordFile },
 	{ NULL , Error_Tag, NULL }
 };
 
@@ -471,8 +472,8 @@ void Configuration_SetDefault(void)
 
 	/* Set defaults for Screen */
 	ConfigureParams.Screen.bFullScreen = false;
-//    ConfigureParams.Screen.bKeepResolution = true;
-	ConfigureParams.Screen.nFrameSkips = AUTO_FRAMESKIP_LIMIT;
+    ConfigureParams.Screen.bKeepResolution = true;
+//	ConfigureParams.Screen.nFrameSkips = AUTO_FRAMESKIP_LIMIT;
 	ConfigureParams.Screen.bAllowOverscan = true;
 	ConfigureParams.Screen.nSpec512Threshold = 16;
 	ConfigureParams.Screen.nForceBpp = 0;
@@ -481,19 +482,19 @@ void Configuration_SetDefault(void)
 	ConfigureParams.Screen.bUseExtVdiResolutions = false;
 	ConfigureParams.Screen.bShowStatusbar = true;
 	ConfigureParams.Screen.bShowDriveLed = true;
-	ConfigureParams.Screen.bCaptureChange = false;
+	ConfigureParams.Screen.bCrop = false;
 	/* target 800x600 screen with statusbar out of screen */
-	ConfigureParams.Screen.nMaxWidth = 1024;
-	ConfigureParams.Screen.nMaxHeight = 768;
+	ConfigureParams.Screen.nMaxWidth = 0;
+	ConfigureParams.Screen.nMaxHeight = 0;
 
 	/* Set defaults for Sound */
-//    ConfigureParams.Sound.bEnableMicrophone = true;
+    ConfigureParams.Sound.bEnableMicrophone = true;
 	ConfigureParams.Sound.bEnableSound = true;
 	ConfigureParams.Sound.nPlaybackFreq = 44100;
 	sprintf(ConfigureParams.Sound.szYMCaptureFileName, "%s%chatari.wav",
 	        psWorkingDir, PATHSEP);
 	ConfigureParams.Sound.SdlAudioBufferSize = 0;
-//    ConfigureParams.Sound.YmVolumeMixing = YM_TABLE_MIXING;
+//  ConfigureParams.Sound.YmVolumeMixing = YM_TABLE_MIXING;
 
 	/* Set defaults for Rom */
 	sprintf(ConfigureParams.Rom.szTosImageFileName, "%s%ctos.img",
@@ -521,12 +522,12 @@ void Configuration_SetDefault(void)
 
     /* Set defaults for Video */
 #if HAVE_LIBPNG
-//    ConfigureParams.Video.AviRecordVcodec = AVI_RECORD_VIDEO_CODEC_PNG;
+    ConfigureParams.Video.AviRecordVcodec = AVI_RECORD_VIDEO_CODEC_PNG;
 #else
     ConfigureParams.Video.AviRecordVcodec = AVI_RECORD_VIDEO_CODEC_BMP;
 #endif
-//    ConfigureParams.Video.AviRecordFps = 0;			/* automatic FPS */
-//    sprintf(ConfigureParams.Video.AviRecordFile, "%s%chatari.avi", psWorkingDir, PATHSEP);
+    ConfigureParams.Video.AviRecordFps = 0;			/* automatic FPS */
+    sprintf(ConfigureParams.Video.AviRecordFile, "%s%chatari.avi", psWorkingDir, PATHSEP);
 
 
 	/* Initialize the configuration file name */
@@ -553,10 +554,10 @@ void Configuration_Apply(bool bReset)
 	{
 		/* Set resolution change */
 	}
-	if (ConfigureParams.Screen.nFrameSkips < AUTO_FRAMESKIP_LIMIT)
-	{
-//		nFrameSkips = ConfigureParams.Screen.nFrameSkips;
-	}
+//	if (ConfigureParams.Screen.nFrameSkips < AUTO_FRAMESKIP_LIMIT)
+//	{
+//        nFrameSkips = ConfigureParams.Screen.nFrameSkips;
+//	}
 
     /* Init clocks for this machine */
     ClocksTimings_InitMachine ( ConfigureParams.System.nMachineType );
@@ -599,7 +600,7 @@ void Configuration_Apply(bool bReset)
 	File_MakeAbsoluteName(ConfigureParams.Sound.szYMCaptureFileName);
 	if (strlen(ConfigureParams.Keyboard.szMappingFileName) > 0)
 		File_MakeAbsoluteName(ConfigureParams.Keyboard.szMappingFileName);
-//    File_MakeAbsoluteName(ConfigureParams.Video.AviRecordFile);
+    File_MakeAbsoluteName(ConfigureParams.Video.AviRecordFile);
 	
 	/* make path names absolute, but handle special file names */
 	File_MakeAbsoluteSpecialName(ConfigureParams.Log.sLogFileName);

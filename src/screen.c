@@ -286,7 +286,6 @@ void Screen_Init(void)
 
 	Screen_CreatePalette();
 	/* Configure some SDL stuff: */
-	SDL_WM_SetCaption(PROG_NAME, "Previous");
 	SDL_ShowCursor(SDL_DISABLE);
 }
 

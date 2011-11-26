@@ -38,12 +38,12 @@ void Resolution_Init(void)
  	if (info->current_w >= 640 && info->current_h >= 400) {
  		DesktopWidth = info->current_w;
  		DesktopHeight = info->current_h;
-// 	} else {
+ 	} else {
  		/* target 800x600 screen with statusbar out of screen */
-// 		DesktopWidth = 2*(48+320+48);
-// 		DesktopHeight = 2*NUM_VISIBLE_LINES+24;
-// 		fprintf(stderr, "WARNING: invalid desktop size %dx%d, defaulting to %dx%d!\n",
-// 			info->current_w, info->current_h, DesktopWidth, DesktopHeight);
+ 		DesktopWidth = 320;
+ 		DesktopHeight = 200;
+ 		fprintf(stderr, "WARNING: invalid desktop size %dx%d, defaulting to %dx%d!\n",
+ 			info->current_w, info->current_h, DesktopWidth, DesktopHeight);
  	}
  	/* if user hasn't set own max zoom size, use desktop size */
  	if (!(ConfigureParams.Screen.nMaxWidth &&
@@ -130,11 +130,11 @@ void Resolution_Search(int *width, int *height, int *bpp)
 	modeflags = 0 /*SDL_HWSURFACE | SDL_HWPALETTE*/;
 	if (bInFullScreen) {
  		/* resolution change not allowed? */
-// 		if (ConfigureParams.Screen.bKeepResolution) {
-// 			Dprintf(("resolution: limit to desktop size\n"));
-// 			Resolution_GetDesktopSize(width, height);
-// 			return;
-// 		}
+ 		if (ConfigureParams.Screen.bKeepResolution) {
+ 			Dprintf(("resolution: limit to desktop size\n"));
+ 			Resolution_GetDesktopSize(width, height);
+ 			return;
+ 		}
 		modeflags |= SDL_FULLSCREEN;
     }
     
@@ -189,12 +189,12 @@ void Resolution_GetLimits(int *width, int *height, int *bpp)
     Dprintf(("resolution: request limits for: %dx%dx%d\n", *width, *height, *bpp));
 	Resolution_Search(width, height, bpp);
 
-// 	if (bInFullScreen && ConfigureParams.Screen.bKeepResolution) {
+ 	if (bInFullScreen && ConfigureParams.Screen.bKeepResolution) {
  		/* resolution change not allowed */
-// 		Dprintf(("resolution: limit to desktop size\n"));
-// 		Resolution_GetDesktopSize(width, height);
-// 		return;
-// 	}
+ 		Dprintf(("resolution: limit to desktop size\n"));
+ 		Resolution_GetDesktopSize(width, height);
+ 		return;
+ 	}
 	if (!(*width && *height) ||
 
 	    (ConfigureParams.Screen.nMaxWidth < *width &&
