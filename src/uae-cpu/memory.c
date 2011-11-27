@@ -24,6 +24,7 @@ const char Memory_fileid[] = "Previous memory.c : " __DATE__ " " __TIME__;
 #include "reset.h"
 #include "nextMemory.h"
 #include "m68000.h"
+#include "configuration.h"
 
 #include "newcpu.h"
 
@@ -793,7 +794,10 @@ void memory_init(uae_u32 nNewNEXTMemSize)
 	{
 		FILE* fin;
 		int ret;
-		fin=fopen("./Rev_2.5_v66.BIN","rb");
+        if(ConfigureParams.System.nCpuLevel == 3)
+            fin=fopen("./Rev_1.0_v41.BIN","rb");
+        else
+            fin=fopen("./Rev_2.5_v66.BIN","rb");
 //		fin=fopen("./Rev_3.3_v74.BIN","rb");
 //		fin=fopen("./Rev_1.2.BIN","rb");
 //		fin=fopen("./Rev_1.0_v41.BIN","rb");
