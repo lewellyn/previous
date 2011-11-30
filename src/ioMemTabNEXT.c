@@ -17,6 +17,7 @@ const char IoMemTabST_fileid[] = "Previous ioMemTabST.c : " __DATE__ " " __TIME_
 #include "configuration.h"
 #include "sysdeps.h"
 #include "m68000.h"
+#include "keymap.h"
 
 #define IO_SEG_MASK	0x1FFFF
 /*
@@ -477,12 +478,14 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 	{ 0x0200d001, SIZE_BYTE, SCR2_Read1, SCR2_Write1 },
 	{ 0x0200d002, SIZE_BYTE, SCR2_Read2, SCR2_Write2 },
 	{ 0x0200d003, SIZE_BYTE, SCR2_Read3, SCR2_Write3 },
-	{ 0x0200e001, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
-	{ 0x0200e002, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
-	{ 0x0200e003, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+	{ 0x0200e000, SIZE_BYTE, Keyboard_Read0, IoMem_WriteWithoutInterception },
+	{ 0x0200e001, SIZE_BYTE, Keyboard_Read1, IoMem_WriteWithoutInterception },
+	{ 0x0200e002, SIZE_BYTE, Keyboard_Read2, IoMem_WriteWithoutInterception },
+    { 0x0200e003, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 	{ 0x0200e004, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 	{ 0x0200e005, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 	{ 0x0200e006, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
+    { 0x0200e008, SIZE_LONG, Keycode_Read, IoMem_WriteWithoutInterception },
 	{ 0x02010000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x02012004, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x02012005, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
