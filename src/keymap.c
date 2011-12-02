@@ -24,10 +24,41 @@ const char Keymap_fileid[] = "Hatari keymap.c : " __DATE__ " " __TIME__;
 #include "SDL.h"
 
 
+/*
+ 
+ Byte at address 0x0200e00a contains modifier key values:
+ 
+ x--- ----  valid
+ -x-- ----  alt_right
+ --x- ----  alt_left
+ ---x ----  command_right
+ ---- x---  command_left
+ ---- -x--  shift_right
+ ---- --x-  shift_left
+ ---- ---x  control
+ 
+ 
+ Byte at address 0x0200e00b contains key values:
+ 
+ x--- ----  key up (1) or down (0)
+ -xxx xxxx  key_code
+ 
+ */
+
+
 //void Keymap_Init(void) {
 //}
 
 Uint8 nextkeycode;
+Uint8 modkeys;
+Uint8 ralt;
+Uint8 lalt;
+Uint8 rcom;
+Uint8 lcom;
+Uint8 rshift;
+Uint8 lshift;
+Uint8 ctrl;
+
 
 void Keyboard_Read0(void) {
 //    Log_Printf(LOG_WARN, "Keyboard read at $%08x PC=$%08x\n", IoAccessCurrentAddress, m68k_getpc());
@@ -48,15 +79,16 @@ void Keycode_Read(void) {
 //    Log_Printf(LOG_WARN, "Keycode read at $%08x PC=$%08x\n", IoAccessCurrentAddress, m68k_getpc());
     IoMem[0xe002]=0x93;
     IoMem[0xe008]=0x10;
-    IoMem[0xe00a]=0x80;
+    
+    IoMem[0xe00a]=modkeys; // Set modifier Keys
     IoMem[0xe00b]=nextkeycode; // Press virtual Key
-    nextkeycode=nextkeycode | 0x80; // Release virtual Key
+    nextkeycode=nextkeycode | 0x80; // Automatically release virtual Key
 }
 
+
 void KeyTranslator(SDL_KeyboardEvent *key) { // Translate SDL Keys to NeXT Keycodes
-    char inputkey;
-    inputkey = *SDL_GetKeyName(key->keysym.sym);
 //    Log_Printf(LOG_WARN, SDL_GetKeyName(key->keysym.sym));
+
     switch (key->keysym.sym) {
         
         case SDLK_RIGHTBRACKET: nextkeycode = 0x04;
@@ -203,8 +235,57 @@ void KeyTranslator(SDL_KeyboardEvent *key) { // Translate SDL Keys to NeXT Keyco
             break;
         case SDLK_5: nextkeycode = 0x50;
             break;
+            
+        /* Modifier Keys */
+        case SDLK_LSHIFT: lshift = 0x02;
+            break;
+        case SDLK_RSHIFT: rshift = 0x04;
+            break;
+        case SDLK_LCTRL: lcom = 0x08;
+            break;
+        case SDLK_RCTRL: rcom = 0x10;
+            break;
+        case SDLK_LALT: lalt = 0x20;
+            break;
+        case SDLK_RALT: ralt = 0x40;
+            break;
+        case SDLK_CAPSLOCK: lshift = 0x02, rshift = 0x04;
+            break;
+        /* ctrl (control 0x01) missing, can't find corresponding SDL key. */
+            
+        /* Special keys not yet emulated:
+         SOUND_UP_KEY           0x1A
+         SOUND_DOWN_KEY         0x02
+         BRIGHTNESS_UP_KEY      0x19
+         BRIGHTNESS_DOWN_KEY	0x01
+         POWER_KEY              0x58
+         */
+
         default: break;
     }
+    modkeys = 0x80 | ralt | lalt | rcom | lcom | rshift | lshift | ctrl;
+}
+
+
+void KeyRelease(SDL_KeyboardEvent *key) { //release modifier Keys
+    switch (key->keysym.sym) {
+        case SDLK_LSHIFT: lshift = 0x00;
+            break;
+        case SDLK_RSHIFT: rshift = 0x00;
+            break;
+        case SDLK_LCTRL: lcom = 0x00;
+            break;
+        case SDLK_RCTRL: rcom = 0x00;
+            break;
+        case SDLK_LALT: lalt = 0x00;
+            break;
+        case SDLK_RALT: ralt = 0x00;
+            break;
+        case SDLK_CAPSLOCK: lshift = 0x00, rshift = 0x00;
+            break;
+        default: break;
+    }
+    modkeys = 0x80 | ralt | lalt | rcom | lcom | rshift | lshift | ctrl;
 }
 
 

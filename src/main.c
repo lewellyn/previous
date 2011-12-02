@@ -522,6 +522,7 @@ void Main_EventHandler(void)
 
 		 case SDL_KEYUP:
 //			Keymap_KeyUp(&event.key.keysym);
+            KeyRelease(&event.key);
 			break;
 
 		default:
