@@ -22,7 +22,7 @@ void Keyboard_Read0(void);
 void Keyboard_Read1(void);
 void Keyboard_Read2(void);
 void Keycode_Read(void);
-void KeyTranslator(SDL_KeyboardEvent *key);
-void KeyRelease(SDL_KeyboardEvent *key);
+void KeyTranslator(SDL_keysym *sdlkey);
+void KeyRelease(SDL_keysym *sdlkey);
 
 #endif

@@ -86,10 +86,15 @@ void Keycode_Read(void) {
 }
 
 
-void KeyTranslator(SDL_KeyboardEvent *key) { // Translate SDL Keys to NeXT Keycodes
-//    Log_Printf(LOG_WARN, SDL_GetKeyName(key->keysym.sym));
+void KeyTranslator(SDL_keysym *sdlkey) { // Translate SDL Keys to NeXT Keycodes
+    Log_Printf(LOG_WARN, "Key pressed: %s\n", SDL_GetKeyName(sdlkey->sym));
 
-    switch (key->keysym.sym) {
+    int symkey = sdlkey->sym;
+	int modkey = sdlkey->mod;
+    if (ShortCut_CheckKeys(modkey, symkey, 1))
+		return;
+
+    switch (sdlkey->sym) {
         
         case SDLK_RIGHTBRACKET: nextkeycode = 0x04;
             break;
@@ -237,6 +242,10 @@ void KeyTranslator(SDL_KeyboardEvent *key) { // Translate SDL Keys to NeXT Keyco
             break;
             
         /* Modifier Keys */
+        case SDLK_RMETA: ctrl = 0x01;
+            break;
+        case SDLK_LMETA: ctrl = 0x01;
+            break;
         case SDLK_LSHIFT: lshift = 0x02;
             break;
         case SDLK_RSHIFT: rshift = 0x04;
@@ -251,7 +260,6 @@ void KeyTranslator(SDL_KeyboardEvent *key) { // Translate SDL Keys to NeXT Keyco
             break;
         case SDLK_CAPSLOCK: lshift = 0x02, rshift = 0x04;
             break;
-        /* ctrl (control 0x01) missing, can't find corresponding SDL key. */
             
         /* Special keys not yet emulated:
          SOUND_UP_KEY           0x1A
@@ -264,11 +272,22 @@ void KeyTranslator(SDL_KeyboardEvent *key) { // Translate SDL Keys to NeXT Keyco
         default: break;
     }
     modkeys = 0x80 | ralt | lalt | rcom | lcom | rshift | lshift | ctrl;
+    Log_Printf(LOG_WARN, "Modkeys: $%02x\n", modkeys);
 }
 
 
-void KeyRelease(SDL_KeyboardEvent *key) { //release modifier Keys
-    switch (key->keysym.sym) {
+void KeyRelease(SDL_keysym *sdlkey) { //release modifier Keys
+    int symkey = sdlkey->sym;
+	int modkey = sdlkey->mod;
+    if (ShortCut_CheckKeys(modkey, symkey, 0))
+		return;
+
+    switch (sdlkey->sym) {
+            
+        case SDLK_RMETA: ctrl = 0x00;
+            break;
+        case SDLK_LMETA: ctrl = 0x00;
+            break;
         case SDLK_LSHIFT: lshift = 0x00;
             break;
         case SDLK_RSHIFT: rshift = 0x00;
@@ -286,6 +305,7 @@ void KeyRelease(SDL_KeyboardEvent *key) { //release modifier Keys
         default: break;
     }
     modkeys = 0x80 | ralt | lalt | rcom | lcom | rshift | lshift | ctrl;
+    Log_Printf(LOG_WARN, "Modkeys: $%02x\n", modkeys);
 }
 
 

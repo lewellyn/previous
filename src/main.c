@@ -516,13 +516,13 @@ void Main_EventHandler(void)
 		 case SDL_KEYDOWN:
 //          fprintf(stderr, "keydwn\n");
 //			Keymap_KeyDown(&event.key.keysym);
-//          ShortCut_ActKey();
-            KeyTranslator(&event.key);
+            ShortCut_ActKey();
+            KeyTranslator(&event.key.keysym);
 			break;
 
 		 case SDL_KEYUP:
 //			Keymap_KeyUp(&event.key.keysym);
-            KeyRelease(&event.key);
+            KeyRelease(&event.key.keysym);
 			break;
 
 		default:
