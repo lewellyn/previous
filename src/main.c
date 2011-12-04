@@ -516,7 +516,6 @@ void Main_EventHandler(void)
 		 case SDL_KEYDOWN:
 //          fprintf(stderr, "keydwn\n");
 //			Keymap_KeyDown(&event.key.keysym);
-            ShortCut_ActKey();
             KeyTranslator(&event.key.keysym);
 			break;
 
@@ -581,7 +580,7 @@ static void Main_Init(void)
 	M68000_Init();                /* Init CPU emulation */
 //	Audio_Init();
 //	DmaSnd_Init();
-//	Keymap_Init();
+	Keymap_Init();
 
 	/* Init HD emulation */
 //	HDC_Init();
