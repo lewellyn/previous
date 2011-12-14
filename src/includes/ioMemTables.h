@@ -19,4 +19,7 @@ typedef struct
 
 extern const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[];
 
+static Uint32 intStat=0x04;
+static Uint32 intMask=0x00000000;
+
 #endif
