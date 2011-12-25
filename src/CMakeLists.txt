@@ -6,7 +6,7 @@ set(SOURCES
 	m68000.c main.c
 	paths.c resolution.c reset.c
 	scandir.c nextMemory.c screen.c screenSnapShot.c shortcut.c
-	statusbar.c str.c zip.c unzip.c utils.c 
+	statusbar.c str.c sysReg.c zip.c unzip.c utils.c 
 	video.c )
 
 # When building for OSX, define specific sources for gui and ressources

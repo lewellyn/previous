@@ -1,7 +1,7 @@
 void SCSI_DMA_Read(void);
 void SCSI_DMA_Write(void); 
-void SCSI_14020_Read(void); 
-void SCSI_14020_Write(void); 
+void SCSI_CSR0_Read(void); 
+void SCSI_CSR0_Write(void); 
 void SCSI_TransCountL_Read(void); 
 void SCSI_TransCountL_Write(void); 
 void SCSI_TransCountH_Read(void);
@@ -22,3 +22,11 @@ void SCSI_Configuration_Read(void);
 void SCSI_Configuration_Write(void); 
 void SCSI_ClockConv_Write(void);
 void SCSI_Test_Write(void);
+
+
+void handle_satn(void);
+void esp_raise_irq(void);
+void esp_lower_irq(void);
+Uint32 get_cmd(void);
+void do_cmd(void);
+void do_busid_cmd(Uint8);
