@@ -1,7 +1,7 @@
 set(SOURCES
 	cart.c cfgopts.c
 	clocks_timings.c configuration.c options.c  change.c
-	control.c cycInt.c cycles.c dialog.c esp.c file.c
+	control.c cycInt.c cycles.c dialog.c dma.c esp.c file.c
 	ioMem.c ioMemTabNEXT.c memorySnapShot.c keymap.c
 	m68000.c main.c
 	paths.c resolution.c reset.c

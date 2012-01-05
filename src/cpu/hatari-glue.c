@@ -58,39 +58,50 @@ int intlev(void)
 	/* There are only VBL and HBL autovector interrupts in the ST... */
 //	assert((pendingInterrupts & ~((1<<4)|(1<<2))) == 0);
 
-//	if (pendingInterrupts & (1 << 4))         /* VBL interrupt? */
-//	{
-//		if (regs.intmask < 4)
-//			pendingInterrupts &= ~(1 << 4);
-//		return 4;
-//	}
-//	else if (pendingInterrupts & (1 << 2))    /* HBL interrupt? */
-//	{
-//		if (regs.intmask < 2)
-//			pendingInterrupts &= ~(1 << 2);
-//		return 2;
-//	}
+	if (pendingInterrupts & (1 << 7))
+	{
+		if (regs.intmask < 7)
+			pendingInterrupts &= ~(1 << 7);
+		return 7;
+	}
+    else if (pendingInterrupts & (1 << 6))
+	{
+		if (regs.intmask < 6)
+			pendingInterrupts &= ~(1 << 6);
+		return 6;
+	}
+	else if (pendingInterrupts & (1 << 5))
+	{
+		if (regs.intmask < 5)
+			pendingInterrupts &= ~(1 << 5);
+		return 5;
+	}
+	else if (pendingInterrupts & (1 << 4))
+	{
+		if (regs.intmask < 4)
+			pendingInterrupts &= ~(1 << 4);
+		return 4;
+	}
+	else if (pendingInterrupts & (1 << 3))
+	{
+		if (regs.intmask < 3)
+			pendingInterrupts &= ~(1 << 3);
+		return 3;
+	}
+	else if (pendingInterrupts & (1 << 2))
+	{
+		if (regs.intmask < 2)
+			pendingInterrupts &= ~(1 << 2);
+		return 2;
+	}
+    else if (pendingInterrupts & (1 << 1))
+	{
+		if (regs.intmask < 1)
+			pendingInterrupts &= ~(1 << 1);
+		return 1;
+	}
 
-//	return -1;
-    switch(pendingInterrupts) {
-        case 0x01: return 0;
-            break;
-        case 0x02: return 1;
-            break;
-        case 0x04: return 2;
-            break;
-        case 0x08: return 3;
-            break;
-        case 0x10: return 4;
-            break;
-        case 0x20: return 5;
-            break;
-        case 0x40: return 6;
-            break;
-        case 0x80: return 7;
-            break;
-        default: return -1;
-    }
+	return -1;
 }
 
 /**

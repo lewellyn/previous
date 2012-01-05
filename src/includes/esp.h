@@ -1,7 +1,8 @@
-void SCSI_DMA_Read(void);
-void SCSI_DMA_Write(void); 
 void SCSI_CSR0_Read(void); 
-void SCSI_CSR0_Write(void); 
+void SCSI_CSR0_Write(void);
+void SCSI_CSR1_Read(void);
+void SCSI_CSR1_Write(void);
+
 void SCSI_TransCountL_Read(void); 
 void SCSI_TransCountL_Write(void); 
 void SCSI_TransCountH_Read(void);
@@ -25,8 +26,12 @@ void SCSI_Test_Write(void);
 
 
 void handle_satn(void);
+void handle_ti(void);
 void esp_raise_irq(void);
 void esp_lower_irq(void);
 Uint32 get_cmd(void);
 void do_cmd(void);
 void do_busid_cmd(Uint8);
+void esp_do_dma(void);
+void esp_dma_done(void);
+void esp_transfer_data(void);

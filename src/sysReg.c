@@ -442,14 +442,16 @@ void SCR2_Read3(void)
 /* Interrupt Status Register */
 
 void IntRegStatRead(void) {
-	IoMem[0x02007000 & 0x1FFFF]=intStat >> 24;
-    IoMem[0x02007001 & 0x1FFFF]=intStat >> 16;
-    IoMem[0x02007002 & 0x1FFFF]=intStat >> 8;
-    IoMem[0x02007003 & 0x1FFFF]=intStat >> 0;
+    IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, intStat);
+//	IoMem[0x02007000 & 0x1FFFF]=intStat >> 24;
+//  IoMem[0x02007001 & 0x1FFFF]=intStat >> 16;
+//  IoMem[0x02007002 & 0x1FFFF]=intStat >> 8;
+//  IoMem[0x02007003 & 0x1FFFF]=intStat >> 0;
 }
 
-void IntRegStatWrite(void) { // fix this!!!
-	intStat=IoMem[IoAccessCurrentAddress & 0x1FFFF];
+void IntRegStatWrite(void) {
+    intStat = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
+//	intStat=(IoMem[0x02007000 & 0x1FFFF] << 24) | (IoMem[0x02007001 & 0x1FFFF] << 16) | (IoMem[0x02007002 & 0x1FFFF] << 8) | IoMem[0x02007003 & 0x1FFFF];
 }
 
 void set_interrupt(Uint32 interrupt_val, Uint8 int_set_release) {

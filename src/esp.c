@@ -7,6 +7,7 @@
 #include "m68000.h"
 #include "esp.h"
 #include "sysReg.h"
+#include "dma.h"
 
 /* Command Register */
 #define CMD_DMA      0x80
@@ -72,7 +73,7 @@ Uint8 fifo;
 Uint8 command;
 Uint8 status;
 Uint8 selectbusid;
-Uint8 intstatus;
+Uint8 intstatus = 0x00;
 Uint8 selecttimeout;
 Uint8 seqstep;
 Uint8 syncperiod;
@@ -91,17 +92,28 @@ Uint8 esp_fifo[ESP_FIFO_SIZE];
 Uint8 fifo_read_ptr;
 Uint8 fifo_write_ptr;
 
+/* buf */
+#define SCSI_CMD_BUF_SIZE 16
+Uint8 buf[SCSI_CMD_BUF_SIZE];
 
-void SCSI_DMA_Read(void) {
- 	Log_Printf(LOG_WARN,"SCSI DMA read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-}
 
-void SCSI_DMA_Write(void) {
- 	Log_Printf(LOG_WARN,"SCSI DMA write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-}
+/* Experimental */
+Uint32 dma;
+Uint32 do_cmdvar;
+Uint32 dma_counter;
+int32_t data_len;
+Uint32 dma_left;
+Uint32 cmdlen;
+Uint32 async_len;
+Uint8 *async_buf;
+int dma_enabled = 1;
+void (*dma_cb);
+#define ESP_MAX_DEVS 7
+
+
 
 void SCSI_CSR0_Read(void) {
- 	Log_Printf(LOG_WARN,"SCSI CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+ 	Log_Printf(LOG_WARN,"SCSI CSR0 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void SCSI_CSR0_Write(void) {
@@ -121,18 +133,32 @@ void SCSI_CSR0_Write(void) {
         Log_Printf(LOG_WARN, "DMADIR");
     }
     if ((csr_value0 & 0x10) == 0x10) {
-        Log_Printf(LOG_WARN, "CPUDMA");
         set_interrupt(INT_SCSI_DMA, SET_INT); //        intStat |= 0x4000000;
+        esp_raise_irq(); 
+        Log_Printf(LOG_WARN, "CPUDMA");
     }else{
         set_interrupt(INT_SCSI_DMA, RELEASE_INT); //        intStat &= ~(0x4000000);
+        esp_lower_irq();
     }
     if ((csr_value0 & 0x20) == 0x20) {
         Log_Printf(LOG_WARN, "INTMASK");
     }
     if ((csr_value0 & 0x80) == 0x80) {
-        Log_Printf(LOG_WARN, "????");
+    //    Log_Printf(LOG_WARN, "????");
     }
 }
+
+void SCSI_CSR1_Read(void) {
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = 0x40;
+ 	Log_Printf(LOG_WARN,"SCSI CSR1 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void SCSI_CSR1_Write(void) {
+ 	Log_Printf(LOG_WARN,"SCSI CSR1 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+
+/* ESP Registers */
 
 void SCSI_TransCountL_Read(void) { // 0x02014000
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=readtranscountl;
@@ -140,12 +166,12 @@ void SCSI_TransCountL_Read(void) { // 0x02014000
 }
 
 void SCSI_TransCountL_Write(void) {
-    readtranscountl=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+    writetranscountl=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_WARN,"ESP TransCountL write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void SCSI_TransCountH_Read(void) { // 0x02014001
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=writetranscounth;
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=readtranscounth;
  	Log_Printf(LOG_WARN,"ESP TransCoundH read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
@@ -175,22 +201,37 @@ void SCSI_Command_Read(void) { // 0x02014003
 void SCSI_Command_Write(void) {
     command=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_WARN,"ESP Command write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    
+    dma = (command & CMD_DMA ? 1 : 0);
+//    cmd_count++;
     switch (command & CMD_CMD) {
         case CMD_FLUSH:
-            // flush fifo
+            fifo_read_ptr = 0;
+            fifo_write_ptr = 0;
+            esp_fifo[0] = 0;
             fifoflags &= 0xe0;
             Log_Printf(LOG_WARN,"FIFO flush");
             break;
             
         case CMD_BUSRESET:
             //Reset all Devices on SCSI bus
-            if ((configuration & CFG1_RESREPT) == CFG1_RESREPT) {
-                intstatus = INTR_RST; //raise irq
+            if (!(configuration & CFG1_RESREPT)) {
+                intstatus = INTR_RST;
+                Log_Printf(LOG_WARN,"Bus Reset raising IRQ\n");
+                esp_raise_irq();
             }
+            break;
+            
+        case CMD_TI:
+            handle_ti();
             break;
             
         case CMD_SELATN:
             handle_satn();
+            break;
+            
+        case CMD_PAD:
+//            esp_raise_irq();
             break;
             
         default: break;
@@ -209,13 +250,14 @@ void SCSI_SelectBusID_Write(void) {
 
 void SCSI_IntStatus_Read(void) { // 0x02014005
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=intstatus;
+    Log_Printf(LOG_WARN,"ESP IntStatus read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    
     if (irq_status == 1) {
             intstatus = 0x00;
             status &= ~STAT_TC;
             seqstep = SEQ_CD;
             esp_lower_irq();
     }
-    Log_Printf(LOG_WARN,"ESP IntStatus read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void SCSI_SelectTimeout_Write(void) {
@@ -266,7 +308,7 @@ void SCSI_Test_Write(void) {
 
 
 void esp_raise_irq(void) {
-    if((status & STAT_INT) != STAT_INT) {
+    if(!(status & STAT_INT)) {
         status = status | STAT_INT;
         irq_status = 1;
         
@@ -288,30 +330,59 @@ void esp_lower_irq(void) {
 }
 
 Uint32 get_cmd (void) {
-    Uint32 transfer_len;
+    Uint32 xfer_len = 0;
     int target = selectbusid & BUSID_DID;
     
-    transfer_len = fifo_write_ptr - fifo_read_ptr;
-    // TODO: copy fifo to some buffer and then reset ...
-    //fifo_read_ptr = fifo_write_ptr = 0; // reset fifo!
-    Log_Printf(LOG_WARN, "get_cmd: len %i target %i", transfer_len, target);
-    return transfer_len;
+    if(dma) {
+        xfer_len = readtranscountl | (readtranscounth << 8);
+        //dma_memory_read(dma_opaque, buf, xfer_len);
+    } else {
+        xfer_len = fifo_write_ptr - fifo_read_ptr;
+        memcpy(buf, esp_fifo, (fifo_write_ptr - fifo_read_ptr));
+                
+        fifo_read_ptr = 0;
+        fifo_write_ptr = 0;
+        esp_fifo[0] = 0;
+        fifoflags = 0xE0;
+    }
+    Log_Printf(LOG_WARN, "get_cmd: len %i target %i", xfer_len, target);
+    
+//    if(current_req) {
+//        scsi_req_cancel(current_req);
+//        async_len = 0;
+//    }
+    
+    if(target >= ESP_MAX_DEVS /*|| bus.devs[target]*/) {
+        status = 0;
+        intstatus = INTR_DC;
+        seqstep = SEQ_0;
+        esp_raise_irq();
+        return 0;
+    }
+    
+//    current_dev = bus.devs[target];
+    return xfer_len;
 }
 
 void do_cmd(void) {
-    Uint8 busid = esp_fifo[0]; // in future read this from buffer (yet to be implemented)
+    Uint8 busid = buf[0];
     do_busid_cmd(busid);
 }
 
 void handle_satn(void) {
     int len;
+    
+    if(!(dma_enabled)) {
+        dma_cb = handle_satn; // experimental
+    }
+    
     len = get_cmd(); // transfer_len;
     if(!(len == 0 || len == 7 || len == 11 || len == 13)) {
         Log_Printf(LOG_WARN, "Invalid command length %i", len);
         abort();
-    } else {
-        do_cmd();
     }
+    if(len)
+        do_cmd();
 }
 
 void do_busid_cmd(Uint8 busid) {
@@ -319,12 +390,143 @@ void do_busid_cmd(Uint8 busid) {
     Log_Printf(LOG_WARN, "do_busid_cmd: busid $%02x",busid);
     lun = busid & 7;
     
-    status = STAT_TC;
+//    current_req = scsi_req_new(current_dev, 0, lun, NULL);
+//    data_len = scsi_req_enqueue(current_req, buf);
+    data_len = buf[5]; // for experimenting
     
-    status = status | STAT_DI;
+    if (data_len != 0) {
+        Log_Printf(LOG_WARN, "executing command\n");
+        status = STAT_TC;
+        
+        dma_left = 0;
+        dma_counter = 0;
+        
+        if(data_len > 0) {
+            Log_Printf(LOG_WARN, "DATA IN\n");
+            status |= STAT_DI;
+        } else {
+            Log_Printf(LOG_WARN, "DATA OUT\n");
+            status |= STAT_DO;
+        }
+    esp_transfer_data();
+    }
     
     intstatus = INTR_BS | INTR_FC;
     seqstep = SEQ_CD;
     
     esp_raise_irq();   
+}
+
+
+void esp_transfer_data(void) {
+    Log_Printf(LOG_WARN, "transfer %d/%d\n", dma_left, data_len);
+    
+//    async_len = len;
+//    async_buf = scsi_req_get_buf(req);
+    if(dma_left) {
+        esp_do_dma();
+    } else if(dma_counter != 0 && data_len <= 0) {
+        esp_dma_done();
+    }
+}
+
+
+void esp_do_dma(void) {
+    
+    Log_Printf(LOG_WARN, "call esp_do_dma\n");
+
+    Uint32 len;
+    int to_device;
+    
+    to_device = (data_len < 0);
+    
+    len = dma_left;
+    
+    if(do_cmdvar){
+        abort();
+    /*
+        Log_Printf(LOG_WARN, "command len %d + %d\n", cmdlen, len);
+        dma_memory_read(fifo_buf[cmdlen], len);
+        fifo_size = 0;
+        cmdlen = 0;
+        do_cmdvar = 0;
+        // do_cmd(cmd_buf);
+        return;
+     */
+    }
+    if(async_len == 0) {
+        return;
+    }
+    if(len > async_len) {
+        len = async_len;
+    }
+    if(to_device) {
+//        dma_memory_read(async_buf, len);
+    } else {
+//        dma_memory_write(async_buf, len);
+    }
+    
+    dma_left -= len;
+    async_buf += len;
+    async_len -= len;
+    
+    if(to_device)
+        data_len += len;
+    else
+        data_len -= len;
+    
+    if(async_len == 0) {
+//        scsi_req_continue(current_req);
+        nextdma_write(buf, data_len, NEXTDMA_SCSI);//experimental !!
+        
+        if (to_device || dma_left != 0 || (fifo_write_ptr - fifo_read_ptr) == 0) {
+            return;
+        }
+    }
+    
+    esp_dma_done();
+}
+
+void esp_dma_done(void) {
+    Log_Printf(LOG_WARN, "call esp_dma_done\n");
+    status |= STAT_TC;
+    intstatus = INTR_BS;
+    seqstep = 0;
+    fifoflags = 0;
+    readtranscountl = 0;
+    readtranscounth = 0;
+    esp_raise_irq();
+}
+
+void handle_ti(void){
+    Uint32 dma_len, min_len;
+    
+    dma_len = writetranscountl | (writetranscounth << 8);
+    
+    if(dma_len == 0) {
+        dma_len = 0x10000;
+    }
+    
+    dma_counter = dma_len;
+    
+    if(do_cmdvar)
+        min_len = (dma_len < 32) ? dma_len : 32;
+    else if (data_len < 0)
+        min_len = (dma_len < (-data_len)) ? dma_len : data_len;
+    else
+        min_len = (dma_len > data_len) ? dma_len : data_len;
+    Log_Printf(LOG_WARN, "Transfer Information len %d\n", min_len);
+    
+    if(dma) {
+        dma_left = min_len;
+        status &= ~STAT_TC;
+        esp_do_dma();
+    }else if(do_cmdvar){
+        Log_Printf(LOG_WARN, "Command len: %i",cmdlen);
+        data_len = 0;
+        cmdlen = 0;
+        do_cmdvar = 0;
+        do_cmd();
+        return;
+    }
 }
