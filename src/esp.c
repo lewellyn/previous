@@ -8,6 +8,7 @@
 #include "esp.h"
 #include "sysReg.h"
 #include "dma.h"
+#include "scsi.h"
 
 /* Command Register */
 #define CMD_DMA      0x80
@@ -92,9 +93,10 @@ Uint8 esp_fifo[ESP_FIFO_SIZE];
 Uint8 fifo_read_ptr;
 Uint8 fifo_write_ptr;
 
-/* buf */
+/* Command buffer */
 #define SCSI_CMD_BUF_SIZE 16
-Uint8 buf[SCSI_CMD_BUF_SIZE];
+Uint8 commandbuf[SCSI_CMD_BUF_SIZE];
+int command_len;
 
 
 /* Experimental */
@@ -113,48 +115,83 @@ void (*dma_cb);
 
 
 void SCSI_CSR0_Read(void) {
- 	Log_Printf(LOG_WARN,"SCSI CSR0 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+ 	Log_Printf(LOG_WARN,"SCSI DMA control read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void SCSI_CSR0_Write(void) {
-    Log_Printf(LOG_WARN,"SCSI CSR0 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    Log_Printf(LOG_WARN,"SCSI DMA control write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     Uint8 csr_value0;
     csr_value0 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
     if ((csr_value0 & 0x04) == 0x04) {
-        Log_Printf(LOG_WARN, "FIFO flush");
+        Log_Printf(LOG_WARN, "flush FIFO\n");
     }
     if ((csr_value0 & 0x01) == 0x01) {
-        Log_Printf(LOG_WARN, "Enable");
+        Log_Printf(LOG_WARN, "scsi chip is WD33C92\n");
+    } else {
+        Log_Printf(LOG_WARN, "scsi chip is NCR53C90\n");
     }
     if ((csr_value0 & 0x02) == 0x02) {
-        Log_Printf(LOG_WARN, "Reset");
+        Log_Printf(LOG_WARN, "reset scsi chip\n");
+        esp_reset_hard();
     }
     if ((csr_value0 & 0x08) == 0x08) {
-        Log_Printf(LOG_WARN, "DMADIR");
+        Log_Printf(LOG_WARN, "dma from scsi to mem\n");
     }
     if ((csr_value0 & 0x10) == 0x10) {
-        set_interrupt(INT_SCSI_DMA, SET_INT); //        intStat |= 0x4000000;
+        set_interrupt(INT_SCSI_DMA, SET_INT);
         esp_raise_irq(); 
-        Log_Printf(LOG_WARN, "CPUDMA");
+        Log_Printf(LOG_WARN, "mode DMA\n");
     }else{
-        set_interrupt(INT_SCSI_DMA, RELEASE_INT); //        intStat &= ~(0x4000000);
+        set_interrupt(INT_SCSI_DMA, RELEASE_INT);
         esp_lower_irq();
+        Log_Printf(LOG_WARN, "mode PIO\n");
     }
     if ((csr_value0 & 0x20) == 0x20) {
-        Log_Printf(LOG_WARN, "INTMASK");
+        Log_Printf(LOG_WARN, "interrupt enable");
+//        set_interrupt(INT_SCSI_DMA, SET_INT); is this correct?
+//        esp_raise_irq();
     }
-    if ((csr_value0 & 0x80) == 0x80) {
-    //    Log_Printf(LOG_WARN, "????");
+    switch (csr_value0 & 0xC0) {
+        case 0x00:
+            Log_Printf(LOG_WARN, "10 MHz clock\n");
+            break;
+        case 0x40:
+            Log_Printf(LOG_WARN, "12.5 MHz clock\n");
+            break;
+        case 0xC0:
+            Log_Printf(LOG_WARN, "16.6 MHz clock\n");
+            break;
+        case 0x80:
+            Log_Printf(LOG_WARN, "20 MHz clock\n");
+            break;
+        default:
+            break;
     }
 }
 
 void SCSI_CSR1_Read(void) {
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = 0x40;
- 	Log_Printf(LOG_WARN,"SCSI CSR1 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    
+    /*
+     * dma fifo status register
+     */
+#define	S5RDMAS_STATE		0xc0	/* DMA/SCSI bank state */
+#define	S5RDMAS_D0S0		0x00	/* DMA rdy for bank 0, SCSI in bank 0 */
+#define	S5RDMAS_D0S1		0x40	/* DMA req for bank 0, SCSI in bank 1 */
+#define	S5RDMAS_D1S1		0x80	/* DMA rdy for bank 1, SCSI in bank 1 */
+#define	S5RDMAS_D1S0		0xc0	/* DMA req for bank 1, SCSI in bank 0 */
+#define	S5RDMAS_OUTFIFOMASK	0x38	/* output fifo byte (INVERTED) */
+#define	S5RDMAS_INFIFOMASK	0x07	/* input fifo byte (INVERTED) */
+    
+#define	S5RDMA_FIFOALIGNMENT	4	/* mass storage chip buffer size */
+
+    
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = 0x80;
+//    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = 0x40; // from qemu-next - meaning?
+ 	Log_Printf(LOG_WARN,"SCSI DMA FIFO status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void SCSI_CSR1_Write(void) {
- 	Log_Printf(LOG_WARN,"SCSI CSR1 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+ 	Log_Printf(LOG_WARN,"SCSI DMA FIFO status write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 
@@ -307,6 +344,43 @@ void SCSI_Test_Write(void) {
 
 
 
+/* Functions */
+
+void esp_reset_hard(void) {
+    Log_Printf(LOG_WARN, "ESP hard reset\n");
+    /* hard reset */
+    clockconv = 0x02;
+    configuration &= ~0xF8; // clear chip test mode, parity enable, parity test, scsi request/int disable, slow cable mode
+    esp_fifo[0] = 0x00;
+    fifo_read_ptr = 0;
+    fifo_write_ptr = 0;
+    syncperiod = 0x05;
+    syncoffset = 0x00;
+    intstatus = 0x00;
+    status &= ~0x68; // clear transfer complete, parity error, gross error
+    
+    /* soft reset */
+    status &= ~0x10; // clear transfer count zero
+    
+    /* incomplete, need to work on everything below this point */
+    
+    dma_cb = NULL; // clear DMA interface - how to do this?
+    dma = 0;
+    readtranscountl = 0x00;
+    readtranscounth = 0x00;
+    writetranscountl = 0x00;
+    writetranscounth = 0x00;
+
+    seqstep = 0x00;
+
+    command = 0x00;
+    selectbusid = 0x00;
+    selecttimeout= 0x00;
+    fifoflags = 0x00;
+    esptest = 0x00;
+    esp_lower_irq();
+}
+
 void esp_raise_irq(void) {
     if(!(status & STAT_INT)) {
         status = status | STAT_INT;
@@ -338,7 +412,8 @@ Uint32 get_cmd (void) {
         //dma_memory_read(dma_opaque, buf, xfer_len);
     } else {
         xfer_len = fifo_write_ptr - fifo_read_ptr;
-        memcpy(buf, esp_fifo, (fifo_write_ptr - fifo_read_ptr));
+        memcpy(commandbuf, esp_fifo, (fifo_write_ptr - fifo_read_ptr));
+        command_len = xfer_len; // may be removed after making struct for ESP
                 
         fifo_read_ptr = 0;
         fifo_write_ptr = 0;
@@ -365,7 +440,7 @@ Uint32 get_cmd (void) {
 }
 
 void do_cmd(void) {
-    Uint8 busid = buf[0];
+    Uint8 busid = commandbuf[0];
     do_busid_cmd(busid);
 }
 
@@ -390,9 +465,10 @@ void do_busid_cmd(Uint8 busid) {
     Log_Printf(LOG_WARN, "do_busid_cmd: busid $%02x",busid);
     lun = busid & 7;
     
+    scsi_command_analyzer(commandbuf, command_len);
 //    current_req = scsi_req_new(current_dev, 0, lun, NULL);
 //    data_len = scsi_req_enqueue(current_req, buf);
-    data_len = buf[5]; // for experimenting
+    data_len = commandbuf[5]; // for experimenting
     
     if (data_len != 0) {
         Log_Printf(LOG_WARN, "executing command\n");
@@ -463,6 +539,12 @@ void esp_do_dma(void) {
     if(to_device) {
 //        dma_memory_read(async_buf, len);
     } else {
+        
+        int dma_translen; // experimental
+        dma_translen = readtranscountl | (readtranscounth << 8); // experimental
+        Log_Printf(LOG_WARN, "call dma_write\n"); // experimental
+        nextdma_write(commandbuf, dma_translen, NEXTDMA_SCSI);//experimental !!
+        
 //        dma_memory_write(async_buf, len);
     }
     
@@ -477,7 +559,6 @@ void esp_do_dma(void) {
     
     if(async_len == 0) {
 //        scsi_req_continue(current_req);
-        nextdma_write(buf, data_len, NEXTDMA_SCSI);//experimental !!
         
         if (to_device || dma_left != 0 || (fifo_write_ptr - fifo_read_ptr) == 0) {
             return;

@@ -25,6 +25,7 @@ void SCSI_ClockConv_Write(void);
 void SCSI_Test_Write(void);
 
 
+void esp_reset_hard(void);
 void handle_satn(void);
 void handle_ti(void);
 void esp_raise_irq(void);

@@ -208,10 +208,14 @@ void DMA_SCSI_Size_Write(void) {
     Log_Printf(LOG_WARN,"DMA SCSI Size write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma_size, m68k_getpc());
 }
 
-
-
+#define DMA_BUFFER_SIZE 1024
+Uint8 dma_buffer[DMA_BUFFER_SIZE];
 
 /* DMA Functions */
+
+void copy_to_scsidma_buffer(Uint8 device_outbuf[], int outbuf_size) {
+    memcpy(dma_buffer, device_outbuf, outbuf_size);
+}
 
 void nextdma_write(Uint8 *buf, int size, int type) {
     Uint32 base_addr;
@@ -232,10 +236,11 @@ void nextdma_write(Uint8 *buf, int size, int type) {
     else
         base_addr = dma_init;
     
-    for (size_count = 0; size_count == dma_size; size_count++) { // need to work on this
-        write_addr = base_addr + size_count;
-        NEXTMemory_WriteByte(write_addr, buf[size_count]);
-    }
+    NEXTMemory_SafeCopy(base_addr, dma_buffer, size, "SCSI Inquiry");
+//    for (size_count = 0; size_count == dma_size; size_count++) { // need to work on this
+//        write_addr = base_addr + size_count;
+//        NEXTMemory_WriteByte(write_addr, buf[size_count]);
+//    }
     
     dma_init = 0;
     
