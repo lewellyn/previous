@@ -37,8 +37,30 @@
 #define HD_REQSENS_NODRIVE  0x25              /* Invalid drive */
 
 
-void scsi_command_analyzer(Uint8 command[], int size);
+typedef struct {
+    int readCount;    /* count of number of command bytes written */
+    unsigned char target;
+    unsigned char opcode;
+    int transfer_data_len;
+    int transferdirection_todevice;
+    bool extended;
+    
+    int byteCount;             /* count of number of command bytes written */
+    unsigned char command[10];
+    short int returnCode;      /* return code from the HDC operation */
+} SCSICOMMAND;
+
+/* HDC globals */
+SCSICOMMAND SCSICommandBlock;
+
+
+
+
+void scsi_command_analyzer(Uint8 command[], int size, int target);
+int SCSI_get_transfer_length(void);
 void SCSI_Emulate_Command(void);
 
 /* SCSI Commands */
 void SCSI_Inquiry (void);
+void SCSI_TestUnitReady(void);
+void SCSI_ReadCapacity(void);

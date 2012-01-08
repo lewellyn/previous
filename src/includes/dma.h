@@ -39,3 +39,15 @@ void DMA_SCSI_Size_Write(void);
 
 void nextdma_write(Uint8 *buf, int size, int type);
 void copy_to_scsidma_buffer(Uint8 device_outbuf[], int return_length);
+void dma_memory_read(Uint32 datalength);
+void dma_clear_memory(Uint32 datalength);
+
+/* Buffers */
+
+/* scsi dma read buffer */
+#define DMA_READBUF_MAX 65536
+Uint8 dma_read_buffer[DMA_READBUF_MAX];
+
+/* dma write buffer */
+#define DMA_BUFFER_SIZE 65536
+Uint8 dma_write_buffer[DMA_BUFFER_SIZE];

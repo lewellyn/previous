@@ -208,14 +208,42 @@ void DMA_SCSI_Size_Write(void) {
     Log_Printf(LOG_WARN,"DMA SCSI Size write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma_size, m68k_getpc());
 }
 
-#define DMA_BUFFER_SIZE 1024
-Uint8 dma_buffer[DMA_BUFFER_SIZE];
+
 
 /* DMA Functions */
 
-void copy_to_scsidma_buffer(Uint8 device_outbuf[], int outbuf_size) {
+/*void copy_to_scsidma_buffer(Uint8 device_outbuf[], int outbuf_size) {
     memcpy(dma_buffer, device_outbuf, outbuf_size);
+}*/
+
+void dma_clear_memory(Uint32 datalength) {
+    Uint32 start_addr;
+    Uint32 end_addr;
+    
+    if(dma_init == 0)
+        start_addr = dma_next;
+    else
+        start_addr = dma_init;
+    
+    end_addr = start_addr + datalength;
+    
+    NEXTMemory_Clear(start_addr, end_addr);
 }
+
+void dma_memory_read(Uint32 datalength) {
+    Uint32 base_addr;
+    Uint32 lencount;
+    
+    if(dma_init == 0)
+        base_addr = dma_next;
+    else
+        base_addr = dma_init;
+    
+    for (lencount = 0; lencount <= datalength; lencount++) {
+        dma_read_buffer[lencount] = NEXTMemory_ReadByte(base_addr + lencount);
+    }
+}
+
 
 void nextdma_write(Uint8 *buf, int size, int type) {
     Uint32 base_addr;
@@ -236,7 +264,7 @@ void nextdma_write(Uint8 *buf, int size, int type) {
     else
         base_addr = dma_init;
     
-    NEXTMemory_SafeCopy(base_addr, dma_buffer, size, "SCSI Inquiry");
+    NEXTMemory_SafeCopy(base_addr, dma_write_buffer, size, "SCSI Inquiry");
 //    for (size_count = 0; size_count == dma_size; size_count++) { // need to work on this
 //        write_addr = base_addr + size_count;
 //        NEXTMemory_WriteByte(write_addr, buf[size_count]);

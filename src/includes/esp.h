@@ -26,6 +26,7 @@ void SCSI_Test_Write(void);
 
 
 void esp_reset_hard(void);
+void esp_reset_soft(void);
 void handle_satn(void);
 void handle_ti(void);
 void esp_raise_irq(void);
@@ -36,3 +37,5 @@ void do_busid_cmd(Uint8);
 void esp_do_dma(void);
 void esp_dma_done(void);
 void esp_transfer_data(void);
+void esp_command_complete(void);
+void write_response(void);

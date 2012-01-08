@@ -10,20 +10,13 @@
 #include "sysReg.h"
 #include "statusbar.h"
 #include "scsi.h"
+#include "dma.h"
+#include "esp.h"
 
-typedef struct {
-    int readCount;    /* count of number of command bytes written */
-    unsigned char target;
-    unsigned char opcode;
-    bool extended;
-    
-    int byteCount;             /* count of number of command bytes written */
-    unsigned char command[10];
-    short int returnCode;      /* return code from the HDC operation */
-} SCSICOMMAND;
 
-/* HDC globals */
-SCSICOMMAND SCSICommandBlock;
+#define COMMAND_ReadInt16(a, i) (((unsigned) a[i] << 8) | a[i + 1])
+
+
 int nPartitions = 0;
 unsigned long hdSize = 0;
 short int HDCSectorCount;
@@ -34,8 +27,6 @@ static Uint32 nLastBlockAddr;
 static bool bSetLastBlockAddr;
 static Uint8 nLastError;
 
-
-#define COMMAND_ReadInt16(a, i) (((unsigned) a[i] << 8) | a[i + 1])
 
 /* SCSI output buffer */
 //#define MAX_OUTBUF_SIZE 1024
@@ -63,10 +54,11 @@ static unsigned char inquiry_bytes[] =
 
 
 
-void scsi_command_analyzer(Uint8 commandbuf[], int size) {
+void scsi_command_analyzer(Uint8 commandbuf[], int size, int target) {
     memcpy(SCSICommandBlock.command, commandbuf, size);
     SCSICommandBlock.opcode = SCSICommandBlock.command[1];
-    Log_Printf(LOG_WARN, "SCSI command: Length = %i, Opcode = $%02x\n", size, SCSICommandBlock.opcode);
+    SCSICommandBlock.target = target;
+    Log_Printf(LOG_WARN, "SCSI command: Length = %i, Opcode = $%02x, target = %i\n", size, SCSICommandBlock.opcode, SCSICommandBlock.target);
     SCSI_Emulate_Command();
 }
 
@@ -78,11 +70,13 @@ void SCSI_Emulate_Command(void)
             
         case HD_TEST_UNIT_RDY:
             Log_Printf(LOG_WARN, "SCSI command: Test unit ready\n");
+            SCSI_TestUnitReady();
 //            HDC_Cmd_TestUnitReady();
             break;
             
         case HD_READ_CAPACITY1:
             Log_Printf(LOG_WARN, "SCSI command: Read capacity\n");
+            SCSI_ReadCapacity();
 //            HDC_Cmd_ReadCapacity();
             break;
             
@@ -111,7 +105,10 @@ void SCSI_Emulate_Command(void)
             
         case HD_SHIP:
             Log_Printf(LOG_WARN, "SCSI command: Ship\n");
+            SCSICommandBlock.transfer_data_len = 0;
+            SCSICommandBlock.transferdirection_todevice = 0;
             SCSICommandBlock.returnCode = 0xFF;
+            esp_command_complete();
 //            FDC_AcknowledgeInterrupt();
             break;
             
@@ -159,7 +156,7 @@ void SCSI_Emulate_Command(void)
 
 
 
-static int SCSI_get_return_length(void)
+int SCSI_get_transfer_length(void)
 {
 	return SCSICommandBlock.opcode < 0x20?
     // class 0
@@ -173,26 +170,83 @@ static int SCSI_get_return_length(void)
 /* SCSI Commands */
 
 
+void SCSI_TestUnitReady(void)
+{
+//	FDC_SetDMAStatus(false);            /* no DMA error */
+//	FDC_AcknowledgeInterrupt();
+	SCSICommandBlock.returnCode = HD_STATUS_OK;
+    esp_command_complete();
+}
+
+
+void SCSI_ReadCapacity(void)
+{
+//	Uint32 nDmaAddr = FDC_GetDMAAddress();
+    
+#ifdef HDC_VERBOSE
+	fprintf(stderr,"Reading 8 bytes capacity data to addr: 0x%x\n", nDmaAddr);
+#endif
+    
+	/* seek to the position */
+/*	if (STMemory_ValidArea(nDmaAddr, 8))
+	{
+		int nSectors = hdSize / 512;
+		STRam[nDmaAddr++] = (nSectors >> 24) & 0xFF;
+		STRam[nDmaAddr++] = (nSectors >> 16) & 0xFF;
+		STRam[nDmaAddr++] = (nSectors >> 8) & 0xFF;
+		STRam[nDmaAddr++] = (nSectors) & 0xFF;
+		STRam[nDmaAddr++] = 0x00;
+		STRam[nDmaAddr++] = 0x00;
+		STRam[nDmaAddr++] = 0x02;
+		STRam[nDmaAddr++] = 0x00; */
+        
+		/* Update DMA counter */
+//		FDC_WriteDMAAddress(nDmaAddr + 8);
+        
+    /* dummy data */
+    SCSICommandBlock.transfer_data_len = 8;
+    static Uint8 dummy_disksize[8] = {
+    0x00, 0x08, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00
+    };
+    memcpy(dma_write_buffer, dummy_disksize, SCSICommandBlock.transfer_data_len);
+		SCSICommandBlock.returnCode = HD_STATUS_OK;
+		nLastError = HD_REQSENS_OK;
+/*	}
+	else
+	{
+		Log_Printf(LOG_WARN, "HDC capacity read uses invalid RAM range 0x%x+%i\n", nDmaAddr, 8);
+		HDCCommand.returnCode = HD_STATUS_ERROR;
+		nLastError = HD_REQSENS_NOSECTOR;
+	}*/
+    
+//	FDC_SetDMAStatus(false);              /* no DMA error */
+//	FDC_AcknowledgeInterrupt();
+//	bSetLastBlockAddr = false;
+	//FDCSectorCountRegister = 0;
+    esp_command_complete();
+}
+
+
+
 void SCSI_Inquiry (void) {  //conversion in progress
-    Uint32 nDmaAddr;
-	int return_length = SCSI_get_return_length();
-    Log_Printf(LOG_WARN, "return length: %d", return_length);
-    Uint8 scsi_outbuf[return_length];
+//    Uint32 nDmaAddr;
+//	int return_length = SCSI_get_transfer_length();
+//    Uint8 scsi_outbuf[return_length];
+    SCSICommandBlock.transfer_data_len = SCSI_get_transfer_length();
+    Log_Printf(LOG_WARN, "return length: %d", SCSICommandBlock.transfer_data_len);
+    SCSICommandBlock.transferdirection_todevice = 0;
+    memcpy(dma_write_buffer, inquiry_bytes, SCSICommandBlock.transfer_data_len);
     
-    memcpy(scsi_outbuf, inquiry_bytes, return_length);
-    
-    Log_Printf(LOG_WARN, "Inquiry Data: %c,%c,%c,%c,%c,%c,%c,%c\n",scsi_outbuf[8],scsi_outbuf[9],scsi_outbuf[10],scsi_outbuf[11],scsi_outbuf[12],scsi_outbuf[13],scsi_outbuf[14],scsi_outbuf[15]);
-    
-    copy_to_scsidma_buffer(scsi_outbuf, return_length);
-    
+    Log_Printf(LOG_WARN, "Inquiry Data: %c,%c,%c,%c,%c,%c,%c,%c\n",dma_write_buffer[8],dma_write_buffer[9],dma_write_buffer[10],dma_write_buffer[11],dma_write_buffer[12],dma_write_buffer[13],dma_write_buffer[14],dma_write_buffer[15]);
+        
 //	nDmaAddr = FDC_GetDMAAddress();
     
 #ifdef HDC_VERBOSE
 	fprintf(stderr,"HDC: Inquiry, %i bytes to 0x%x.\n", count, nDmaAddr);
 #endif
     
-	if (return_length > (int)sizeof(inquiry_bytes))
-		return_length = sizeof(inquiry_bytes);
+	if (SCSICommandBlock.transfer_data_len > (int)sizeof(inquiry_bytes))
+		SCSICommandBlock.transfer_data_len = sizeof(inquiry_bytes);
     
 //	inquiry_bytes[4] = return_length - 8;
     
@@ -207,4 +261,5 @@ void SCSI_Inquiry (void) {  //conversion in progress
 //	FDC_AcknowledgeInterrupt();
 	nLastError = HD_REQSENS_OK;
 	bSetLastBlockAddr = false;
+    esp_command_complete();
 }
