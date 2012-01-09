@@ -239,7 +239,7 @@ void dma_memory_read(Uint32 datalength) {
     else
         base_addr = dma_init;
     
-    for (lencount = 0; lencount <= datalength; lencount++) {
+    for (lencount = 0; lencount < datalength; lencount++) {
         dma_read_buffer[lencount] = NEXTMemory_ReadByte(base_addr + lencount);
     }
 }
@@ -248,7 +248,7 @@ void dma_memory_read(Uint32 datalength) {
 void nextdma_write(Uint8 *buf, int size, int type) {
     Uint32 base_addr;
     Uint8 align = 16;
-    Uint32 size_count = 0;
+    int size_count = 0;
     Uint32 write_addr;
     
     if(type == NEXTDMA_ENRX || type == NEXTDMA_ENTX)
@@ -264,11 +264,15 @@ void nextdma_write(Uint8 *buf, int size, int type) {
     else
         base_addr = dma_init;
     
-    NEXTMemory_SafeCopy(base_addr, dma_write_buffer, size, "SCSI Inquiry");
-//    for (size_count = 0; size_count == dma_size; size_count++) { // need to work on this
-//        write_addr = base_addr + size_count;
-//        NEXTMemory_WriteByte(write_addr, buf[size_count]);
-//    }
+    for (size_count = 0; size_count < size; size_count++) {
+        write_addr = base_addr + size_count;
+        NEXTMemory_WriteByte(write_addr, dma_write_buffer[size_count]);
+    }
+    
+    /* Test read/write */
+//    NEXTMemory_WriteByte(base_addr, 0x77);
+//    Uint8 testvar = NEXTMemory_ReadByte(base_addr);
+//    Log_Printf(LOG_WARN, "Write Test: $%02x at $%08x", testvar, base_addr);
     
     dma_init = 0;
     

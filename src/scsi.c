@@ -15,6 +15,9 @@
 
 
 #define COMMAND_ReadInt16(a, i) (((unsigned) a[i] << 8) | a[i + 1])
+#define COMMAND_ReadInt24(a, i) (((unsigned) a[i] << 16) | ((unsigned) a[i + 1] << 8) | a[i + 2])
+#define COMMAND_ReadInt32(a, i) (((unsigned) a[i] << 24) | ((unsigned) a[i + 1] << 16) | ((unsigned) a[i + 2] << 8) | a[i + 3])
+
 
 
 int nPartitions = 0;
@@ -26,6 +29,26 @@ static FILE *hd_image_file = NULL;
 static Uint32 nLastBlockAddr;
 static bool bSetLastBlockAddr;
 static Uint8 nLastError;
+
+
+/* Image input experiment ----------------------------------------*/
+
+typedef struct {
+    Uint32 filesize;
+} SCSIHDINFO;
+
+SCSIHDINFO scsihd0;
+FILE* scsi0;
+
+void read_image(void);
+void read_image(void) {
+    scsi0 = fopen("./hdd-001.dd","r");
+    fseek(scsi0, 0L, SEEK_END);
+    scsihd0.filesize = ftell(scsi0);
+    Log_Printf(LOG_WARN, "Read disk image: size = %i\n", scsihd0.filesize);
+}
+
+/* ----------------------------------------------------------------*/
 
 
 /* SCSI output buffer */
@@ -83,6 +106,7 @@ void SCSI_Emulate_Command(void)
         case HD_READ_SECTOR:
         case HD_READ_SECTOR1:
             Log_Printf(LOG_WARN, "SCSI command: Read sector\n");
+            //SCSI_ReadSector();
 //            HDC_Cmd_ReadSector();
             break;
             
@@ -107,7 +131,8 @@ void SCSI_Emulate_Command(void)
             Log_Printf(LOG_WARN, "SCSI command: Ship\n");
             SCSICommandBlock.transfer_data_len = 0;
             SCSICommandBlock.transferdirection_todevice = 0;
-            SCSICommandBlock.returnCode = 0xFF;
+            //SCSICommandBlock.returnCode = 0xFF;
+            SCSICommandBlock.returnCode = HD_STATUS_OK;
             esp_command_complete();
 //            FDC_AcknowledgeInterrupt();
             break;
@@ -202,13 +227,25 @@ void SCSI_ReadCapacity(void)
         
 		/* Update DMA counter */
 //		FDC_WriteDMAAddress(nDmaAddr + 8);
-        
-    /* dummy data */
+          
+    
     SCSICommandBlock.transfer_data_len = 8;
-    static Uint8 dummy_disksize[8] = {
-    0x00, 0x08, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00
-    };
-    memcpy(dma_write_buffer, dummy_disksize, SCSICommandBlock.transfer_data_len);
+  
+    read_image(); // experimental, work on this later!
+    Uint32 sectors = scsihd0.filesize / 512;
+    
+    static Uint8 scsi_disksize[8];
+
+    scsi_disksize[0] = (sectors >> 24) & 0xFF;
+    scsi_disksize[1] = (sectors >> 16) & 0xFF;
+    scsi_disksize[2] = (sectors >> 8) & 0xFF;
+    scsi_disksize[3] = sectors & 0xFF;
+    scsi_disksize[4] = 0x00;
+    scsi_disksize[5] = 0x00;
+    scsi_disksize[6] = 0x02;  // block size 512 - correct?
+    scsi_disksize[7] = 0x00;
+    
+    memcpy(dma_write_buffer, scsi_disksize, SCSICommandBlock.transfer_data_len);
 		SCSICommandBlock.returnCode = HD_STATUS_OK;
 		nLastError = HD_REQSENS_OK;
 /*	}

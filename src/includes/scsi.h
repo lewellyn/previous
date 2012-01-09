@@ -64,3 +64,4 @@ void SCSI_Emulate_Command(void);
 void SCSI_Inquiry (void);
 void SCSI_TestUnitReady(void);
 void SCSI_ReadCapacity(void);
+void SCSI_ReadSector(void);
