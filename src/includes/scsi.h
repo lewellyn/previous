@@ -23,9 +23,10 @@
 #define HD_READ_CAPACITY1  0x25               /* Read capacity (class 1) */
 
 /* Status codes */
-#define HD_STATUS_OK       0x00
-#define HD_STATUS_ERROR    0x02
-#define HD_STATUS_BUSY     0x08
+#define HD_STATUS_OK       0x00               /* OK */
+#define HD_STATUS_ERROR    0x02               /* Check Condition */
+#define HD_STATUS_CONDMET  0x04               /* Condition Met */
+#define HD_STATUS_BUSY     0x08               /* Busy */
 
 /* Error codes for REQUEST SENSE: */
 #define HD_REQSENS_OK       0x00              /* OK return status */
@@ -57,7 +58,13 @@ SCSICOMMAND SCSICommandBlock;
 
 
 void scsi_command_analyzer(Uint8 command[], int size, int target);
-int SCSI_get_transfer_length(void);
+
+/* Helpers */
+int SCSI_GetTransferLength(void);
+unsigned long SCSI_GetOffset(void);
+int SCSI_GetCount(void);
+
+
 void SCSI_Emulate_Command(void);
 
 /* SCSI Commands */

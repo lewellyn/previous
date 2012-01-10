@@ -19,7 +19,7 @@
 #define COMMAND_ReadInt32(a, i) (((unsigned) a[i] << 24) | ((unsigned) a[i + 1] << 16) | ((unsigned) a[i + 2] << 8) | a[i + 3])
 
 
-
+#define BLOCKSIZE 512 // always correct?
 int nPartitions = 0;
 unsigned long hdSize = 0;
 short int HDCSectorCount;
@@ -42,7 +42,8 @@ FILE* scsi0;
 
 void read_image(void);
 void read_image(void) {
-    scsi0 = fopen("./hdd-001.dd","r");
+//    scsi0 = fopen("./hdd-001.dd","r");
+    scsi0 = fopen("./2.2_Boot_Disk.dd","r");
     fseek(scsi0, 0L, SEEK_END);
     scsihd0.filesize = ftell(scsi0);
     Log_Printf(LOG_WARN, "Read disk image: size = %i\n", scsihd0.filesize);
@@ -51,9 +52,6 @@ void read_image(void) {
 /* ----------------------------------------------------------------*/
 
 
-/* SCSI output buffer */
-//#define MAX_OUTBUF_SIZE 1024
-//Uint8 scsi_outbuf[MAX_OUTBUF_SIZE];
 
 
 /* INQUIRY response data */
@@ -106,7 +104,7 @@ void SCSI_Emulate_Command(void)
         case HD_READ_SECTOR:
         case HD_READ_SECTOR1:
             Log_Printf(LOG_WARN, "SCSI command: Read sector\n");
-            //SCSI_ReadSector();
+            SCSI_ReadSector();
 //            HDC_Cmd_ReadSector();
             break;
             
@@ -131,9 +129,7 @@ void SCSI_Emulate_Command(void)
             Log_Printf(LOG_WARN, "SCSI command: Ship\n");
             SCSICommandBlock.transfer_data_len = 0;
             SCSICommandBlock.transferdirection_todevice = 0;
-            //SCSICommandBlock.returnCode = 0xFF;
             SCSICommandBlock.returnCode = HD_STATUS_OK;
-            esp_command_complete();
 //            FDC_AcknowledgeInterrupt();
             break;
             
@@ -174,20 +170,40 @@ void SCSI_Emulate_Command(void)
 //            FDC_AcknowledgeInterrupt();
             break;
 	}
+    esp_command_complete();
     
-	/* Update the led each time a command is processed */
+    /* Update the led each time a command is processed */
 	Statusbar_EnableHDLed();
 }
 
 
 
-int SCSI_get_transfer_length(void)
+int SCSI_GetTransferLength(void)
 {
 	return SCSICommandBlock.opcode < 0x20?
     // class 0
-    SCSICommandBlock.command[5] :
+    SCSICommandBlock.command[4+1] :
     // class1
-    COMMAND_ReadInt16(SCSICommandBlock.command, 8);
+    COMMAND_ReadInt16(SCSICommandBlock.command, (7+1));
+}
+
+unsigned long SCSI_GetOffset(void)
+{
+	/* offset = logical block address * 512 */
+	return SCSICommandBlock.opcode < 0x20?
+    // class 0
+    (COMMAND_ReadInt24(SCSICommandBlock.command, (1+1)) & 0x1FFFFF) << 9 :
+    // class 1
+    COMMAND_ReadInt32(SCSICommandBlock.command, (2+1));// << 9; don't think so!
+}
+
+int SCSI_GetCount(void)
+{
+	return SCSICommandBlock.opcode < 0x20?
+    // class 0
+    SCSICommandBlock.command[4+1] :
+    // class1
+    COMMAND_ReadInt16(SCSICommandBlock.command, (7+1));
 }
 
 
@@ -199,8 +215,9 @@ void SCSI_TestUnitReady(void)
 {
 //	FDC_SetDMAStatus(false);            /* no DMA error */
 //	FDC_AcknowledgeInterrupt();
+    SCSICommandBlock.transfer_data_len = 0;
 	SCSICommandBlock.returnCode = HD_STATUS_OK;
-    esp_command_complete();
+//    esp_command_complete();
 }
 
 
@@ -208,31 +225,10 @@ void SCSI_ReadCapacity(void)
 {
 //	Uint32 nDmaAddr = FDC_GetDMAAddress();
     
-#ifdef HDC_VERBOSE
-	fprintf(stderr,"Reading 8 bytes capacity data to addr: 0x%x\n", nDmaAddr);
-#endif
-    
-	/* seek to the position */
-/*	if (STMemory_ValidArea(nDmaAddr, 8))
-	{
-		int nSectors = hdSize / 512;
-		STRam[nDmaAddr++] = (nSectors >> 24) & 0xFF;
-		STRam[nDmaAddr++] = (nSectors >> 16) & 0xFF;
-		STRam[nDmaAddr++] = (nSectors >> 8) & 0xFF;
-		STRam[nDmaAddr++] = (nSectors) & 0xFF;
-		STRam[nDmaAddr++] = 0x00;
-		STRam[nDmaAddr++] = 0x00;
-		STRam[nDmaAddr++] = 0x02;
-		STRam[nDmaAddr++] = 0x00; */
-        
-		/* Update DMA counter */
-//		FDC_WriteDMAAddress(nDmaAddr + 8);
-          
-    
     SCSICommandBlock.transfer_data_len = 8;
   
     read_image(); // experimental, work on this later!
-    Uint32 sectors = scsihd0.filesize / 512;
+    Uint32 sectors = scsihd0.filesize / BLOCKSIZE;
     
     static Uint8 scsi_disksize[8];
 
@@ -240,10 +236,10 @@ void SCSI_ReadCapacity(void)
     scsi_disksize[1] = (sectors >> 16) & 0xFF;
     scsi_disksize[2] = (sectors >> 8) & 0xFF;
     scsi_disksize[3] = sectors & 0xFF;
-    scsi_disksize[4] = 0x00;
-    scsi_disksize[5] = 0x00;
-    scsi_disksize[6] = 0x02;  // block size 512 - correct?
-    scsi_disksize[7] = 0x00;
+    scsi_disksize[4] = (BLOCKSIZE >> 24) & 0xFF;
+    scsi_disksize[5] = (BLOCKSIZE >> 16) & 0xFF;
+    scsi_disksize[6] = (BLOCKSIZE >> 8) & 0xFF;
+    scsi_disksize[7] = BLOCKSIZE & 0xFF;
     
     memcpy(dma_write_buffer, scsi_disksize, SCSICommandBlock.transfer_data_len);
 		SCSICommandBlock.returnCode = HD_STATUS_OK;
@@ -260,16 +256,67 @@ void SCSI_ReadCapacity(void)
 //	FDC_AcknowledgeInterrupt();
 //	bSetLastBlockAddr = false;
 	//FDCSectorCountRegister = 0;
-    esp_command_complete();
+//    esp_command_complete();
+}
+
+
+void SCSI_ReadSector(void)
+{
+	int n;
+    
+	nLastBlockAddr = SCSI_GetOffset() * BLOCKSIZE;
+    SCSICommandBlock.transfer_data_len = SCSI_GetCount() * BLOCKSIZE;
+    
+    
+	/* seek to the position */
+	if (fseek(scsi0, nLastBlockAddr, SEEK_SET) != 0)
+	{
+		SCSICommandBlock.returnCode = HD_STATUS_ERROR;
+		nLastError = HD_REQSENS_INVADDR;
+	}
+	else
+	{
+//		Uint32 nDmaAddr = FDC_GetDMAAddress();
+//		if (STMemory_ValidArea(nDmaAddr, 512*HDC_GetCount()))
+//		{
+			n = fread(dma_write_buffer, SCSICommandBlock.transfer_data_len, 1, scsi0);
+        
+        /* Test to check if we read correct data */
+//        Log_Printf(LOG_WARN, "Disk Read Test: $%02x,$%02x,$%02x,$%02x,$%02x,$%02x,$%02x,$%02x\n", dma_write_buffer[0],dma_write_buffer[1],dma_write_buffer[2],dma_write_buffer[3],dma_write_buffer[4],dma_write_buffer[5],dma_write_buffer[6],dma_write_buffer[07]);
+//		}
+//		else
+//		{
+//			Log_Printf(LOG_WARN, "HDC sector read uses invalid RAM range 0x%x+%i\n",
+//                       nDmaAddr, 512*HDC_GetCount());
+//			n = 0;
+		}
+		if (n == SCSI_GetCount())
+		{
+			SCSICommandBlock.returnCode = HD_STATUS_OK;
+			nLastError = HD_REQSENS_OK;
+		}
+		else
+		{
+			SCSICommandBlock.returnCode = HD_STATUS_ERROR;
+			nLastError = HD_REQSENS_NOSECTOR;
+		}
+        
+		/* Update DMA counter */
+//		FDC_WriteDMAAddress(nDmaAddr + 512*n);
+//  }
+    
+//	FDC_SetDMAStatus(false);              /* no DMA error */
+//	FDC_AcknowledgeInterrupt();
+//	bSetLastBlockAddr = true;
+	//FDCSectorCountRegister = 0;
+//    esp_command_complete();
 }
 
 
 
 void SCSI_Inquiry (void) {  //conversion in progress
 //    Uint32 nDmaAddr;
-//	int return_length = SCSI_get_transfer_length();
-//    Uint8 scsi_outbuf[return_length];
-    SCSICommandBlock.transfer_data_len = SCSI_get_transfer_length();
+    SCSICommandBlock.transfer_data_len = SCSI_GetTransferLength();
     Log_Printf(LOG_WARN, "return length: %d", SCSICommandBlock.transfer_data_len);
     SCSICommandBlock.transferdirection_todevice = 0;
     memcpy(dma_write_buffer, inquiry_bytes, SCSICommandBlock.transfer_data_len);
@@ -277,11 +324,7 @@ void SCSI_Inquiry (void) {  //conversion in progress
     Log_Printf(LOG_WARN, "Inquiry Data: %c,%c,%c,%c,%c,%c,%c,%c\n",dma_write_buffer[8],dma_write_buffer[9],dma_write_buffer[10],dma_write_buffer[11],dma_write_buffer[12],dma_write_buffer[13],dma_write_buffer[14],dma_write_buffer[15]);
         
 //	nDmaAddr = FDC_GetDMAAddress();
-    
-#ifdef HDC_VERBOSE
-	fprintf(stderr,"HDC: Inquiry, %i bytes to 0x%x.\n", count, nDmaAddr);
-#endif
-    
+        
 	if (SCSICommandBlock.transfer_data_len > (int)sizeof(inquiry_bytes))
 		SCSICommandBlock.transfer_data_len = sizeof(inquiry_bytes);
     
@@ -298,5 +341,5 @@ void SCSI_Inquiry (void) {  //conversion in progress
 //	FDC_AcknowledgeInterrupt();
 	nLastError = HD_REQSENS_OK;
 	bSetLastBlockAddr = false;
-    esp_command_complete();
+//    esp_command_complete();
 }

@@ -27,6 +27,7 @@ void SCSI_Test_Write(void);
 
 void esp_reset_hard(void);
 void esp_reset_soft(void);
+void esp_flush_fifo(void);
 void handle_satn(void);
 void handle_ti(void);
 void esp_raise_irq(void);

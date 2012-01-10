@@ -68,8 +68,11 @@
 
 #define IO_SEG_MASK	0x1FFFF
 
-#define ESP_FIFO_SIZE 16
+/* SCSI DMA Command/Status Registers */
+Uint8 csr_value0;
+Uint8 csr_value1;
 
+/* ESP Registers */
 Uint8 readtranscountl;
 Uint8 readtranscounth;
 Uint8 writetranscountl;
@@ -78,7 +81,7 @@ Uint8 fifo;
 Uint8 command;
 Uint8 status;
 Uint8 selectbusid;
-Uint8 intstatus = 0x00;
+Uint8 intstatus;
 Uint8 selecttimeout;
 Uint8 seqstep;
 Uint8 syncperiod;
@@ -88,11 +91,12 @@ Uint8 configuration;
 Uint8 clockconv;
 Uint8 esptest;
 
+/* ESP Status Variables */
 Uint8 irq_status;
-
+Uint8 mode_dma;
 
 /* ESP FIFO */
-
+#define ESP_FIFO_SIZE 16
 Uint8 esp_fifo[ESP_FIFO_SIZE];
 Uint8 fifo_read_ptr;
 Uint8 fifo_write_ptr;
@@ -104,7 +108,6 @@ int command_len;
 
 
 /* Experimental */
-Uint8 mode_dma;
 
 int target;
 Uint32 dma;
@@ -122,12 +125,12 @@ void (*dma_cb);
 
 
 void SCSI_CSR0_Read(void) {
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = csr_value0;
  	Log_Printf(LOG_WARN,"SCSI DMA control read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void SCSI_CSR0_Write(void) {
     Log_Printf(LOG_WARN,"SCSI DMA control write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-    Uint8 csr_value0;
     csr_value0 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
     
     /*experiment*/
@@ -207,6 +210,7 @@ void SCSI_CSR1_Read(void) {
 
 void SCSI_CSR1_Write(void) {
  	Log_Printf(LOG_WARN,"SCSI DMA FIFO status write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    csr_value1 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
 }
 
 
@@ -277,11 +281,8 @@ void SCSI_Command_Write(void) {
             Log_Printf(LOG_WARN, "ESP Command: NOP\n");
             break;
         case CMD_FLUSH:
-            fifo_read_ptr = 0;
-            fifo_write_ptr = 0;
-            esp_fifo[0] = 0;
-            fifoflags &= 0xe0;
             Log_Printf(LOG_WARN,"ESP Command: flush FIFO\n");
+            esp_flush_fifo();
             break;
         case CMD_RESET:
             Log_Printf(LOG_WARN,"ESP Command: reset chip\n");
@@ -421,13 +422,11 @@ void esp_reset_hard(void) {
     /* hard reset */
     clockconv = 0x02;
     configuration &= ~0xF8; // clear chip test mode, parity enable, parity test, scsi request/int disable, slow cable mode
-    esp_fifo[0] = 0x00;
-    fifo_read_ptr = 0;
-    fifo_write_ptr = 0;
     syncperiod = 0x05;
     syncoffset = 0x00;
     intstatus = 0x00;
     status &= ~(STAT_VGC | STAT_PE | STAT_GE); // need valid group code bit? clear transfer complete aka valid group code, parity error, gross error
+    esp_flush_fifo();
     esp_reset_soft();
 }
 
@@ -437,7 +436,7 @@ void esp_reset_soft(void) {
     /* incomplete, need to work on everything below this point */
     
     dma_cb = NULL; // clear DMA interface - how to do this?
-    dma = 0;
+    mode_dma = 0;
     readtranscountl = 0x00;
     readtranscounth = 0x00;
     writetranscountl = 0x00;
@@ -475,6 +474,13 @@ void esp_lower_irq(void) {
     }
 }
 
+void esp_flush_fifo(void) {
+    fifo_read_ptr = 0;
+    fifo_write_ptr = 0;
+    esp_fifo[0] = 0;
+    fifoflags &= 0xe0;
+}
+
 Uint32 get_cmd (void) {
     target = selectbusid & BUSID_DID;
     
@@ -482,15 +488,12 @@ Uint32 get_cmd (void) {
         command_len = readtranscountl | (readtranscounth << 8);
         dma_memory_read(command_len);
         memcpy(commandbuf, dma_read_buffer, command_len);
-        dma_clear_memory(command_len);
+//        dma_clear_memory(command_len);
     } else {
         command_len = fifo_write_ptr - fifo_read_ptr;
         memcpy(commandbuf, esp_fifo, command_len);
-                
-        fifo_read_ptr = 0;
-        fifo_write_ptr = 0;
-        esp_fifo[0] = 0;
-        fifoflags = 0xE0;
+        
+        esp_flush_fifo();
     }
     Log_Printf(LOG_WARN, "get_cmd: len %i target %i", command_len, target);
     
@@ -525,12 +528,11 @@ void handle_satn(void) {
     
     get_cmd(); // make get_cmd void function?
     
-    scsi_command_group = (commandbuf[1] & 0xE0) >> 5;
-    
     /* Decode command to determine the command group and thus the
      * length of the incoming command. Set "valid group code" bit
      * in status register.
      */
+    scsi_command_group = (commandbuf[1] & 0xE0) >> 5;
     if(scsi_command_group < 3 || scsi_command_group > 4) {
         status |= STAT_VGC;
     } else {
