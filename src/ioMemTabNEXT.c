@@ -24,6 +24,35 @@ const char IoMemTabST_fileid[] = "Previous ioMemTabST.c : " __DATE__ " " __TIME_
 
 
 
+/* Hack from QEMU-NeXT, Correct this later with the data below */
+
+/* system timer */
+struct timer_reg {
+	u_char	t_counter_latch[2];	/* counted up at 1 MHz */
+	u_char	: 8;
+	u_char	: 8;
+	u_char	t_enable : 1,		/* counter enable */
+    t_update : 1,		/* copy latch to counter */
+    : 6;
+};
+
+
+void System_Timer0_Read(void) {
+    IoMem[IoAccessCurrentAddress & 0x1FFFF] = clock() >> 24;
+}
+
+void System_Timer1_Read(void) {
+    IoMem[IoAccessCurrentAddress & 0x1FFFF] = clock() >> 16;
+}
+
+void System_Timer2_Read(void) {
+    IoMem[IoAccessCurrentAddress & 0x1FFFF] = clock() >> 8;
+}
+
+void System_Timer3_Read(void) {
+    IoMem[IoAccessCurrentAddress & 0x1FFFF] = clock();
+}
+
 
 /*-----------------------------------------------------------------------*/
 /*
@@ -79,6 +108,12 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 	{ 0x0200e006, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
     { 0x0200e008, SIZE_LONG, Keycode_Read, IoMem_WriteWithoutInterception },
 	{ 0x02010000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+    
+    /* System Timer */
+    { 0x0201a000, SIZE_BYTE, System_Timer0_Read, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0201a001, SIZE_BYTE, System_Timer1_Read, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0201a002, SIZE_BYTE, System_Timer2_Read, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0201a003, SIZE_BYTE, System_Timer3_Read, IoMem_WriteWithoutInterceptionButTrace },
   
     /* MO-Drive Registers */
     { 0x02012000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },

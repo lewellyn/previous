@@ -44,6 +44,8 @@ void read_image(void);
 void read_image(void) {
 //    scsi0 = fopen("./hdd-001.dd","r");
     scsi0 = fopen("./2.2_Boot_Disk.dd","r");
+//    scsi0 = fopen("./3.3_Moto_Boot_Disk.floppyimage","r");
+
     fseek(scsi0, 0L, SEEK_END);
     scsihd0.filesize = ftell(scsi0);
     Log_Printf(LOG_WARN, "Read disk image: size = %i\n", scsihd0.filesize);
@@ -264,7 +266,7 @@ void SCSI_ReadSector(void)
 {
 	int n;
     
-	nLastBlockAddr = SCSI_GetOffset() * BLOCKSIZE;
+	nLastBlockAddr = SCSI_GetOffset();// * BLOCKSIZE;
     SCSICommandBlock.transfer_data_len = SCSI_GetCount() * BLOCKSIZE;
     
     

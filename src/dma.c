@@ -276,7 +276,7 @@ void nextdma_write(Uint8 *buf, int size, int type) {
     }
     
     /* Test read/write */
-//    Log_Printf(LOG_WARN, "DMA Write Test: $%02x,$%02x,$%02x,$%02x\n", NEXTMemory_ReadByte(base_addr),NEXTMemory_ReadByte(base_addr+16),NEXTMemory_ReadByte(base_addr+32),NEXTMemory_ReadByte(base_addr+384));
+    Log_Printf(LOG_WARN, "DMA Write Test: $%02x,$%02x,$%02x,$%02x\n", NEXTMemory_ReadByte(base_addr),NEXTMemory_ReadByte(base_addr+16),NEXTMemory_ReadByte(base_addr+32),NEXTMemory_ReadByte(base_addr+384));
 //    NEXTMemory_WriteByte(base_addr, 0x77);
 //    Uint8 testvar = NEXTMemory_ReadByte(base_addr);
 //    Log_Printf(LOG_WARN, "Write Test: $%02x at $%08x", testvar, base_addr);
@@ -285,7 +285,7 @@ void nextdma_write(Uint8 *buf, int size, int type) {
     
     /* saved limit is checked to calculate packet size
      by both the rom and netbsd */ 
-    dma_limit = dma_next + dma_size;
+    dma_saved_limit = dma_next + size;
     dma_saved_next  = dma_next;
     
     if(!(read_dma_scsi_csr & DMA_SUPDATE)) {
@@ -295,6 +295,6 @@ void nextdma_write(Uint8 *buf, int size, int type) {
 
     read_dma_scsi_csr |= DMA_COMPLETE;
     
-//    set_interrupt(INT_SCSI_DMA, SET_INT);
-//    set_interrupt(INT_SCSI_DMA, RELEASE_INT);
+    set_interrupt(INT_SCSI_DMA, SET_INT);
+    set_interrupt(INT_SCSI_DMA, RELEASE_INT);
 }
