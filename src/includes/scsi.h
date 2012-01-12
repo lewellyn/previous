@@ -40,6 +40,7 @@
 
 typedef struct {
     int readCount;    /* count of number of command bytes written */
+    unsigned char source_busid;
     unsigned char target;
     unsigned char opcode;
     int transfer_data_len;
@@ -72,3 +73,4 @@ void SCSI_Inquiry (void);
 void SCSI_TestUnitReady(void);
 void SCSI_ReadCapacity(void);
 void SCSI_ReadSector(void);
+void SCSI_RequestSense(void);

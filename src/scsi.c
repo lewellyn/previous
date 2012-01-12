@@ -45,6 +45,7 @@ void read_image(void) {
 //    scsi0 = fopen("./hdd-001.dd","r");
     scsi0 = fopen("./2.2_Boot_Disk.dd","r");
 //    scsi0 = fopen("./3.3_Moto_Boot_Disk.floppyimage","r");
+//    scsi0 = fopen("./hdd-027.dd","r");
 
     fseek(scsi0, 0L, SEEK_END);
     scsihd0.filesize = ftell(scsi0);
@@ -78,8 +79,12 @@ static unsigned char inquiry_bytes[] =
 
 
 void scsi_command_analyzer(Uint8 commandbuf[], int size, int target) {
-    memcpy(SCSICommandBlock.command, commandbuf, size);
-    SCSICommandBlock.opcode = SCSICommandBlock.command[1];
+    SCSICommandBlock.source_busid = commandbuf[0];
+    for (int i = 1; i < size; i++) {
+        SCSICommandBlock.command[i-1] = commandbuf[i];
+    }
+    //memcpy(SCSICommandBlock.command, commandbuf, size);
+    SCSICommandBlock.opcode = SCSICommandBlock.command[0];
     SCSICommandBlock.target = target;
     Log_Printf(LOG_WARN, "SCSI command: Length = %i, Opcode = $%02x, target = %i\n", size, SCSICommandBlock.opcode, SCSICommandBlock.target);
     SCSI_Emulate_Command();
@@ -137,6 +142,7 @@ void SCSI_Emulate_Command(void)
             
         case HD_REQ_SENSE:
             Log_Printf(LOG_WARN, "SCSI command: Request sense\n");
+            SCSI_RequestSense();
 //            HDC_Cmd_RequestSense();
             break;
             
@@ -184,9 +190,9 @@ int SCSI_GetTransferLength(void)
 {
 	return SCSICommandBlock.opcode < 0x20?
     // class 0
-    SCSICommandBlock.command[4+1] :
+    SCSICommandBlock.command[4] :
     // class1
-    COMMAND_ReadInt16(SCSICommandBlock.command, (7+1));
+    COMMAND_ReadInt16(SCSICommandBlock.command, 7);
 }
 
 unsigned long SCSI_GetOffset(void)
@@ -194,18 +200,18 @@ unsigned long SCSI_GetOffset(void)
 	/* offset = logical block address * 512 */
 	return SCSICommandBlock.opcode < 0x20?
     // class 0
-    (COMMAND_ReadInt24(SCSICommandBlock.command, (1+1)) & 0x1FFFFF) << 9 :
+    (COMMAND_ReadInt24(SCSICommandBlock.command, 1) & 0x1FFFFF) :
     // class 1
-    COMMAND_ReadInt32(SCSICommandBlock.command, (2+1));// << 9; don't think so!
+    COMMAND_ReadInt32(SCSICommandBlock.command, 2);
 }
 
 int SCSI_GetCount(void)
 {
 	return SCSICommandBlock.opcode < 0x20?
     // class 0
-    SCSICommandBlock.command[4+1] :
+    SCSICommandBlock.command[4] :
     // class1
-    COMMAND_ReadInt16(SCSICommandBlock.command, (7+1));
+    COMMAND_ReadInt16(SCSICommandBlock.command, 7);
 }
 
 
@@ -256,7 +262,7 @@ void SCSI_ReadCapacity(void)
     
 //	FDC_SetDMAStatus(false);              /* no DMA error */
 //	FDC_AcknowledgeInterrupt();
-//	bSetLastBlockAddr = false;
+	bSetLastBlockAddr = false;
 	//FDCSectorCountRegister = 0;
 //    esp_command_complete();
 }
@@ -266,15 +272,15 @@ void SCSI_ReadSector(void)
 {
 	int n;
     
-	nLastBlockAddr = SCSI_GetOffset();// * BLOCKSIZE;
+	nLastBlockAddr = SCSI_GetOffset() * BLOCKSIZE;
     SCSICommandBlock.transfer_data_len = SCSI_GetCount() * BLOCKSIZE;
     
     
 	/* seek to the position */
 	if (fseek(scsi0, nLastBlockAddr, SEEK_SET) != 0)
 	{
-		SCSICommandBlock.returnCode = HD_STATUS_ERROR;
-		nLastError = HD_REQSENS_INVADDR;
+        SCSICommandBlock.returnCode = HD_STATUS_ERROR;
+        nLastError = HD_REQSENS_INVADDR;
 	}
 	else
 	{
@@ -292,8 +298,8 @@ void SCSI_ReadSector(void)
 //                       nDmaAddr, 512*HDC_GetCount());
 //			n = 0;
 		}
-		if (n == SCSI_GetCount())
-		{
+
+    if (n == 1) {
 			SCSICommandBlock.returnCode = HD_STATUS_OK;
 			nLastError = HD_REQSENS_OK;
 		}
@@ -309,7 +315,7 @@ void SCSI_ReadSector(void)
     
 //	FDC_SetDMAStatus(false);              /* no DMA error */
 //	FDC_AcknowledgeInterrupt();
-//	bSetLastBlockAddr = true;
+	bSetLastBlockAddr = true;
 	//FDCSectorCountRegister = 0;
 //    esp_command_complete();
 }
@@ -344,4 +350,97 @@ void SCSI_Inquiry (void) {  //conversion in progress
 	nLastError = HD_REQSENS_OK;
 	bSetLastBlockAddr = false;
 //    esp_command_complete();
+}
+
+
+void SCSI_RequestSense(void)
+{
+//	Uint32 nDmaAddr;
+	int nRetLen;
+	Uint8 retbuf[22];
+    
+#ifdef HDC_VERBOSE
+	fprintf(stderr,"HDC: Request Sense.\n");
+#endif
+    
+	nRetLen = SCSI_GetCount();
+    
+	if ((nRetLen < 4 && nRetLen != 0) || nRetLen > 22)
+	{
+		Log_Printf(LOG_WARN, "SCSI: *** Strange REQUEST SENSE ***!\n");
+	}
+    
+	/* Limit to sane length */
+	if (nRetLen <= 0)
+	{
+		nRetLen = 4;
+	}
+	else if (nRetLen > 22)
+	{
+		nRetLen = 22;
+	}
+    
+//	nDmaAddr = FDC_GetDMAAddress();
+    
+	memset(retbuf, 0, nRetLen);
+    
+	if (nRetLen <= 4)
+	{
+		retbuf[0] = nLastError;
+		if (bSetLastBlockAddr)
+		{
+			retbuf[0] |= 0x80;
+			retbuf[1] = nLastBlockAddr >> 16;
+			retbuf[2] = nLastBlockAddr >> 8;
+			retbuf[3] = nLastBlockAddr;
+		}
+	}
+	else
+	{
+		retbuf[0] = 0x70;
+		if (bSetLastBlockAddr)
+		{
+			retbuf[0] |= 0x80;
+			retbuf[4] = nLastBlockAddr >> 16;
+			retbuf[5] = nLastBlockAddr >> 8;
+			retbuf[6] = nLastBlockAddr;
+		}
+		switch (nLastError)
+		{
+            case HD_REQSENS_OK:  retbuf[2] = 0; break;
+            case HD_REQSENS_OPCODE:  retbuf[2] = 5; break;
+            case HD_REQSENS_INVADDR:  retbuf[2] = 5; break;
+            case HD_REQSENS_INVARG:  retbuf[2] = 5; break;
+            case HD_REQSENS_NODRIVE:  retbuf[2] = 2; break;
+            default: retbuf[2] = 0; break;
+//            default: retbuf[2] = 4; break;
+		}
+		retbuf[7] = 14;
+		retbuf[12] = nLastError;
+		retbuf[19] = nLastBlockAddr >> 16;
+		retbuf[20] = nLastBlockAddr >> 8;
+		retbuf[21] = nLastBlockAddr;
+	}
+    
+    SCSICommandBlock.transfer_data_len = nRetLen;
+    memcpy(dma_write_buffer, retbuf, SCSICommandBlock.transfer_data_len);
+    SCSICommandBlock.returnCode = HD_STATUS_OK;
+    
+	/*
+     fprintf(stderr,"*** Requested sense packet:\n");
+     int i;
+     for (i = 0; i<nRetLen; i++) fprintf(stderr,"%2x ",retbuf[i]);
+     fprintf(stderr,"\n");
+     */
+    
+//	if (STMemory_SafeCopy(nDmaAddr, retbuf, nRetLen, "HDC request sense"))
+//		HDCCommand.returnCode = HD_STATUS_OK;
+//	else
+//		HDCCommand.returnCode = HD_STATUS_ERROR;
+    
+//	FDC_WriteDMAAddress(nDmaAddr + nRetLen);
+    
+//	FDC_SetDMAStatus(false);            /* no DMA error */
+//	FDC_AcknowledgeInterrupt();
+	//FDCSectorCountRegister = 0;
 }

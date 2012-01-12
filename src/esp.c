@@ -333,7 +333,10 @@ void SCSI_Command_Write(void) {
             break;            
         case CMD_PAD:
             Log_Printf(LOG_WARN, "ESP Command: transfer pad\n");
-//            esp_raise_irq();
+            status = STAT_TC | STAT_DI;
+            intstatus = 0x20;
+            seqstep = SEQ_0;
+            esp_raise_irq();
             break;
         case CMD_SATN:
             Log_Printf(LOG_WARN, "ESP Command: set ATN\n");
