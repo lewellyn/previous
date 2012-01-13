@@ -79,8 +79,9 @@ static unsigned char inquiry_bytes[] =
 
 
 void scsi_command_analyzer(Uint8 commandbuf[], int size, int target) {
+    int i;
     SCSICommandBlock.source_busid = commandbuf[0];
-    for (int i = 1; i < size; i++) {
+    for (i = 1; i < size; i++) {
         SCSICommandBlock.command[i-1] = commandbuf[i];
     }
     //memcpy(SCSICommandBlock.command, commandbuf, size);
