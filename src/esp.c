@@ -136,7 +136,8 @@ void SCSI_CSR0_Write(void) {
     /*experiment*/
     if((csr_value0 & 0xA0)==0xA0)
         status = 0x93;
-    
+    if((csr_value0 & 0x38)==0x38)
+        status = 0x93;
     /*----------*/
     
     
