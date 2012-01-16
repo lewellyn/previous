@@ -123,7 +123,7 @@ endif(PORTAUDIO_FOUND)
 
 if(WIN32)
 	# Needed for socket() on Windows
-	target_link_libraries(hatari ws2_32)
+	target_link_libraries(previous ws2_32)
 endif(WIN32)
 
 if(ENABLE_OSX_BUNDLE)

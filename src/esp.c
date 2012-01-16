@@ -250,6 +250,7 @@ void SCSI_FIFO_Read(void) { // 0x02014002
         fifoflags = fifoflags - 1;
 //        esp_raise_irq();
     } else {
+        IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = 0x00;
         Log_Printf(LOG_WARN, "ESP FIFO is empty!\n");
     } 
 }
@@ -562,10 +563,11 @@ void handle_satn(void) {
      */
     scsi_command_group = (commandbuf[1] & 0xE0) >> 5;
     if(scsi_command_group < 3 || scsi_command_group > 4) {
-        status |= STAT_VGC;
-    } else if(ConfigureParams.System.nCpuLevel == 3 && scsi_command_group == 2) {
-        Log_Printf(LOG_WARN, "Invalid command group %i on NCR53C90\n", scsi_command_group);
-        status &= ~STAT_VGC;
+        if(ConfigureParams.System.nCpuLevel == 3 && scsi_command_group == 2) {
+            Log_Printf(LOG_WARN, "Invalid command group %i on NCR53C90\n", scsi_command_group);
+        } else {
+            status |= STAT_VGC;
+        }
     } else {
         Log_Printf(LOG_WARN, "Invalid command group %i on NCR53C90A\n", scsi_command_group);
     }
@@ -630,7 +632,7 @@ void esp_do_dma(void) {
     int dma_translen; // experimental
     dma_translen = readtranscountl | (readtranscounth << 8); // experimental
     Log_Printf(LOG_WARN, "call dma_write\n"); // experimental
-    nextdma_write(commandbuf, dma_translen, NEXTDMA_SCSI);//experimental !!
+    dma_memory_write(dma_write_buffer, dma_translen, NEXTDMA_SCSI);//experimental !!
 
     
     to_device = SCSICommandBlock.transferdirection_todevice;
@@ -753,7 +755,7 @@ void write_response(void) {
     esp_fifo[1] = 0x00; // message
     
     if(mode_dma == 1) {
-        nextdma_write(esp_fifo, 2, NEXTDMA_SCSI);
+    dma_memory_write(esp_fifo, 2, NEXTDMA_SCSI);
         status = STAT_TC | STAT_ST;
         intstatus = INTR_BS | INTR_FC;
         seqstep = SEQ_CD;
