@@ -20,39 +20,64 @@
 
 
 #define BLOCKSIZE 512 // always correct?
-int nPartitions = 0;
-unsigned long hdSize = 0;
-short int HDCSectorCount;
-bool bAcsiEmuOn = false;
+//int nPartitions = 0;
+//unsigned long hdSize = 0;
+//short int HDCSectorCount;
+//bool bAcsiEmuOn = false;
 
-static FILE *hd_image_file = NULL;
+static FILE *scsidisk = NULL;
 static Uint32 nLastBlockAddr;
 static bool bSetLastBlockAddr;
 static Uint8 nLastError;
 
-
-/* Image input experiment ----------------------------------------*/
-
 typedef struct {
     Uint32 filesize;
+    bool cdrom;
 } SCSIHDINFO;
 
-SCSIHDINFO scsihd0;
-FILE* scsi0;
+SCSIHDINFO scsiimage;
 
-void read_image(void);
-void read_image(void) {
-    char *filename0;
-    filename0 = ConfigureParams.HardDisk.szHardDiskImage;
-    scsi0 = fopen(filename0, "r");
-//    scsi0 = fopen("./hdd-001-linux.dd","r");
-//    scsi0 = fopen("./2.2_Boot_Disk.dd","r");
-//    scsi0 = fopen("./3.3_Moto_Boot_Disk.floppyimage","r");
-//    scsi0 = fopen("./hdd-027.dd","r");
+SCSIHDINFO scsiimage0;
+SCSIHDINFO scsiimage1;
+SCSIHDINFO scsiimage2;
+SCSIHDINFO scsiimage3;
+SCSIHDINFO scsiimage4;
+SCSIHDINFO scsiimage5;
+SCSIHDINFO scsiimage6;
 
-    fseek(scsi0, 0L, SEEK_END);
-    scsihd0.filesize = ftell(scsi0);
-    Log_Printf(LOG_WARN, "Read disk image: size = %i\n", scsihd0.filesize);
+FILE* scsidisk0;
+FILE* scsidisk1;
+FILE* scsidisk2;
+FILE* scsidisk3;
+FILE* scsidisk4;
+FILE* scsidisk5;
+FILE* scsidisk6;
+
+void SCSI_Init(void) {
+    Log_Printf(LOG_WARN, "CALL SCSI INIT\n");
+    char *filename0 = ConfigureParams.HardDisk.szSCSIDiskImage0;
+    char *filename1 = ConfigureParams.HardDisk.szSCSIDiskImage1;
+    char *filename2 = ConfigureParams.HardDisk.szSCSIDiskImage2;
+    char *filename3 = ConfigureParams.HardDisk.szSCSIDiskImage3;
+    char *filename4 = ConfigureParams.HardDisk.szSCSIDiskImage4;
+    char *filename5 = ConfigureParams.HardDisk.szSCSIDiskImage5;
+    char *filename6 = ConfigureParams.HardDisk.szSCSIDiskImage6;
+
+    scsidisk0 = fopen(filename0, "r");
+    scsidisk1 = fopen(filename1, "r");
+    scsidisk2 = fopen(filename2, "r");
+    scsidisk3 = fopen(filename3, "r");
+    scsidisk4 = fopen(filename4, "r");
+    scsidisk5 = fopen(filename5, "r");
+    scsidisk6 = fopen(filename6, "r");
+    
+    Log_Printf(LOG_WARN, "Disk0: %s\n", filename0);
+    Log_Printf(LOG_WARN, "Disk1: %s\n", filename1);
+    Log_Printf(LOG_WARN, "Disk2: %s\n", filename2);
+    Log_Printf(LOG_WARN, "Disk3: %s\n", filename3);
+    Log_Printf(LOG_WARN, "Disk4: %s\n", filename4);
+    Log_Printf(LOG_WARN, "Disk5: %s\n", filename5);
+    Log_Printf(LOG_WARN, "Disk6: %s\n", filename6);
 }
 
 /* ----------------------------------------------------------------*/
@@ -91,6 +116,46 @@ void scsi_command_analyzer(Uint8 commandbuf[], int size, int target) {
     SCSICommandBlock.opcode = SCSICommandBlock.command[0];
     SCSICommandBlock.target = target;
     Log_Printf(LOG_WARN, "SCSI command: Length = %i, Opcode = $%02x, target = %i\n", size, SCSICommandBlock.opcode, SCSICommandBlock.target);
+    switch (SCSICommandBlock.target) {
+        case 0:
+            scsidisk = scsidisk0;
+            scsiimage = scsiimage0;
+            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM0;
+            break;
+        case 1:
+            scsidisk = scsidisk1;
+            scsiimage = scsiimage1;
+            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM1;
+            break;
+        case 2:
+            scsidisk = scsidisk2;
+            scsiimage = scsiimage2;
+            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM2;
+            break;
+        case 3:
+            scsidisk = scsidisk3;
+            scsiimage = scsiimage3;
+            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM3;
+            break;
+        case 4:
+            scsidisk = scsidisk4;
+            scsiimage = scsiimage4;
+            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM4;
+            break;
+        case 5:
+            scsidisk = scsidisk5;
+            scsiimage = scsiimage5;
+            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM5;
+            break;
+        case 6:
+            scsidisk = scsidisk6;
+            scsiimage = scsiimage6;
+            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM6;
+            break;
+
+        default:
+            break;
+    }
     SCSI_Emulate_Command();
 }
 
@@ -236,11 +301,15 @@ void SCSI_TestUnitReady(void)
 void SCSI_ReadCapacity(void)
 {
 //	Uint32 nDmaAddr = FDC_GetDMAAddress();
+        
+    fseek(scsidisk, 0L, SEEK_END);
+    scsiimage.filesize = ftell(scsidisk);
     
+    Log_Printf(LOG_WARN, "Read disk image: size = %i\n", scsiimage.filesize);
+
     SCSICommandBlock.transfer_data_len = 8;
   
-    read_image(); // experimental, work on this later!
-    Uint32 sectors = scsihd0.filesize / BLOCKSIZE;
+    Uint32 sectors = scsiimage.filesize / BLOCKSIZE;
     
     static Uint8 scsi_disksize[8];
 
@@ -281,7 +350,7 @@ void SCSI_ReadSector(void)
     
     
 	/* seek to the position */
-	if (fseek(scsi0, nLastBlockAddr, SEEK_SET) != 0)
+	if (fseek(scsidisk, nLastBlockAddr, SEEK_SET) != 0)
 	{
         SCSICommandBlock.returnCode = HD_STATUS_ERROR;
         nLastError = HD_REQSENS_INVADDR;
@@ -291,7 +360,7 @@ void SCSI_ReadSector(void)
 //		Uint32 nDmaAddr = FDC_GetDMAAddress();
 //		if (STMemory_ValidArea(nDmaAddr, 512*HDC_GetCount()))
 //		{
-			n = fread(dma_write_buffer, SCSICommandBlock.transfer_data_len, 1, scsi0);
+			n = fread(dma_write_buffer, SCSICommandBlock.transfer_data_len, 1, scsidisk);
         
         /* Test to check if we read correct data */
 //        Log_Printf(LOG_WARN, "Disk Read Test: $%02x,$%02x,$%02x,$%02x,$%02x,$%02x,$%02x,$%02x\n", dma_write_buffer[0],dma_write_buffer[1],dma_write_buffer[2],dma_write_buffer[3],dma_write_buffer[4],dma_write_buffer[5],dma_write_buffer[6],dma_write_buffer[07]);
@@ -326,8 +395,30 @@ void SCSI_ReadSector(void)
 
 
 
-void SCSI_Inquiry (void) {  //conversion in progress
+void SCSI_Inquiry (void) {
 //    Uint32 nDmaAddr;
+    
+    if (scsiimage.cdrom) {
+        inquiry_bytes[0] = 0x05;
+        inquiry_bytes[1] |= 0x80;
+        inquiry_bytes[16] = 'C';
+        inquiry_bytes[18] = '-';
+        inquiry_bytes[19] = 'R';
+        inquiry_bytes[20] = 'O';
+        inquiry_bytes[21] = 'M';
+        Log_Printf(LOG_WARN, "Disk is CD-ROM\n");
+    } else {
+        inquiry_bytes[0] = 0x00;
+        inquiry_bytes[1] &= ~0x80;
+        inquiry_bytes[16] = 'H';
+        inquiry_bytes[18] = 'D';
+        inquiry_bytes[19] = ' ';
+        inquiry_bytes[20] = ' ';
+        inquiry_bytes[21] = ' ';
+        Log_Printf(LOG_WARN, "Disk is HDD\n");
+    }
+    
+    
     SCSICommandBlock.transfer_data_len = SCSI_GetTransferLength();
     Log_Printf(LOG_WARN, "return length: %d", SCSICommandBlock.transfer_data_len);
     SCSICommandBlock.transferdirection_todevice = 0;

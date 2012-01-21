@@ -26,6 +26,7 @@ const char Main_fileid[] = "Hatari main.c : " __DATE__ " " __TIME__;
 #include "reset.h"
 #include "resolution.h"
 #include "screen.h"
+#include "scsi.h"
 #include "sdlgui.h"
 #include "shortcut.h"
 #include "statusbar.h"
@@ -578,6 +579,7 @@ static void Main_Init(void)
 //	Audio_Init();
 //	DmaSnd_Init();
 	Keymap_Init();
+    SCSI_Init();
 
 
 	if (Reset_Cold())             /* Reset all systems, load TOS image */
