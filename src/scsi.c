@@ -42,8 +42,11 @@ FILE* scsi0;
 
 void read_image(void);
 void read_image(void) {
-//    scsi0 = fopen("./hdd-001.dd","r");
-    scsi0 = fopen("./2.2_Boot_Disk.dd","r");
+    char *filename0;
+    filename0 = ConfigureParams.HardDisk.szHardDiskImage;
+    scsi0 = fopen(filename0, "r");
+//    scsi0 = fopen("./hdd-001-linux.dd","r");
+//    scsi0 = fopen("./2.2_Boot_Disk.dd","r");
 //    scsi0 = fopen("./3.3_Moto_Boot_Disk.floppyimage","r");
 //    scsi0 = fopen("./hdd-027.dd","r");
 
