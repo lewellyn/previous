@@ -58,6 +58,7 @@ SCSICOMMAND SCSICommandBlock;
 
 
 void SCSI_Init(void);
+void SCSI_Uninit(void);
 void scsi_command_analyzer(Uint8 command[], int size, int target);
 
 /* Helpers */

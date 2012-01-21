@@ -30,7 +30,11 @@ static Uint32 nLastBlockAddr;
 static bool bSetLastBlockAddr;
 static Uint8 nLastError;
 
-typedef struct {
+/* Disk Infos */
+
+bool bCDROM;
+
+/*typedef struct {
     Uint32 filesize;
     bool cdrom;
 } SCSIHDINFO;
@@ -43,7 +47,7 @@ SCSIHDINFO scsiimage2;
 SCSIHDINFO scsiimage3;
 SCSIHDINFO scsiimage4;
 SCSIHDINFO scsiimage5;
-SCSIHDINFO scsiimage6;
+SCSIHDINFO scsiimage6;*/
 
 FILE* scsidisk0;
 FILE* scsidisk1;
@@ -53,6 +57,8 @@ FILE* scsidisk4;
 FILE* scsidisk5;
 FILE* scsidisk6;
 
+
+/* Initialize/Uninitialize SCSI disks */
 void SCSI_Init(void) {
     Log_Printf(LOG_WARN, "CALL SCSI INIT\n");
     char *filename0 = ConfigureParams.HardDisk.szSCSIDiskImage0;
@@ -63,13 +69,23 @@ void SCSI_Init(void) {
     char *filename5 = ConfigureParams.HardDisk.szSCSIDiskImage5;
     char *filename6 = ConfigureParams.HardDisk.szSCSIDiskImage6;
 
-    scsidisk0 = fopen(filename0, "r");
-    scsidisk1 = fopen(filename1, "r");
-    scsidisk2 = fopen(filename2, "r");
-    scsidisk3 = fopen(filename3, "r");
-    scsidisk4 = fopen(filename4, "r");
-    scsidisk5 = fopen(filename5, "r");
-    scsidisk6 = fopen(filename6, "r");
+    scsidisk0 = ConfigureParams.HardDisk.bCDROM0 == true ? fopen(filename0, "r") : fopen(filename0, "r+");
+    scsidisk1 = ConfigureParams.HardDisk.bCDROM1 == true ? fopen(filename1, "r") : fopen(filename1, "r+");
+    scsidisk2 = ConfigureParams.HardDisk.bCDROM2 == true ? fopen(filename2, "r") : fopen(filename2, "r+");
+    scsidisk3 = ConfigureParams.HardDisk.bCDROM3 == true ? fopen(filename3, "r") : fopen(filename3, "r+");
+    scsidisk4 = ConfigureParams.HardDisk.bCDROM4 == true ? fopen(filename4, "r") : fopen(filename4, "r+");
+    scsidisk5 = ConfigureParams.HardDisk.bCDROM5 == true ? fopen(filename5, "r") : fopen(filename5, "r+");
+    scsidisk6 = ConfigureParams.HardDisk.bCDROM6 == true ? fopen(filename6, "r") : fopen(filename6, "r+");
+    
+//    scsidisk0 = fopen(filename0, "r");
+//    scsidisk1 = fopen(filename1, "r");
+//    scsidisk2 = fopen(filename2, "r");
+//    scsidisk3 = fopen(filename3, "r");
+//    scsidisk4 = fopen(filename4, "r");
+//    scsidisk5 = fopen(filename5, "r");
+//    scsidisk6 = fopen(filename6, "r");
+    
+//  TODO: Better get disksize here or in SCSI_ReadCapacity?
     
     Log_Printf(LOG_WARN, "Disk0: %s\n", filename0);
     Log_Printf(LOG_WARN, "Disk1: %s\n", filename1);
@@ -80,8 +96,17 @@ void SCSI_Init(void) {
     Log_Printf(LOG_WARN, "Disk6: %s\n", filename6);
 }
 
-/* ----------------------------------------------------------------*/
-
+void SCSI_Uninit(void) {
+    fclose(scsidisk0);
+    fclose(scsidisk1);
+    fclose(scsidisk2);
+    fclose(scsidisk3);
+    fclose(scsidisk4);
+    fclose(scsidisk5);
+    fclose(scsidisk6);
+    
+    scsidisk = NULL;
+}
 
 
 
@@ -119,41 +144,35 @@ void scsi_command_analyzer(Uint8 commandbuf[], int size, int target) {
     switch (SCSICommandBlock.target) {
         case 0:
             scsidisk = scsidisk0;
-            scsiimage = scsiimage0;
-            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM0;
+            bCDROM = ConfigureParams.HardDisk.bCDROM0;
             break;
         case 1:
             scsidisk = scsidisk1;
-            scsiimage = scsiimage1;
-            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM1;
+            bCDROM = ConfigureParams.HardDisk.bCDROM1;
             break;
         case 2:
             scsidisk = scsidisk2;
-            scsiimage = scsiimage2;
-            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM2;
+            bCDROM = ConfigureParams.HardDisk.bCDROM2;
             break;
         case 3:
             scsidisk = scsidisk3;
-            scsiimage = scsiimage3;
-            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM3;
+            bCDROM = ConfigureParams.HardDisk.bCDROM3;
             break;
         case 4:
             scsidisk = scsidisk4;
-            scsiimage = scsiimage4;
-            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM4;
+            bCDROM = ConfigureParams.HardDisk.bCDROM4;
             break;
         case 5:
             scsidisk = scsidisk5;
-            scsiimage = scsiimage5;
-            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM5;
+            bCDROM = ConfigureParams.HardDisk.bCDROM5;
             break;
         case 6:
             scsidisk = scsidisk6;
-            scsiimage = scsiimage6;
-            scsiimage.cdrom = ConfigureParams.HardDisk.bCDROM6;
+            bCDROM = ConfigureParams.HardDisk.bCDROM6;
             break;
 
         default:
+            Log_Printf(LOG_WARN, "Invalid target: %i\n", SCSICommandBlock.target);
             break;
     }
     SCSI_Emulate_Command();
@@ -266,7 +285,6 @@ int SCSI_GetTransferLength(void)
 
 unsigned long SCSI_GetOffset(void)
 {
-	/* offset = logical block address * 512 */
 	return SCSICommandBlock.opcode < 0x20?
     // class 0
     (COMMAND_ReadInt24(SCSICommandBlock.command, 1) & 0x1FFFFF) :
@@ -301,15 +319,16 @@ void SCSI_TestUnitReady(void)
 void SCSI_ReadCapacity(void)
 {
 //	Uint32 nDmaAddr = FDC_GetDMAAddress();
+    Uint32 filesize;
         
     fseek(scsidisk, 0L, SEEK_END);
-    scsiimage.filesize = ftell(scsidisk);
+    filesize = ftell(scsidisk);
     
-    Log_Printf(LOG_WARN, "Read disk image: size = %i\n", scsiimage.filesize);
+    Log_Printf(LOG_WARN, "Read disk image: size = %i\n", filesize);
 
     SCSICommandBlock.transfer_data_len = 8;
   
-    Uint32 sectors = scsiimage.filesize / BLOCKSIZE;
+    Uint32 sectors = filesize / BLOCKSIZE;
     
     static Uint8 scsi_disksize[8];
 
@@ -397,8 +416,8 @@ void SCSI_ReadSector(void)
 
 void SCSI_Inquiry (void) {
 //    Uint32 nDmaAddr;
-    
-    if (scsiimage.cdrom) {
+        
+    if (bCDROM) {
         inquiry_bytes[0] = 0x05;
         inquiry_bytes[1] |= 0x80;
         inquiry_bytes[16] = 'C';

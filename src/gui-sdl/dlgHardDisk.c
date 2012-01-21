@@ -262,6 +262,7 @@ void DlgHardDisk_Main(void)
                 break;
                 
             case DISKDLG_SCSIEJECT1:
+//                diskdlg[DISKDLG_CDROM1].state &= ~SG_SELECTED; // useful?
                 ConfigureParams.HardDisk.bSCSIImageAttached1 = false;
                 dlgname_scsi1[0] = '\0';
                 break;

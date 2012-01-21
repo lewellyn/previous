@@ -579,7 +579,6 @@ static void Main_Init(void)
 //	Audio_Init();
 //	DmaSnd_Init();
 	Keymap_Init();
-    SCSI_Init();
 
 
 	if (Reset_Cold())             /* Reset all systems, load TOS image */
@@ -597,6 +596,7 @@ static void Main_Init(void)
 	}
 
 	IoMem_Init();
+    SCSI_Init();
 	
 	/* done as last, needs CPU & DSP running... */
 	DebugUI_Init();
@@ -610,6 +610,7 @@ static void Main_Init(void)
 static void Main_UnInit(void)
 {
 	Screen_ReturnFromFullScreen();
+    SCSI_Uninit();
 	IoMem_UnInit();
 	SDLGui_UnInit();
 	Screen_UnInit();
