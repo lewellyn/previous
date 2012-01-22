@@ -530,7 +530,7 @@ Uint32 get_cmd (void) {
 //        async_len = 0;
 //    }
     
-    if(target >= ESP_MAX_DEVS /*|| bus.devs[target]*/) {
+    if(target >= ESP_MAX_DEVS || SCSIcommand.nodevice == true) { // experimental
         status = 0;
         intstatus = INTR_DC;
         seqstep = SEQ_0;
@@ -582,7 +582,7 @@ void do_busid_cmd(Uint8 busid) {
     lun = busid & 7;
     
     scsi_command_analyzer(commandbuf, command_len, target);
-    data_len = SCSICommandBlock.transfer_data_len;
+    data_len = SCSIcommand.transfer_data_len;
     
     if (data_len != 0) {
         Log_Printf(LOG_WARN, "executing command\n");
@@ -591,7 +591,7 @@ void do_busid_cmd(Uint8 busid) {
         dma_left = 0;
         dma_counter = 0;
         
-        if(SCSICommandBlock.transferdirection_todevice == 0) {
+        if(SCSIcommand.transferdirection_todevice == 0) {
             Log_Printf(LOG_WARN, "DATA IN\n");
             status |= STAT_DI;
         } else {
@@ -635,7 +635,7 @@ void esp_do_dma(void) {
     dma_memory_write(dma_write_buffer, dma_translen, NEXTDMA_SCSI);//experimental !!
 
     
-    to_device = SCSICommandBlock.transferdirection_todevice;
+    to_device = SCSIcommand.transferdirection_todevice;
     
     len = dma_left;
     
@@ -750,8 +750,8 @@ void esp_command_complete (void) {
 }
 
 void write_response(void) {
-    Log_Printf(LOG_WARN, "Transfer status: $%02x\n", SCSICommandBlock.returnCode);
-    esp_fifo[0] = SCSICommandBlock.returnCode; // status
+    Log_Printf(LOG_WARN, "Transfer status: $%02x\n", SCSIcommand.returnCode);
+    esp_fifo[0] = SCSIcommand.returnCode; // status
     esp_fifo[1] = 0x00; // message
     
     if(mode_dma == 1) {

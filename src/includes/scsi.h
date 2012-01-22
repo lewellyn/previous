@@ -43,6 +43,7 @@ typedef struct {
     unsigned char source_busid;
     unsigned char target;
     unsigned char opcode;
+    bool nodevice;
     int transfer_data_len;
     int transferdirection_todevice;
     bool extended;
@@ -53,7 +54,7 @@ typedef struct {
 } SCSICOMMAND;
 
 /* HDC globals */
-SCSICOMMAND SCSICommandBlock;
+SCSICOMMAND SCSIcommand;
 
 
 
@@ -71,6 +72,7 @@ void SCSI_Emulate_Command(void);
 
 /* SCSI Commands */
 void SCSI_Inquiry (void);
+void SCSI_StartStop(void);
 void SCSI_TestUnitReady(void);
 void SCSI_ReadCapacity(void);
 void SCSI_ReadSector(void);
