@@ -172,6 +172,7 @@ void scsi_command_analyzer(Uint8 commandbuf[], int size, int target) {
             Log_Printf(LOG_WARN, "SCSI command: Invalid target: %i\n", SCSIcommand.target);
             break;
     }
+    //bTargetDevice |= bCDROM; // handle empty cd-rom drive - does not work yet!
     if(bTargetDevice) { // experimental!
         SCSIcommand.nodevice = false;
         SCSI_Emulate_Command();
