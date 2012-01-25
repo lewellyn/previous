@@ -88,13 +88,20 @@ void SCSI_Init(void) {
 }
 
 void SCSI_Uninit(void) {
-    fclose(scsidisk0);
-    fclose(scsidisk1);
-    fclose(scsidisk2);
-    fclose(scsidisk3);
-    fclose(scsidisk4);
-    fclose(scsidisk5);
-    fclose(scsidisk6);
+	if (scsidisk0)
+    		fclose(scsidisk0);
+	if (scsidisk1)
+    		fclose(scsidisk1);
+	if (scsidisk2)
+    		fclose(scsidisk2);
+	if (scsidisk3)
+    		fclose(scsidisk3);
+	if (scsidisk4)
+    		fclose(scsidisk4);
+	if (scsidisk5)
+    		fclose(scsidisk5);
+	if (scsidisk6)
+    		fclose(scsidisk6);
     
     scsidisk = NULL;
 }
@@ -351,7 +358,7 @@ void SCSI_ReadSector(void)
     
     
 	/* seek to the position */
-	if (fseek(scsidisk, nLastBlockAddr, SEEK_SET) != 0)
+	if ((scsidisk==NULL) || (fseek(scsidisk, nLastBlockAddr, SEEK_SET) != 0))
 	{
         SCSIcommand.returnCode = HD_STATUS_ERROR;
         nLastError = HD_REQSENS_INVADDR;
