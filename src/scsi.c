@@ -351,7 +351,7 @@ void SCSI_ReadCapacity(void)
 
 void SCSI_ReadSector(void)
 {
-	int n;
+	int n=0;
     
 	nLastBlockAddr = SCSI_GetOffset() * BLOCKSIZE;
     SCSIcommand.transfer_data_len = SCSI_GetCount() * BLOCKSIZE;
