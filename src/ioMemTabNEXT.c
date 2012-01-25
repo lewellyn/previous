@@ -28,10 +28,10 @@ const char IoMemTabST_fileid[] = "Previous ioMemTabST.c : " __DATE__ " " __TIME_
 
 /* system timer */
 struct timer_reg {
-	u_char	t_counter_latch[2];	/* counted up at 1 MHz */
-	u_char	: 8;
-	u_char	: 8;
-	u_char	t_enable : 1,		/* counter enable */
+	unsigned char	t_counter_latch[2];	/* counted up at 1 MHz */
+	unsigned char	: 8;
+	unsigned char	: 8;
+	unsigned char	t_enable : 1,		/* counter enable */
     t_update : 1,		/* copy latch to counter */
     : 6;
 };
