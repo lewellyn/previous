@@ -38,6 +38,8 @@
 #define RELEASE_INT     0x00
 
 
+void SID_Read(void);
+
 void SCR1_Read0(void);
 void SCR1_Read1(void);
 void SCR1_Read2(void);

@@ -28,9 +28,11 @@ typedef struct
 } CNF_DEBUGGER;
 
 
-/* ROM (TOS + cartridge) configuration */
+/* ROM configuration */
 typedef struct
 {
+    char szRom030FileName[FILENAME_MAX];
+    char szRom040FileName[FILENAME_MAX];
   char szTosImageFileName[FILENAME_MAX];
   char szCartridgeImageFileName[FILENAME_MAX];
 } CNF_ROM;

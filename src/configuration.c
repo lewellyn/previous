@@ -308,6 +308,8 @@ static const struct Config_Tag configs_Rom[] =
 {
 	{ "szTosImageFileName", String_Tag, ConfigureParams.Rom.szTosImageFileName },
 	{ "szCartridgeImageFileName", String_Tag, ConfigureParams.Rom.szCartridgeImageFileName },
+    { "szRom030FileName", String_Tag, ConfigureParams.Rom.szRom030FileName },
+    { "szRom040FileName", String_Tag, ConfigureParams.Rom.szRom040FileName },
 	{ NULL , Error_Tag, NULL }
 };
 
@@ -554,6 +556,11 @@ void Configuration_SetDefault(void)
 //  ConfigureParams.Sound.YmVolumeMixing = YM_TABLE_MIXING;
 
 	/* Set defaults for Rom */
+    sprintf(ConfigureParams.Rom.szRom030FileName, "%s%cRev_1.0_v41.BIN",
+            Paths_GetWorkingDir(), PATHSEP);
+    sprintf(ConfigureParams.Rom.szRom040FileName, "%s%cRev_2.5_v66.BIN",
+            Paths_GetWorkingDir(), PATHSEP);
+
 	sprintf(ConfigureParams.Rom.szTosImageFileName, "%s%ctos.img",
 	        Paths_GetDataDir(), PATHSEP);
 	strcpy(ConfigureParams.Rom.szCartridgeImageFileName, "");
@@ -595,7 +602,8 @@ void Configuration_SetDefault(void)
 
 #if defined(__AMIGAOS4__)
 	/* Fix default path names on Amiga OS */
-	sprintf(ConfigureParams.Rom.szTosImageFileName, "%stos.img", Paths_GetDataDir());
+	sprintf(ConfigureParams.Rom.szRom030FileName, "%sRev_1.0_v41.BIN", Paths_GetWorkingDir());
+    sprintf(ConfigureParams.Rom.szRom040FileName, "%sRev_2.5_v66.BIN", Paths_GetWorkingDir());
 #endif
 }
 
@@ -650,6 +658,9 @@ void Configuration_Apply(bool bReset)
 	File_MakeAbsoluteName(ConfigureParams.Rom.szTosImageFileName);
 	if (strlen(ConfigureParams.Rom.szCartridgeImageFileName) > 0)
 		File_MakeAbsoluteName(ConfigureParams.Rom.szCartridgeImageFileName);
+    
+    File_MakeAbsoluteName(ConfigureParams.Rom.szRom030FileName);
+    File_MakeAbsoluteName(ConfigureParams.Rom.szRom040FileName);
     
     File_MakeAbsoluteName(ConfigureParams.HardDisk.szSCSIDiskImage0);
     File_MakeAbsoluteName(ConfigureParams.HardDisk.szSCSIDiskImage1);
@@ -800,6 +811,9 @@ void Configuration_MemorySnapShot_Capture(bool bSave)
 {
 	MemorySnapShot_Store(ConfigureParams.Rom.szTosImageFileName, sizeof(ConfigureParams.Rom.szTosImageFileName));
 	MemorySnapShot_Store(ConfigureParams.Rom.szCartridgeImageFileName, sizeof(ConfigureParams.Rom.szCartridgeImageFileName));
+    
+    MemorySnapShot_Store(ConfigureParams.Rom.szRom030FileName, sizeof(ConfigureParams.Rom.szRom030FileName));
+    MemorySnapShot_Store(ConfigureParams.Rom.szRom040FileName, sizeof(ConfigureParams.Rom.szRom040FileName));
 
 	MemorySnapShot_Store(&ConfigureParams.Memory.nMemorySize, sizeof(ConfigureParams.Memory.nMemorySize));
 
