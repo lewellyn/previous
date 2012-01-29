@@ -80,12 +80,54 @@ static Uint32 intMask=0x00000000;
 
 // Uint8 rtc_ram[32];
 
+Uint8 rtc_ram[32]={
+0x94,0x0f,0x40,0x00,0x00,0x00,0x00,0x00,
+0x00,0x00,0xfb,0x6d,0x00,0x00,0x7B,0x00,
+0x00,0x00,0x20,0x00,0x00,0x00,0x00,0x00,
+0x00,0x00,0x00,0x00,0x00,0x00,0x0F,0x13
+}; 
+/*
 Uint8 rtc_ram[32]={ // values from nextcomputers.org forums
     0x94,0x0f,0x40,0x03,0x00,0x00,0x00,0x00,
     0x00,0x00,0xfb,0x6d,0x00,0x00,0x4b,0x00,
     0x41,0x00,0x20,0x00,0x00,0x00,0x00,0x00,
     0x00,0x00,0x00,0x00,0x00,0x00,0x84,0x7e
 };
+*/
+
+/*
+old value (boot to network diagnostics)
+Uint8 rtc_ram[32]={
+0x94,0x0f,0x40,0x00,0x00,0x00,0x00,0x00,
+0x00,0x00,0xfb,0x6d,0x00,0x00,0x7B,0x00,
+0x00,0x00,0x65,0x6e,0x00,0x00,0x00,0x00,
+0x00,0x00,0x00,0x00,0x00,0x00,0x50,0x13
+};
+*/
+
+void rtc_checksum(int force) {
+	int sum,i;
+	sum=0;
+	for (i=0;i<30;i+=2) {
+		sum+=(rtc_ram[i]<<8)|(rtc_ram[i+1]);
+		if (sum>=0x10000) { 
+			sum-=0x10000;
+			sum+=1;
+		}
+	}
+
+	sum=0xFFFF-sum; 
+
+	if (force) {
+		rtc_ram[30]=(sum&0xFF00)>>8;
+		rtc_ram[31]=(sum&0xFF);
+		Log_Printf(LOG_WARN,"Forcing RTC checksum to %x %x",rtc_ram[30],rtc_ram[31]);
+	} else {
+		Log_Printf(LOG_WARN,"Check RTC checksum to %x %x %x %x",
+		rtc_ram[30],(sum&0xFF00)>>8,
+		rtc_ram[31],(sum&0xFF));
+	}
+}
 
 static char rtc_ram_info[1024];
 char * get_rtc_ram_info(void) {
@@ -207,6 +249,10 @@ char * get_rtc_ram_info(void) {
 }
 
 
+void SID_Read(void) {
+	Log_Printf(LOG_WARN,"SID read at $%08x PC=$%08x\n", IoAccessCurrentAddress,m68k_getpc());
+	IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x00; // slot ID 0
+}
 
 /* System Control Register 1
 
@@ -247,7 +293,7 @@ void SCR1_Read2(void)
     if(ConfigureParams.System.nCpuLevel == 3)
         IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x01; // Cube 030, board rev 1
     else
-        IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x20; // Cube 040, board rev 0
+        IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x10; // Slab 040, board rev 0
 }
 void SCR1_Read3(void)
 {
@@ -509,7 +555,7 @@ void set_interrupt(Uint32 interrupt_val, Uint8 int_set_release) {
     }
     
     if(int_set_release == SET_INT) {
-        Log_Printf(LOG_WARN,"Interrupt Level: %i", interrupt_level);
+        Log_Printf(LOG_DEBUG,"Interrupt Level: %i", interrupt_level);
         M68000_Exception(((24+interrupt_level)*4), M68000_EXC_SRC_AUTOVEC);
     } else {
 //        M68000_Exception(((24+0)*4), M68000_EXC_SRC_AUTOVEC); // release interrupt - does this work???
