@@ -42,6 +42,7 @@ typedef struct {
     int readCount;    /* count of number of command bytes written */
     unsigned char source_busid;
     unsigned char target;
+    unsigned char lun;
     unsigned char opcode;
     bool nodevice;
     int transfer_data_len;
@@ -60,7 +61,7 @@ SCSICOMMAND SCSIcommand;
 
 void SCSI_Init(void);
 void SCSI_Uninit(void);
-void scsi_command_analyzer(Uint8 command[], int size, int target);
+void scsi_command_analyzer(Uint8 command[], int size, int target,int lun);
 
 /* Helpers */
 int SCSI_GetTransferLength(void);
@@ -74,6 +75,7 @@ void SCSI_Emulate_Command(void);
 void SCSI_Inquiry (void);
 void SCSI_StartStop(void);
 void SCSI_TestUnitReady(void);
+void SCSI_TestMissingUnitReady(void);
 void SCSI_ReadCapacity(void);
 void SCSI_ReadSector(void);
 void SCSI_RequestSense(void);
