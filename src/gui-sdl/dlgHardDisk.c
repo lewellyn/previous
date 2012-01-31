@@ -252,6 +252,7 @@ void DlgHardDisk_Main(void)
 		{
             case DISKDLG_SCSIEJECT0:
                 ConfigureParams.HardDisk.bSCSIImageAttached0 = false;
+                ConfigureParams.HardDisk.szSCSIDiskImage0[0] = '\0';
                 dlgname_scsi0[0] = '\0';
                 break;
             case DISKDLG_SCSIBROWSE0:
@@ -264,6 +265,8 @@ void DlgHardDisk_Main(void)
             case DISKDLG_SCSIEJECT1:
 //                diskdlg[DISKDLG_CDROM1].state &= ~SG_SELECTED; // useful?
                 ConfigureParams.HardDisk.bSCSIImageAttached1 = false;
+                ConfigureParams.HardDisk.szSCSIDiskImage1[0] = '\0';
+
                 dlgname_scsi1[0] = '\0';
                 break;
             case DISKDLG_SCSIBROWSE1:
@@ -273,6 +276,7 @@ void DlgHardDisk_Main(void)
                 
             case DISKDLG_SCSIEJECT2:
                 ConfigureParams.HardDisk.bSCSIImageAttached2 = false;
+                ConfigureParams.HardDisk.szSCSIDiskImage2[0] = '\0';
                 dlgname_scsi2[0] = '\0';
                 break;
             case DISKDLG_SCSIBROWSE2:
@@ -282,6 +286,7 @@ void DlgHardDisk_Main(void)
                 
             case DISKDLG_SCSIEJECT3:
                 ConfigureParams.HardDisk.bSCSIImageAttached3 = false;
+                ConfigureParams.HardDisk.szSCSIDiskImage3[0] = '\0';
                 dlgname_scsi3[0] = '\0';
                 break;
             case DISKDLG_SCSIBROWSE3:
@@ -291,6 +296,7 @@ void DlgHardDisk_Main(void)
                 
             case DISKDLG_SCSIEJECT4:
                 ConfigureParams.HardDisk.bSCSIImageAttached4 = false;
+                ConfigureParams.HardDisk.szSCSIDiskImage4[0] = '\0';
                 dlgname_scsi4[0] = '\0';
                 break;
             case DISKDLG_SCSIBROWSE4:
@@ -300,6 +306,7 @@ void DlgHardDisk_Main(void)
 
             case DISKDLG_SCSIEJECT5:
                 ConfigureParams.HardDisk.bSCSIImageAttached5 = false;
+                ConfigureParams.HardDisk.szSCSIDiskImage5[0] = '\0';
                 dlgname_scsi5[0] = '\0';
                 break;
             case DISKDLG_SCSIBROWSE5:
@@ -309,6 +316,7 @@ void DlgHardDisk_Main(void)
 
             case DISKDLG_SCSIEJECT6:
                 ConfigureParams.HardDisk.bSCSIImageAttached6 = false;
+                ConfigureParams.HardDisk.szSCSIDiskImage6[0] = '\0';
                 dlgname_scsi6[0] = '\0';
                 break;
             case DISKDLG_SCSIBROWSE6:

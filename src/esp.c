@@ -328,6 +328,7 @@ void SCSI_Command_Write(void) {
             break;
         case CMD_ENSEL:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: enable selection/reselection\n");
+            //intstatus = 0x00;
             break;
             /* Initiator */
         case CMD_TI:
