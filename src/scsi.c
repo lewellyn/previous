@@ -304,7 +304,7 @@ void SCSI_Emulate_Command(void)
             
         case HD_MODESENSE:
             Log_Printf(LOG_WARN, "SCSI command: Mode sense\n");
-//            HDC_Cmd_ModeSense();
+            SCSI_ModeSense();
             break;
             
         case HD_FORMAT_DRIVE:
@@ -566,4 +566,48 @@ void SCSI_RequestSense(void) {
     SCSIcommand.transfer_data_len = nRetLen;
     memcpy(dma_write_buffer, retbuf, SCSIcommand.transfer_data_len);
     SCSIcommand.returnCode = HD_STATUS_OK;
+}
+
+
+void SCSI_ModeSense(void) {
+    Uint8 retbuf[16];
+    
+    Uint32 filesize;
+    
+    fseek(scsidisk, 0L, SEEK_END);
+    filesize = ftell(scsidisk);
+        
+    SCSIcommand.transfer_data_len = 16;
+    
+    Uint32 sectors = filesize / BLOCKSIZE;
+    
+    Log_Printf(LOG_WARN, "Mode Sense: %s, blocks: %i, blocksize %i byte\n", bCDROM == true ? "disk is read-only" : "disk is read/write" , sectors, BLOCKSIZE);
+    
+    /* Header */
+    retbuf[0] = SCSIcommand.transfer_data_len - 1; // length of following data
+    retbuf[1] = 0x00; // medium type (always 0)
+    retbuf[2] = bCDROM == true ? 0x80 : 0x00; // if media is read-only 0x80, else 0x00
+    retbuf[3] = 0x08; // block descriptor length
+    
+    /* Block descriptor data */
+    retbuf[4] = 0x00; // media density code
+    retbuf[5] = sectors >> 16;  // Number of blocks, high (?)
+    retbuf[6] = sectors >> 8;   // Number of blocks, med (?)
+    retbuf[7] = sectors;        // Number of blocks, low (?)
+    retbuf[8] = 0x00; // reserved
+    retbuf[9] = (BLOCKSIZE >> 16) & 0xFF;      // Block size in bytes, high
+    retbuf[10] = (BLOCKSIZE >> 8) & 0xFF;     // Block size in bytes, med
+    retbuf[11] = BLOCKSIZE & 0xFF;     // Block size in bytes, low
+    
+    retbuf[12] = 0;
+    retbuf[13] = 0;
+    retbuf[14] = 0;
+    retbuf[15] = 0;
+    
+    memcpy(dma_write_buffer, retbuf, SCSIcommand.transfer_data_len);
+    
+    SCSIcommand.returnCode = HD_STATUS_OK;
+    nLastError = HD_REQSENS_OK;
+    
+	bSetLastBlockAddr = false;
 }

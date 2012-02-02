@@ -79,3 +79,4 @@ void SCSI_TestUnitReady(void);
 void SCSI_ReadCapacity(void);
 void SCSI_ReadSector(void);
 void SCSI_RequestSense(void);
+void SCSI_ModeSense(void);
