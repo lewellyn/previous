@@ -55,8 +55,19 @@ typedef struct {
     short int returnCode;      /* return code from the HDC operation */
 } SCSICOMMAND;
 
-/* HDC globals */
+/* SCSI globals */
 SCSICOMMAND SCSIcommand;
+
+/* Mode Pages */
+#define MODEPAGE_MAX_SIZE 24
+typedef struct {
+    Uint8 current[MODEPAGE_MAX_SIZE];
+    Uint8 changeable[MODEPAGE_MAX_SIZE];
+    Uint8 modepage[MODEPAGE_MAX_SIZE]; // default values
+    Uint8 saved[MODEPAGE_MAX_SIZE];
+    Uint8 pagesize;
+} MODEPAGE;
+
 
 
 
@@ -68,6 +79,7 @@ void scsi_command_analyzer(Uint8 command[], int size, int target,int lun);
 int SCSI_GetTransferLength(void);
 unsigned long SCSI_GetOffset(void);
 int SCSI_GetCount(void);
+MODEPAGE SCSI_GetModePage(Uint8 pagecode);
 
 
 void SCSI_Emulate_Command(void);
