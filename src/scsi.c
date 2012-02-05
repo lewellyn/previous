@@ -603,7 +603,7 @@ void SCSI_RequestSense(void) {
 
 
 void SCSI_ModeSense(void) {
-    Uint8 retbuf[16];
+    Uint8 retbuf[256];
     MODEPAGE page;
     
     fseek(scsidisk, 0L, SEEK_END);
@@ -638,39 +638,78 @@ void SCSI_ModeSense(void) {
     }
     retbuf[0] = header_size - 1;
     
-    page = SCSI_GetModePage(pagecode);
-    
-    Uint8 counter;
-    switch (pagecontrol) {
-        case 0: // current values (not supported, using default values)
-            memcpy(page.current, page.modepage, page.pagesize);
-            for (counter = 0; counter < page.pagesize; counter++) {
-                retbuf[counter+header_size] = page.current[counter];
+    /* Mode Pages */
+    if (pagecode == 0x3F) { // return all pages!
+        Uint8 offset = header_size;
+        Uint8 counter;
+        for (pagecode = 0; pagecode < 0x3F; pagecode++) {
+            page = SCSI_GetModePage(pagecode);
+            switch (pagecontrol) {
+                case 0: // current values (not supported, using default values)
+                    memcpy(page.current, page.modepage, page.pagesize);
+                    for (counter = 0; counter < page.pagesize; counter++) {
+                        retbuf[counter+offset] = page.current[counter];
+                    }
+                    break;
+                case 1: // changeable values (not supported, all 0)
+                    memset(page.changeable, 0x00, page.pagesize);
+                    for (counter = 0; counter < page.pagesize; counter++) {
+                        retbuf[counter+offset] = page.changeable[counter];
+                    }
+                    break;
+                case 2: // default values
+                    for (counter = 0; counter < page.pagesize; counter++) {
+                        retbuf[counter+offset] = page.modepage[counter];
+                    }
+                    break;
+                case 3: // saved values (not supported, using default values)
+                    memcpy(page.saved, page.modepage, page.pagesize);
+                    for (counter = 0; counter < page.pagesize; counter++) {
+                        retbuf[counter+offset] = page.saved[counter];
+                    }
+                    break;
+                    
+                default:
+                    break;
             }
-            break;
-        case 1: // changeable values (not supported, all 0)
-            memset(page.changeable, 0x00, page.pagesize);
-            for (counter = 0; counter < page.pagesize; counter++) {
-                retbuf[counter+header_size] = page.changeable[counter];
-            }
-            break;
-        case 2: // default values
-            for (counter = 0; counter < page.pagesize; counter++) {
-                retbuf[counter+header_size] = page.modepage[counter];
-            }
-            break;
-        case 3: // saved values (not supported, using default values)
-            memcpy(page.saved, page.modepage, page.pagesize);
-            for (counter = 0; counter < page.pagesize; counter++) {
-                retbuf[counter+header_size] = page.saved[counter];
-            }
-            break;
-            
-        default:
-            break;
+            offset += page.pagesize;
+            retbuf[0] += page.pagesize;
+        }
+    } else { // return only single requested page
+        page = SCSI_GetModePage(pagecode);
+        
+        Uint8 counter;
+        switch (pagecontrol) {
+            case 0: // current values (not supported, using default values)
+                memcpy(page.current, page.modepage, page.pagesize);
+                for (counter = 0; counter < page.pagesize; counter++) {
+                    retbuf[counter+header_size] = page.current[counter];
+                }
+                break;
+            case 1: // changeable values (not supported, all 0)
+                memset(page.changeable, 0x00, page.pagesize);
+                for (counter = 0; counter < page.pagesize; counter++) {
+                    retbuf[counter+header_size] = page.changeable[counter];
+                }
+                break;
+            case 2: // default values
+                for (counter = 0; counter < page.pagesize; counter++) {
+                    retbuf[counter+header_size] = page.modepage[counter];
+                }
+                break;
+            case 3: // saved values (not supported, using default values)
+                memcpy(page.saved, page.modepage, page.pagesize);
+                for (counter = 0; counter < page.pagesize; counter++) {
+                    retbuf[counter+header_size] = page.saved[counter];
+                }
+                break;
+                
+            default:
+                break;
+        }
+        
+        retbuf[0] += page.pagesize;
     }
-
-    retbuf[0] += page.pagesize;
     
     
     SCSIcommand.transfer_data_len = retbuf[0] + 1;
