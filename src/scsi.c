@@ -368,7 +368,45 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
             
         case 0x02: // disconnect/reconnect page
         case 0x03: // format device page
+            page.pagesize = 0;
+            Log_Printf(LOG_WARN, "Mode Sense: Page %02x not yet emulated!\n", pagecode);
+            break;
+
         case 0x04: // rigid disc geometry page
+            fseek(scsidisk, 0L, SEEK_END);
+            Uint32 filesize = ftell(scsidisk);
+            Uint32 sectors = filesize / BLOCKSIZE;
+            Uint8 heads = 16; // max heads per cylinder: 16
+            Uint32 cylinders = sectors / (63 * heads); // max sectors per track: 63
+            if ((sectors % (63 * heads)) != 0) {
+                cylinders += 1;
+            }
+            Log_Printf(LOG_WARN, "Disk geometry: %i sectors, %i cylinders, %i heads\n", sectors, cylinders, heads);
+            
+            page.pagesize = 0; //20;
+            Log_Printf(LOG_WARN, "Disk geometry page disabled!\n"); abort();
+            page.modepage[0] = 0x04; // &0x80: page savable? (not supported!), &0x7F: page code = 0x04
+            page.modepage[1] = 0x12;
+            page.modepage[2] = (cylinders >> 16) & 0xFF;
+            page.modepage[3] = (cylinders >> 8) & 0xFF;
+            page.modepage[4] = cylinders & 0xFF;
+            page.modepage[5] = heads;
+            page.modepage[6] = 0x00; // 6,7,8: starting cylinder - write precomp (not supported)
+            page.modepage[7] = 0x00;
+            page.modepage[8] = 0x00;
+            page.modepage[9] = 0x00; // 9,10,11: starting cylinder - reduced write current (not supported)
+            page.modepage[10] = 0x00;
+            page.modepage[11] = 0x00;
+            page.modepage[12] = 0x00; // 12,13: drive step rate (not supported)
+            page.modepage[13] = 0x00;
+            page.modepage[14] = 0x00; // 14,15,16: loading zone cylinder (not supported)
+            page.modepage[15] = 0x00;
+            page.modepage[16] = 0x00;
+            page.modepage[17] = 0x00; // &0x03: rotational position locking
+            page.modepage[18] = 0x00; // rotational position lock offset
+            page.modepage[19] = 0x00; // reserved
+            break;
+            
         case 0x08: // caching page
         case 0x0C: // notch page
         case 0x0D: // power condition page
