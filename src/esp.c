@@ -521,8 +521,8 @@ void do_busid_cmd(Uint8 busid) {
     if ((target >= ESP_MAX_DEVS) || (SCSIcommand.timeout==true)) { // experimental
     Log_Printf(LOG_SCSI_LEVEL, "No target found !! Target %d Lun %d raise irq %s at %d",target,lun,__FILE__,__LINE__);
 	
-        status = (status&STAT_MASK)|STAT_CD;
-        intstatus |= INTR_DC;
+        status = STAT_CD;
+        intstatus = INTR_DC;
         seqstep = SEQ_SELTIMEOUT;
         esp_raise_irq();
 	return;

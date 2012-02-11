@@ -410,6 +410,7 @@ static ALWAYS_INLINE bool mmu_fill_atc_l1(uaecptr addr, bool super, bool data, b
 	if (write) {
 		if (l->write_protect) {
 			fprintf(stderr, "MMU: write protected (via %s) %lx\n", l->tt ? "ttr" : "atc", addr);
+			mmu_dump_atc();
 			goto fail;
 		}
 		if (!l->modified)
@@ -1037,7 +1038,7 @@ jmp_buf* __poptry(void) {
 			if (s_try_stack_size>0)
 				memcpy(&__exbuf,&s_try_stack[s_try_stack_size-1],sizeof(jmp_buf));
 			// fprintf(stderr,"pop jmpbuf=%08x\n",s_try_stack[s_try_stack_size][0]);
-			return &s_try_stack[s_try_stack_size];
+			return &s_try_stack[s_try_stack_size-1];
 		}
 	else {
 		fprintf(stderr,"try stack underflow...\n");
