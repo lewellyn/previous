@@ -794,11 +794,13 @@ void memory_init(uae_u32 nNewNEXTMemSize)
 	{
 		FILE* fin;
 		int ret;
-	// if processor is 68030, loads a cube rom
-        if(ConfigureParams.System.nCpuLevel == 3)
+	/* Loading ROM depending on emulated system */
+        if(ConfigureParams.System.nMachineType == NEXT_CUBE030)
             fin=fopen(ConfigureParams.Rom.szRom030FileName,"rb");
+        else if(ConfigureParams.System.bTurbo == true)
+            fin=fopen(ConfigureParams.Rom.szRomTurboFileName,"rb");
         else
-            fin=fopen(ConfigureParams.Rom.szRom040FileName,"rb");
+            fin=fopen(ConfigureParams.Rom.szRom040FileName, "rb");
 
 		ret=fread(ROMmemory,1,0x20000,fin);
         
