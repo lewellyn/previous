@@ -383,7 +383,7 @@ void Configuration_SetDefault(void)
 	ConfigureParams.Shortcut.withModifier[SHORTCUT_INSERTDISKA] = SDLK_1;
 
 	/* Set defaults for Memory */
-	ConfigureParams.Memory.nMemorySize = 8;     /* 1 MiB */
+	ConfigureParams.Memory.nMemorySize = 8;     /* 8 MiB */
 	ConfigureParams.Memory.bAutoSave = false;
 	sprintf(ConfigureParams.Memory.szMemoryCaptureFileName, "%s%chatari.sav",
 	        psHomeDir, PATHSEP);
@@ -442,14 +442,14 @@ void Configuration_SetDefault(void)
 
 
 	/* Set defaults for System */
-    ConfigureParams.System.nMachineType = NEXT_STATION;
+    ConfigureParams.System.nMachineType = NEXT_CUBE030;
     ConfigureParams.System.bColor = false;
     ConfigureParams.System.bTurbo = false;
     ConfigureParams.System.bADB = false;
-    ConfigureParams.System.nSCSI = NCR53C90A;
-    ConfigureParams.System.nRTC = MCS1850;
+    ConfigureParams.System.nSCSI = NCR53C90;
+    ConfigureParams.System.nRTC = MC68HC68T1;
     
-	ConfigureParams.System.nCpuLevel = 4;
+	ConfigureParams.System.nCpuLevel = 3;
 	ConfigureParams.System.nCpuFreq = 25;
 	ConfigureParams.System.bCompatibleCpu = true;
 	ConfigureParams.System.bBlitter = false;

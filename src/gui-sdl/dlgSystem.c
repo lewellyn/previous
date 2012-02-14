@@ -24,86 +24,151 @@ const char DlgSystem_fileid[] = "Hatari dlgSystem.c : " __DATE__ " " __TIME__;
 #define DLGSYS_COLOR      6
 #define DLGSYS_TURBO      7
 
-#define DLGSYS_8MB        10
-#define DLGSYS_16MB       11
-#define DLGSYS_32MB       12
-#define DLGSYS_64MB       13
-#define DLGSYS_128MB      14
+#define DLGSYS_CUSTOMIZE  8
+#define DLGSYS_RESET      9
 
-#define DLGSYS_ADB        17
+#define DLGSYS_EXIT       24
 
-#define DLGSYS_CPU        20
-#define DLGSYS_SPEED      21
-#define DLGSYS_FPU        23
-#define DLGSYS_SCSI       25
-#define DLGSYS_RTC        27
+/* Variable strings */
+char cpu_type[16] = "68030,";
+char cpu_clock[16] = "25 MHz";
+char fpu_type[16] = "68882";
+char memory_size[16] = "8 MB";
+char scsi_conroller[16] = "NCR53C90";
+char rtc_chip[16] = "MC68HC68T1";
+char emulate_adb[16] = " ";
 
-#define DLGSYS_EXIT       29
+/* Additional functions */
+void print_system_overview(void);
+void get_default_values(void);
+
 
 
 
 static SGOBJ systemdlg[] =
 {
- 	{ SGBOX, 0, 0, 0,0, 60,27, NULL },
+ 	{ SGBOX, 0, 0, 0,0, 60,24, NULL },
  	{ SGTEXT, 0, 0, 23,1, 14,1, "System options" },
   
- 	{ SGBOX, 0, 0, 2,3, 18,9, NULL },
+ 	{ SGBOX, 0, 0, 2,3, 26,14, NULL },
  	{ SGTEXT, 0, 0, 3,4, 14,1, "Machine type" },
- 	{ SGRADIOBUT, 0, 0, 3,6, 15,1, "NeXT Computer" },
- 	{ SGRADIOBUT, 0, 0, 3,8, 13,1, "NeXTstation" },
-    { SGCHECKBOX, 0, 0, 5,9, 7,1, "Color" },
-    { SGCHECKBOX, 0, 0, 5,10, 7,1, "Turbo" },
+ 	{ SGRADIOBUT, 0, 0, 5,6, 15,1, "NeXT Computer" },
+ 	{ SGRADIOBUT, 0, 0, 5,8, 13,1, "NeXTstation" },
+    { SGCHECKBOX, 0, 0, 7,9, 7,1, "Color" },
+    { SGCHECKBOX, 0, 0, 7,10, 7,1, "Turbo" },
     
-    { SGBOX, 0, 0, 21,3, 16,9, NULL },
- 	{ SGTEXT, 0, 0, 22,4, 15,1, "System memory" },
- 	{ SGRADIOBUT, 0, 0, 22,6, 6,1, "8 MB" },
- 	{ SGRADIOBUT, 0, 0, 22,7, 7,1, "16 MB" },
-    { SGRADIOBUT, 0, 0, 22,8, 7,1, "32 MB" },
-    { SGRADIOBUT, 0, 0, 22,9, 7,1, "64 MB" },
-    { SGRADIOBUT, 0, 0, 22,10, 8,1, "128 MB" },
+    { SGBUTTON, SG_DEFAULT, 0, 5,13, 20,1, "Customize" },
+    { SGBUTTON, SG_DEFAULT, 0, 5,15, 20,1, "Reset" },
+        
+ 	{ SGTEXT, 0, 0, 30,4, 13,1, "System overview:" },
+    { SGTEXT, 0, 0, 30,6, 13,1, "CPU type:" },
+    { SGTEXT, 0, 0, 44,6, 13,1, cpu_type },
+    { SGTEXT, 0, 0, 51,6, 13,1, cpu_clock },
+    { SGTEXT, 0, 0, 30,7, 13,1, "FPU type:" },
+    { SGTEXT, 0, 0, 44,7, 13,1, fpu_type },
+    { SGTEXT, 0, 0, 30,8, 13,1, "Memory size:" },
+    { SGTEXT, 0, 0, 44,8, 13,1, memory_size },
+    { SGTEXT, 0, 0, 30,9, 13,1, "SCSI chip:" },
+    { SGTEXT, 0, 0, 44,9, 13,1, scsi_conroller },
+    { SGTEXT, 0, 0, 30,10, 13,1, "RTC chip:" },
+    { SGTEXT, 0, 0, 44,10, 13,1, rtc_chip },
+    { SGTEXT, 0, 0, 30,12, 13,1, emulate_adb },
     
-    { SGBOX, 0, 0, 38,3, 20,9, NULL },
- 	{ SGTEXT, 0, 0, 39,4, 16,1, "Advanced options" },
-    { SGCHECKBOX, 0, 0, 39,6, 12,1, "Enable ADB" },
+    { SGTEXT, 0, 0, 4,18, 13,1, "Changing machine type resets all advanced options." },
     
- 	{ SGTEXT, 0, 0, 3,13, 13,1, "System overview:" },
-    { SGTEXT, 0, 0, 3,15, 13,1, "CPU type:" },
-    { SGTEXT, 0, 0, 15,15, 13,1, "68030," },
-    { SGTEXT, 0, 0, 22,15, 13,1, "25 MHz" },
-    { SGTEXT, 0, 0, 3,16, 13,1, "FPU type:" },
-    { SGTEXT, 0, 0, 15,16, 13,1, "68882" },
-    { SGTEXT, 0, 0, 3,17, 13,1, "SCSI chip:" },
-    { SGTEXT, 0, 0, 15,17, 13,1, "NCR53C90" },
-    { SGTEXT, 0, 0, 3,18, 13,1, "RTC chip:" },
-    { SGTEXT, 0, 0, 15,18, 13,1, "MC68HC68T1" },
-    
-    { SGTEXT, 0, 0, 3,21, 13,1, "Options may be unavailable depending on machine type." },
-   
- 	{ SGBUTTON, SG_DEFAULT, 0, 21,24, 20,1, "Back to main menu" },
+ 	{ SGBUTTON, SG_DEFAULT, 0, 21,21, 20,1, "Back to main menu" },
  	{ -1, 0, 0, 0,0, 0,0, NULL }
  };
 
-/* Variable objects */
-SGOBJ disable_adb_option = { SGTEXT, 0, 0, 39,6, 8,1, " " };
-SGOBJ enable_adb_option = { SGCHECKBOX, 0, 0, 39,6, 12,1, "Enable ADB" };
 
-SGOBJ disable_128mb_option = { SGTEXT, 0, 0, 22,10, 8,1, " " };
-SGOBJ enable_128mb_option = { SGRADIOBUT, 0, 0, 22,10, 8,1, "128 MB" };
+/* Function to print system overview */
 
-SGOBJ show68030 = { SGTEXT, 0, 0, 15,15, 13,1, "68030," };
-SGOBJ show68040 = { SGTEXT, 0, 0, 15,15, 13,1, "68040," };
+void print_system_overview(void) {
+    switch (ConfigureParams.System.nCpuLevel) {
+        case 0:
+            sprintf(cpu_type, "68000,"); break;
+        case 1:
+            sprintf(cpu_type, "68010,"); break;
+        case 2:
+            sprintf(cpu_type, "68020,"); break;
+        case 3:
+            sprintf(cpu_type, "68030,"); break;
+        case 4:
+            sprintf(cpu_type, "68040,"); break;
+        case 5:
+            sprintf(cpu_type, "68060,"); break;
+        default: break;
+    }
+    
+    sprintf(cpu_clock, "%i MHz", ConfigureParams.System.nCpuFreq);
+    
+    if (ConfigureParams.System.nMachineType != NEXT_STATION && ConfigureParams.Memory.nMemorySize > 64)
+        ConfigureParams.Memory.nMemorySize = 64;
+    sprintf(memory_size, "%i MB", ConfigureParams.Memory.nMemorySize);
+    
+    switch (ConfigureParams.System.n_FPUType) {
+        case FPU_NONE:
+            sprintf(fpu_type, "none"); break;
+        case FPU_68881:
+            sprintf(fpu_type, "68881"); break;
+        case FPU_68882:
+            sprintf(fpu_type, "68882"); break;
+        case FPU_CPU:
+            sprintf(fpu_type, "68040 internal"); break;
+        default: break;
+    }
+    
+    switch (ConfigureParams.System.nSCSI) {
+        case NCR53C90:
+            sprintf(scsi_conroller, "NRC53C90"); break;
+        case NCR53C90A:
+            sprintf(scsi_conroller, "NCR53C90A"); break;
+        default: break;
+    }
+    
+    switch (ConfigureParams.System.nRTC) {
+        case MC68HC68T1:
+            sprintf(rtc_chip, "MC68HC68T1"); break;
+        case MCS1850:
+            sprintf(rtc_chip, "MCS1850"); break;
+        default: break;
+    }
+    
+    if (ConfigureParams.System.bADB)
+        sprintf(emulate_adb, "ADB emulated");
+    else
+        sprintf(emulate_adb, " ");
+}
 
-SGOBJ show25MHz = { SGTEXT, 0, 0, 22,15, 13,1, "25 MHz" };
-SGOBJ show33MHz = { SGTEXT, 0, 0, 22,15, 13,1, "33 MHz" };
 
-SGOBJ show68882 = { SGTEXT, 0, 0, 15,16, 13,1, "68882" };
-SGOBJ show040internal = { SGTEXT, 0, 0, 15,16, 13,1, "68040 internal" };
-
-SGOBJ showOldSCSI = { SGTEXT, 0, 0, 15,17, 13,1, "NCR53C90" };
-SGOBJ showNewSCSI = { SGTEXT, 0, 0, 15,17, 13,1, "NCR53C90A" };
-
-SGOBJ showOldRTC = { SGTEXT, 0, 0, 15,18, 13,1, "MC68HC68T1" };
-SGOBJ showNewRTC = { SGTEXT, 0, 0, 15,18, 13,1, "MCS1850" };
+/* Function to get default values for each system */
+void get_default_values(void) {
+    switch (ConfigureParams.System.nMachineType) {
+        case NEXT_CUBE030:
+            ConfigureParams.System.nCpuLevel = 3;
+            ConfigureParams.System.nCpuFreq = 25;
+            ConfigureParams.System.n_FPUType = FPU_68882;
+            ConfigureParams.System.nSCSI = NCR53C90;
+            ConfigureParams.System.nRTC = MC68HC68T1;
+            ConfigureParams.System.bADB = false;
+            break;
+            
+        case NEXT_STATION:
+            ConfigureParams.System.nMachineType = NEXT_STATION;
+            ConfigureParams.System.nCpuLevel = 4;
+            if (ConfigureParams.System.bTurbo)
+                ConfigureParams.System.nCpuFreq = 33;
+            else
+                ConfigureParams.System.nCpuFreq = 25;
+            ConfigureParams.System.n_FPUType = FPU_CPU;
+            ConfigureParams.System.nSCSI = NCR53C90A;
+            ConfigureParams.System.nRTC = MCS1850;
+            ConfigureParams.System.bADB = false;
+            break;
+        default:
+            break;
+    }
+}
 
 
 /*-----------------------------------------------------------------------*/
@@ -124,78 +189,15 @@ void Dialog_SystemDlg(void)
  	{
  		systemdlg[i].state &= ~SG_SELECTED;
  	}
- 	systemdlg[DLGSYS_CUBE030 + ConfigureParams.System.nMachineType-1].state |= SG_SELECTED;
+    if (ConfigureParams.System.nMachineType == NEXT_CUBE030)
+        systemdlg[DLGSYS_CUBE030].state |= SG_SELECTED;
+    else if (ConfigureParams.System.nMachineType == NEXT_STATION)
+        systemdlg[DLGSYS_SLAB].state |= SG_SELECTED;
  
- 
- 	/* System memory: */
- 	for (i = DLGSYS_8MB; i <= DLGSYS_64MB; i++)
- 	{
- 		systemdlg[i].state &= ~SG_SELECTED;
- 	}
-    if (ConfigureParams.System.nMachineType == NEXT_STATION) {
-        systemdlg[DLGSYS_128MB] = enable_128mb_option;
-        systemdlg[DLGSYS_128MB].state &= ~SG_SELECTED;
-    } else {
-        systemdlg[DLGSYS_128MB] = disable_128mb_option;
-    }
-    
-    
-	switch (ConfigureParams.Memory.nMemorySize)
-	{
-        case 8:
-            systemdlg[DLGSYS_8MB].state |= SG_SELECTED;
-            break;
-        case 16:
-            systemdlg[DLGSYS_16MB].state |= SG_SELECTED;
-            break;
-        case 32:
-            systemdlg[DLGSYS_32MB].state |= SG_SELECTED;
-            break;
-        case 64:
-            systemdlg[DLGSYS_64MB].state |= SG_SELECTED;
-            break;
-        case 128:
-            if (ConfigureParams.System.nMachineType == NEXT_STATION) {
-                systemdlg[DLGSYS_128MB].state |= SG_SELECTED;
-                break;
-            }
-        default:
-            systemdlg[DLGSYS_8MB].state |= SG_SELECTED;
-            ConfigureParams.Memory.nMemorySize = 8;
-            break;
-	}
-    
-    /* Advanced options: */
-    if (ConfigureParams.System.nMachineType == NEXT_CUBE030) {
-        systemdlg[DLGSYS_ADB] = disable_adb_option;
-    } else {
-        systemdlg[DLGSYS_ADB] = enable_adb_option;
-    }
-    
-    if (ConfigureParams.System.bADB && ConfigureParams.System.nMachineType != NEXT_CUBE030) {
-        systemdlg[DLGSYS_ADB].state |= SG_SELECTED;
-    } else if (!ConfigureParams.System.bADB && ConfigureParams.System.nMachineType != NEXT_CUBE030) {
-        systemdlg[DLGSYS_ADB].state &= ~SG_SELECTED;
-    }
-    
+         
     /* System overview */
-    if (ConfigureParams.System.nMachineType == NEXT_CUBE030) {
-        systemdlg[DLGSYS_CPU] = show68030;
-        systemdlg[DLGSYS_SPEED] = show25MHz;
-        systemdlg[DLGSYS_FPU] = show68882;
-        systemdlg[DLGSYS_SCSI] = showOldSCSI;
-        systemdlg[DLGSYS_RTC] = showOldRTC;
-    } else {
-        systemdlg[DLGSYS_CPU] = show68040;
-        if (ConfigureParams.System.bTurbo)
-            systemdlg[DLGSYS_SPEED] = show33MHz;
-        else
-            systemdlg[DLGSYS_SPEED] = show25MHz;
-        systemdlg[DLGSYS_FPU] = show040internal;
-        systemdlg[DLGSYS_SCSI] = showNewSCSI;
-        systemdlg[DLGSYS_RTC] = showNewRTC;
-    }
- 
+    print_system_overview();
+     
  		
  	/* Draw and process the dialog: */
 
@@ -206,96 +208,58 @@ void Dialog_SystemDlg(void)
         switch (but) {
             case DLGSYS_CUBE030:
                 ConfigureParams.System.nMachineType = NEXT_CUBE030;
-                ConfigureParams.System.nCpuLevel = 3;
-                ConfigureParams.System.nCpuFreq = 25;
-                systemdlg[DLGSYS_CPU] = show68030;
-                systemdlg[DLGSYS_SPEED] = show25MHz;
-                systemdlg[DLGSYS_FPU] = show68882;
-                systemdlg[DLGSYS_SCSI] = showOldSCSI;
-                systemdlg[DLGSYS_RTC] = showOldRTC;
-                ConfigureParams.System.nRTC = MC68HC68T1;
-                ConfigureParams.System.nSCSI = NCR53C90;
-                ConfigureParams.System.bADB = false;
-                systemdlg[DLGSYS_ADB] = disable_adb_option;
-                if (systemdlg[DLGSYS_128MB].state & SG_SELECTED) {
-                    ConfigureParams.Memory.nMemorySize = 64;
-                    systemdlg[DLGSYS_64MB].state |= SG_SELECTED;
-                }
-                systemdlg[DLGSYS_128MB] = disable_128mb_option;
                 systemdlg[DLGSYS_COLOR].state &= ~SG_SELECTED;
                 ConfigureParams.System.bColor = false;
                 systemdlg[DLGSYS_TURBO].state &= ~SG_SELECTED;
                 ConfigureParams.System.bTurbo = false;
+                get_default_values();
+                print_system_overview();
                 break;
                 
             case DLGSYS_SLAB:
                 ConfigureParams.System.nMachineType = NEXT_STATION;
-                ConfigureParams.System.nCpuLevel = 4;
-                systemdlg[DLGSYS_CPU] = show68040;
-                systemdlg[DLGSYS_FPU] = show040internal;
-                systemdlg[DLGSYS_SCSI] = showNewSCSI;
-                systemdlg[DLGSYS_RTC] = showNewRTC;
-                systemdlg[DLGSYS_ADB] = enable_adb_option;
-                systemdlg[DLGSYS_128MB] = enable_128mb_option;
-                ConfigureParams.System.nSCSI = NCR53C90A;
-                ConfigureParams.System.nRTC = MCS1850;
+                get_default_values();
+                print_system_overview();
                 break;
                 
             case DLGSYS_COLOR:
+                ConfigureParams.System.nMachineType = NEXT_STATION;
                 if (systemdlg[DLGSYS_COLOR].state & SG_SELECTED) {
-                    ConfigureParams.System.bColor = true;
-                    ConfigureParams.System.nMachineType = NEXT_STATION;
-                    ConfigureParams.System.nCpuLevel = 4;
-                    systemdlg[DLGSYS_CPU] = show68040;
-                    systemdlg[DLGSYS_FPU] = show040internal;
-                    systemdlg[DLGSYS_SCSI] = showNewSCSI;
-                    systemdlg[DLGSYS_RTC] = showNewRTC;
                     systemdlg[DLGSYS_CUBE030].state &= ~SG_SELECTED;
                     systemdlg[DLGSYS_SLAB].state |= SG_SELECTED;
-                    systemdlg[DLGSYS_ADB] = enable_adb_option;
-                    systemdlg[DLGSYS_128MB] = enable_128mb_option;
-                    ConfigureParams.System.nSCSI = NCR53C90A;
-                    ConfigureParams.System.nRTC = MCS1850;
+                    ConfigureParams.System.bColor = true;
                 } else {
                     ConfigureParams.System.bColor = false;
                 }
                 printf("color: %i\n", ConfigureParams.System.bColor ? 1 : 0);
+                get_default_values();
+                print_system_overview();
                 break;
                 
             case DLGSYS_TURBO:
+                ConfigureParams.System.nMachineType = NEXT_STATION;
                 if (systemdlg[DLGSYS_TURBO].state & SG_SELECTED) {
-                    ConfigureParams.System.bTurbo = true;
-                    ConfigureParams.System.nMachineType = NEXT_STATION;
-                    ConfigureParams.System.nCpuLevel = 4;
-                    ConfigureParams.System.nCpuFreq = 33;
-                    systemdlg[DLGSYS_CPU] = show68040;
-                    systemdlg[DLGSYS_SPEED] = show33MHz;
-                    systemdlg[DLGSYS_FPU] = show040internal;
-                    systemdlg[DLGSYS_SCSI] = showNewSCSI;
-                    systemdlg[DLGSYS_RTC] = showNewRTC;
                     systemdlg[DLGSYS_CUBE030].state &= ~SG_SELECTED;
                     systemdlg[DLGSYS_SLAB].state |= SG_SELECTED;
-                    systemdlg[DLGSYS_ADB] = enable_adb_option;
-                    systemdlg[DLGSYS_128MB] = enable_128mb_option;
-                    ConfigureParams.System.nSCSI = NCR53C90A;
-                    ConfigureParams.System.nRTC = MCS1850;
+                    ConfigureParams.System.bTurbo = true;
                 } else {
                     ConfigureParams.System.bTurbo = false;
-                    ConfigureParams.System.nCpuFreq = 25;
-                    systemdlg[DLGSYS_SPEED] = show25MHz;
                 }
                 printf("turbo: %i\n", ConfigureParams.System.bTurbo ? 1 : 0);
+                get_default_values();
+                print_system_overview();
+                break;
+                                
+            case DLGSYS_CUSTOMIZE:
+                Dialog_AdvancedDlg();
+                print_system_overview();
                 break;
                 
-            case DLGSYS_ADB:
-                if (systemdlg[DLGSYS_ADB].state & SG_SELECTED) {
-                    ConfigureParams.System.bADB = true;
-                } else {
-                    ConfigureParams.System.bADB = false;
-                }
+            case DLGSYS_RESET:
+                get_default_values();
+                print_system_overview();
                 break;
 
-                
             default:
                 break;
         }
@@ -306,31 +270,18 @@ void Dialog_SystemDlg(void)
  
  	/* Read values from dialog: */
  
- 	for (i = DLGSYS_CUBE030; i <= DLGSYS_SLAB; i++)
- 	{
- 		if (systemdlg[i].state&SG_SELECTED)
- 		{
- 			ConfigureParams.System.nMachineType = i - DLGSYS_CUBE030;
- 			break;
- 		}
- 	}
-    
-    for (i = DLGSYS_8MB; i <= DLGSYS_128MB; i++) {
-        if (systemdlg[i].state&SG_SELECTED) {
-            ConfigureParams.Memory.nMemorySize = 1 << (i - DLGSYS_8MB + 3);
-        }
-    }
- 
+//    if (systemdlg[DLGSYS_CUBE030].state&SG_SELECTED)
+//        ConfigureParams.System.nMachineType = NEXT_CUBE030;
+//    else if (systemdlg[DLGSYS_SLAB].state&SG_SELECTED)
+//        ConfigureParams.System.nMachineType = NEXT_STATION;
+     
+    /* Obsolete */
  	ConfigureParams.System.bCompatibleCpu = 1;
  	ConfigureParams.System.bBlitter = 0;
  	ConfigureParams.System.bRealTimeClock = 0;
  	ConfigureParams.System.bPatchTimerD = 0;
  	ConfigureParams.System.bAddressSpace24 = 0;
  	ConfigureParams.System.bCycleExactCpu = 0;
- 
- 	/* FPU emulation */
- 	ConfigureParams.System.n_FPUType = FPU_CPU;
- 
  	ConfigureParams.System.bCompatibleFPU = 1;
  	ConfigureParams.System.bMMU = 1;
 }
