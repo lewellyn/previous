@@ -14,10 +14,10 @@
 #define IO_SEG_MASK	0x1FFFF
 
 
-static Uint8 scr2_0=0;
-static Uint8 scr2_1=0;
-static Uint8 scr2_2=0;
-static Uint8 scr2_3=0;
+static Uint8 scr2_0=0x00;
+static Uint8 scr2_1=0x00;
+static Uint8 scr2_2=0x80;
+static Uint8 scr2_3=0x00;
 
 static Uint32 intStat=0x00000000;
 static Uint32 intMask=0x00000000;
@@ -83,7 +83,7 @@ static Uint32 intMask=0x00000000;
 
 Uint8 rtc_ram[32]={
 0x94,0x0f,0x40,0x00,0x00,0x00,0x00,0x00,
-0x00,0x00,0xfb,0x6d,0x00,0x00,0x49,0x00,
+0x00,0x00,0xfb,0x6d,0x00,0x00,0x4b,0x00,
 0x41,0x00,0x20,0x00,0x00,0x00,0x00,0x00,
 0x00,0x00,0x00,0x00,0x00,0x00,0x0F,0x13
 }; 
@@ -329,6 +329,10 @@ void SCR1_Read3(void)
  
  */
 
+#define SCR2_SOFTINT2		0x02
+#define SCR2_SOFTINT1		0x01
+
+#define SCR2_TIMERIPL7		0x80
 #define SCR2_RTDATA		0x04
 #define SCR2_RTCLK		0x02
 #define SCR2_RTCE		0x01
@@ -339,8 +343,27 @@ void SCR1_Read3(void)
 
 void SCR2_Write0(void)
 {	
+	Uint8 old_scr2_0=scr2_0;
     //	Log_Printf(LOG_WARN,"SCR2 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress,IoMem[IoAccessCurrentAddress & IO_SEG_MASK],m68k_getpc());
 	scr2_0=IoMem[IoAccessCurrentAddress & 0x1FFFF];
+
+	if ((old_scr2_0&SCR2_SOFTINT1)!=(scr2_0&SCR2_SOFTINT1)) {
+		Log_Printf(LOG_WARN,"SCR2 SCR2_SOFTINT1 change at $%08x val=%x PC=$%08x\n",
+                           IoAccessCurrentAddress,scr2_0&SCR2_SOFTINT1,m68k_getpc());
+		if (scr2_0&SCR2_SOFTINT1) 
+			set_interrupt(INT_SOFT1,SET_INT);
+		else
+			set_interrupt(INT_SOFT1,RELEASE_INT);
+	}
+
+	if ((old_scr2_0&SCR2_SOFTINT2)!=(scr2_0&SCR2_SOFTINT2)) {
+		Log_Printf(LOG_WARN,"SCR2 SCR2_SOFTINT2 change at $%08x val=%x PC=$%08x\n",
+                           IoAccessCurrentAddress,scr2_0&SCR2_SOFTINT2,m68k_getpc());
+		if (scr2_0&SCR2_SOFTINT2) 
+			set_interrupt(INT_SOFT2,SET_INT);
+		else
+			set_interrupt(INT_SOFT2,RELEASE_INT);
+	}
 }
 
 void SCR2_Read0(void)
@@ -371,10 +394,22 @@ void SCR2_Write2(void)
 	static Uint8 rtc_status=0x00;
 	static Uint8 rtc_ccr=0x00;	
 	static Uint8 rtc_icr=0x00;	
+
+    	static int day_in_week=0x02;
+	static int day=0x31;
+	static int month=0x12;
+	static int year=0x98;
+	static int century=0x19;
+
     
 	Uint8 old_scr2_2=scr2_2;
 
 	scr2_2=IoMem[IoAccessCurrentAddress & 0x1FFFF];
+
+	if ((old_scr2_2&SCR2_TIMERIPL7)!=(scr2_2&SCR2_TIMERIPL7)) {
+		Log_Printf(LOG_WARN,"SCR2 TIMER IPL7 change at $%08x val=%x PC=$%08x\n",
+                           IoAccessCurrentAddress,scr2_2&SCR2_TIMERIPL7,m68k_getpc());
+	}
 
     // treat only if CE is set to 1
 	if (scr2_2&SCR2_RTCE) {
@@ -442,16 +477,19 @@ void SCR2_Write2(void)
 				v=(((ts->tm_hour)/10)<<4)|(ts->tm_hour%10);
 				break;
 			case 0x23 : 
-				v=0x01;
+				v=day_in_week;
 				break;
 			case 0x24 : 
-				v=0x01;
+				v=day;
 				break;
 			case 0x25 : 
-				v=0x01;
+				v=month;
 				break;
 			case 0x26 : 
-				v=0x90;
+				v=year;
+				break;
+			case 0x27 : 
+				v=century;
 				break;
 		    }
                     if (v&(0x80>>(phase-8)))
@@ -485,6 +523,23 @@ void SCR2_Write2(void)
                 if (rtc_command==0xB2) {
 		    rtc_icr=rtc_value;
 		}
+
+                if (rtc_command==0xA3) {
+		    day_in_week=rtc_value;
+		}
+                if (rtc_command==0xA4) {
+		    day=rtc_value;
+		}                
+		if (rtc_command==0xA5) {
+		    month=rtc_value;
+		}                
+		if (rtc_command==0xA6) {
+		    year=rtc_value;
+		}
+		if (rtc_command==0xA7) {
+		    century=rtc_value;
+		}
+
 		// burst mode
 		phase=8;
 		rtc_command++;
@@ -551,7 +606,7 @@ void set_interrupt(Uint32 interrupt_val, Uint8 int_set_release) {
     if(int_set_release == SET_INT) {
         intStat = intStat | interrupt_val;
     } else {
-        intStat = intStat & ~interrupt_val; // set bit to 0 - does this work ??
+        intStat = intStat & ~interrupt_val; 
     }
     
     switch (interrupt_val) {
@@ -589,7 +644,13 @@ void set_interrupt(Uint32 interrupt_val, Uint8 int_set_release) {
         case INT_SCSI_DMA:
         case INT_ENETR_DMA:
         case INT_ENETX_DMA:
-        case INT_TIMER: interrupt_level = 6;
+			interrupt_level = 7;
+		break;
+        case INT_TIMER:
+		if (scr2_2&SCR2_TIMERIPL7)
+		 interrupt_level = 7;
+		else
+		 interrupt_level = 6;
             break;
         case INT_PFAIL:
         case INT_NMI: interrupt_level = 7;
