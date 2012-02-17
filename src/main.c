@@ -582,7 +582,7 @@ static void Main_Init(void)
 	Keymap_Init();
 
 	do {
-		char *err_msg;
+		const char *err_msg;
 
 		/* call menu at startup */
 		Dialog_DoProperty();
