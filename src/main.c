@@ -37,6 +37,7 @@ const char Main_fileid[] = "Hatari main.c : " __DATE__ " " __TIME__;
 #include "avi_record.h"
 #include "debugui.h"
 #include "clocks_timings.h"
+#include "file.h"
 
 #include "hatari-glue.h"
 
@@ -585,7 +586,8 @@ static void Main_Init(void)
 		const char *err_msg;
 
 		/* call menu at startup */
-		Dialog_DoProperty();
+        if (!File_Exists(sConfigFileName) || ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup)
+            Dialog_DoProperty();
 
 		if (bQuitProgram)
 		{

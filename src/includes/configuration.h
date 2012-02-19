@@ -8,6 +8,13 @@
 #ifndef HATARI_CONFIGURATION_H
 #define HATARI_CONFIGURATION_H
 
+
+/* Configuration Dialog */
+typedef struct
+{
+  bool bShowConfigDialogAtStartup;
+} CNF_CONFIGDLG;
+
 /* Logging and tracing */
 typedef struct
 {
@@ -314,6 +321,7 @@ typedef struct
 typedef struct
 {
   /* Configure */
+  CNF_CONFIGDLG ConfigDialog;
   CNF_LOG Log;
   CNF_DEBUGGER Debugger;
   CNF_SCREEN Screen;

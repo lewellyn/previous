@@ -31,6 +31,13 @@ CNF_PARAMS ConfigureParams;                 /* List of configuration for the emu
 char sConfigFileName[FILENAME_MAX];         /* Stores the name of the configuration file */
 
 
+/* Used to load/save configuration dialog options */
+static const struct Config_Tag configs_ConfigDialog[] =
+{
+    { "bShowConfigDialogAtStartup", Bool_Tag, &ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup },
+	{ NULL , Error_Tag, NULL }
+};
+
 /* Used to load/save logging options */
 static const struct Config_Tag configs_Log[] =
 {
@@ -295,6 +302,9 @@ void Configuration_SetDefault(void)
 
 	/* Clear parameters */
 	memset(&ConfigureParams, 0, sizeof(CNF_PARAMS));
+
+    /* Set defaults for config dialog */
+	ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup = true;
 
 	/* Set defaults for logging and tracing */
 	strcpy(ConfigureParams.Log.sLogFileName, "stderr");
@@ -610,6 +620,7 @@ void Configuration_Load(const char *psFileName)
 		return;
 	}
 
+    Configuration_LoadSection(psFileName, configs_ConfigDialog, "[ConfigDialog]");
 	Configuration_LoadSection(psFileName, configs_Log, "[Log]");
 	Configuration_LoadSection(psFileName, configs_Debugger, "[Debugger]");
 	Configuration_LoadSection(psFileName, configs_Screen, "[Screen]");
@@ -657,6 +668,7 @@ void Configuration_Save(void)
 		Log_AlertDlg(LOG_ERROR, "Error saving config file.");
 		return;
 	}
+    Configuration_SaveSection(sConfigFileName, configs_ConfigDialog, "[ConfigDialog]");
 	Configuration_SaveSection(sConfigFileName, configs_Debugger, "[Debugger]");
 	Configuration_SaveSection(sConfigFileName, configs_Screen, "[Screen]");
 	Configuration_SaveSection(sConfigFileName, configs_Keyboard, "[Keyboard]");
