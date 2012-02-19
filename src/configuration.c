@@ -31,13 +31,6 @@ CNF_PARAMS ConfigureParams;                 /* List of configuration for the emu
 char sConfigFileName[FILENAME_MAX];         /* Stores the name of the configuration file */
 
 
-/* Used to load/save configuration dialog options */
-static const struct Config_Tag configs_ConfigDialog[] =
-{
-    { "bShowConfigDialogAtStartup", Bool_Tag, &ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup },
-	{ NULL , Error_Tag, NULL }
-};
-
 /* Used to load/save logging options */
 static const struct Config_Tag configs_Log[] =
 {
@@ -46,6 +39,13 @@ static const struct Config_Tag configs_Log[] =
 	{ "nTextLogLevel", Int_Tag, &ConfigureParams.Log.nTextLogLevel },
 	{ "nAlertDlgLogLevel", Int_Tag, &ConfigureParams.Log.nAlertDlgLogLevel },
 	{ "bConfirmQuit", Bool_Tag, &ConfigureParams.Log.bConfirmQuit },
+	{ NULL , Error_Tag, NULL }
+};
+
+/* Used to load/save configuration dialog options */
+static const struct Config_Tag configs_ConfigDialog[] =
+{
+    { "bShowConfigDialogAtStartup", Bool_Tag, &ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup },
 	{ NULL , Error_Tag, NULL }
 };
 
@@ -303,8 +303,6 @@ void Configuration_SetDefault(void)
 	/* Clear parameters */
 	memset(&ConfigureParams, 0, sizeof(CNF_PARAMS));
 
-    /* Set defaults for config dialog */
-	ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup = true;
 
 	/* Set defaults for logging and tracing */
 	strcpy(ConfigureParams.Log.sLogFileName, "stderr");
@@ -312,6 +310,9 @@ void Configuration_SetDefault(void)
 	ConfigureParams.Log.nTextLogLevel = LOG_TODO;
 	ConfigureParams.Log.nAlertDlgLogLevel = LOG_ERROR;
 	ConfigureParams.Log.bConfirmQuit = true;
+    
+    /* Set defaults for config dialog */
+	ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup = true;
 
 	/* Set defaults for debugger */
 	ConfigureParams.Debugger.nNumberBase = 10;
@@ -620,8 +621,8 @@ void Configuration_Load(const char *psFileName)
 		return;
 	}
 
-    Configuration_LoadSection(psFileName, configs_ConfigDialog, "[ConfigDialog]");
 	Configuration_LoadSection(psFileName, configs_Log, "[Log]");
+    Configuration_LoadSection(psFileName, configs_ConfigDialog, "[ConfigDialog]");
 	Configuration_LoadSection(psFileName, configs_Debugger, "[Debugger]");
 	Configuration_LoadSection(psFileName, configs_Screen, "[Screen]");
 	Configuration_LoadSection(psFileName, configs_Keyboard, "[Keyboard]");

@@ -28,6 +28,7 @@ extern void Dialog_SoundDlg(void);
 extern void Dialog_SystemDlg(void);
 extern void Dialog_AdvancedDlg(void);
 extern void DlgRom_Main(void);
+extern void DlgRom_Missing(void);
 /* and dialog.c */
 extern bool Dialog_DoProperty(void);
 

@@ -582,27 +582,30 @@ static void Main_Init(void)
 //	DmaSnd_Init();
 	Keymap_Init();
 
-	do {
-		const char *err_msg;
 
-		/* call menu at startup */
-        if (!File_Exists(sConfigFileName) || ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup)
-            Dialog_DoProperty();
+    /* call menu at startup */
+    if (!File_Exists(sConfigFileName) || ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup)
+        Dialog_DoProperty();
+    
+    /* If loading of the ROM fails, we bring up a dialog to let the
+     * user choose another ROM file. */
 
-		if (bQuitProgram)
-		{
-			SDL_Quit();
-			exit(-2);
-		}
-
-		if ((err_msg=Reset_Cold())!=NULL)
-		{
-			/* If loading of the TOS failed, we bring up the GUI to let the
-			 * user choose another TOS ROM file. */
-			DlgAlert_Notice(err_msg);
-		}
-		else break;
-	} while (1);
+    const char *err_msg;
+    
+    while ((err_msg=Reset_Cold())!=NULL)
+    {
+        DlgRom_Missing();
+        if (bQuitProgram) {
+            Main_RequestQuit();
+            break;
+        }
+    }
+    
+    if (bQuitProgram)
+    {
+        SDL_Quit();
+        exit(-2);
+    }
 
 	rtc_checksum(1);
 	IoMem_Init();

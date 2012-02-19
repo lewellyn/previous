@@ -46,7 +46,7 @@ static SGOBJ maindlg[] =
 	{ SGBUTTON, 0, 0, 2,6, 13,1, "System" },
 	{ SGBUTTON, 0, 0, 2,8, 13,1, "ROM" },
 	{ SGBUTTON, 0, 0, 2,10, 13,1, "Memory" },
-	{ SGBUTTON, 0, 0, 17,4, 16,1, "(not yet)" },
+	{ SGBUTTON, 0, 0, 17,4, 16,1, "(test)" },
 	{ SGBUTTON, 0, 0, 17,6, 16,1, "SCSI Disks" },
 	{ SGBUTTON, 0, 0, 17,8, 16,1, "(not yet)" },
 	{ SGBUTTON, 0, 0, 17,10, 16,1, "(not yet)" },
@@ -160,6 +160,12 @@ int Dialog_MainDlg(bool *bReset, bool *bLoadedSnapshot)
 				free(psNewCfg);
 			}
 			break;
+         case MAINDLG_SHOW:
+            if (maindlg[MAINDLG_SHOW].state & SG_SELECTED)
+                ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup = true;
+            else
+                ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup = false;
+            break;
 		 case MAINDLG_QUIT:
 			bQuitProgram = true;
 			break;
@@ -168,11 +174,6 @@ int Dialog_MainDlg(bool *bReset, bool *bLoadedSnapshot)
 	while (retbut != MAINDLG_OK && retbut != MAINDLG_CANCEL && retbut != SDLGUI_QUIT
 	        && retbut != SDLGUI_ERROR && !bQuitProgram);
 
-
-    if (maindlg[MAINDLG_SHOW].state & SG_SELECTED)
-        ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup = true;
-    else
-        ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup = false;
     
 	if (maindlg[MAINDLG_RESET].state & SG_SELECTED)
 		*bReset = true;
