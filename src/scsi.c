@@ -13,6 +13,7 @@
 #include "scsi.h"
 #include "dma.h"
 #include "esp.h"
+#include "dialog.h"
 
 
 #define COMMAND_ReadInt16(a, i) (((unsigned) a[i] << 8) | a[i + 1])
@@ -100,6 +101,94 @@ void SCSI_Init(void) {
 	scsidisk6 = ConfigureParams.HardDisk.bCDROM6 == true ? fopen(filename6, "r") : fopen(filename6, "r+");
     else
 	scsidisk6=NULL;
+    
+    
+    /* Check if files exist. Present dialog to re-select missing files. */        
+    
+    while (ConfigureParams.HardDisk.bSCSIImageAttached0 && scsidisk0 == NULL) {
+        DlgMissing_SCSIdisk(0);
+        if (bQuitProgram) {
+            Main_RequestQuit();
+            break;
+        }
+        stat(filename0,&st);
+        if (S_ISREG(st.st_mode))
+            scsidisk0 = ConfigureParams.HardDisk.bCDROM0 == true ? fopen(filename0, "r") : fopen(filename0, "r+");
+        else
+            scsidisk0=NULL;
+    }
+    while (ConfigureParams.HardDisk.bSCSIImageAttached1 && scsidisk1 == NULL) {
+        DlgMissing_SCSIdisk(1);
+        if (bQuitProgram) {
+            Main_RequestQuit();
+            break;
+        }
+        stat(filename1,&st);
+        if (S_ISREG(st.st_mode))
+            scsidisk1 = ConfigureParams.HardDisk.bCDROM1 == true ? fopen(filename1, "r") : fopen(filename1, "r+");
+        else
+            scsidisk1=NULL;
+    }
+    while (ConfigureParams.HardDisk.bSCSIImageAttached2 && scsidisk2 == NULL) {
+        DlgMissing_SCSIdisk(2);
+        if (bQuitProgram) {
+            Main_RequestQuit();
+            break;
+        }
+        stat(filename2,&st);
+        if (S_ISREG(st.st_mode))
+            scsidisk2 = ConfigureParams.HardDisk.bCDROM2 == true ? fopen(filename2, "r") : fopen(filename2, "r+");
+        else
+            scsidisk2=NULL;
+    }
+    while (ConfigureParams.HardDisk.bSCSIImageAttached3 && scsidisk3 == NULL) {
+        DlgMissing_SCSIdisk(3);
+        if (bQuitProgram) {
+            Main_RequestQuit();
+            break;
+        }
+        stat(filename3,&st);
+        if (S_ISREG(st.st_mode))
+            scsidisk3 = ConfigureParams.HardDisk.bCDROM3 == true ? fopen(filename3, "r") : fopen(filename3, "r+");
+        else
+            scsidisk3=NULL;
+    }
+    while (ConfigureParams.HardDisk.bSCSIImageAttached4 && scsidisk4 == NULL) {
+        DlgMissing_SCSIdisk(4);
+        if (bQuitProgram) {
+            Main_RequestQuit();
+            break;
+        }
+        stat(filename4,&st);
+        if (S_ISREG(st.st_mode))
+            scsidisk4 = ConfigureParams.HardDisk.bCDROM4 == true ? fopen(filename4, "r") : fopen(filename4, "r+");
+        else
+            scsidisk4=NULL;
+    }
+    while (ConfigureParams.HardDisk.bSCSIImageAttached5 && scsidisk5 == NULL) {
+        DlgMissing_SCSIdisk(5);
+        if (bQuitProgram) {
+            Main_RequestQuit();
+            break;
+        }
+        stat(filename5,&st);
+        if (S_ISREG(st.st_mode))
+            scsidisk5 = ConfigureParams.HardDisk.bCDROM5 == true ? fopen(filename5, "r") : fopen(filename5, "r+");
+        else
+            scsidisk5=NULL;
+    }
+    while (ConfigureParams.HardDisk.bSCSIImageAttached6 && scsidisk6 == NULL) {
+        DlgMissing_SCSIdisk(6);
+        if (bQuitProgram) {
+            Main_RequestQuit();
+            break;
+        }
+        stat(filename6,&st);
+        if (S_ISREG(st.st_mode))
+            scsidisk6 = ConfigureParams.HardDisk.bCDROM6 == true ? fopen(filename6, "r") : fopen(filename6, "r+");
+        else
+            scsidisk6=NULL;
+    }
     
 //  TODO: Better get disksize here or in SCSI_ReadCapacity?
     

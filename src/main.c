@@ -594,22 +594,26 @@ static void Main_Init(void)
     
     while ((err_msg=Reset_Cold())!=NULL)
     {
-        DlgRom_Missing();
+        DlgMissing_Rom();
         if (bQuitProgram) {
             Main_RequestQuit();
             break;
         }
     }
-    
+
     if (bQuitProgram)
     {
         SDL_Quit();
         exit(-2);
     }
-
+    
+    SCSI_Init(); // experimental
+    if (bQuitProgram) {
+        SDL_Quit();
+        exit(-2);
+    }
 	rtc_checksum(1);
 	IoMem_Init();
-    	SCSI_Init();
 	
 	/* done as last, needs CPU & DSP running... */
 	DebugUI_Init();
