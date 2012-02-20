@@ -49,11 +49,11 @@ static SGOBJ missingromdlg[] =
 #define DLGMISSINGSCSI_TARGET    3
 
 #define DLGMISSINGSCSI_BROWSE    5
-#define DLGMISSINGSCSI_EJECT     6
-#define DLGMISSINGSCSI_CDROM     7
-#define DLGMISSINGSCSI_NAME      8
+#define DLGMISSINGSCSI_CDROM     6
+#define DLGMISSINGSCSI_NAME      7
 
-#define DLGMISSINGSCSI_SELECT    9
+#define DLGMISSINGSCSI_SELECT    8
+#define DLGMISSINGSCSI_EJECT     9
 #define DLGMISSINGSCSI_QUIT      10
 
 
@@ -66,12 +66,12 @@ static SGOBJ missingscsidlg[] =
     
     { SGBOX, 0, 0, 1,7, 50,4, NULL },
     { SGBUTTON, 0, 0, 2,8, 10,1, "Browse" },
-    { SGBUTTON, 0, 0, 14,8, 9,1, "Eject" },
-    { SGCHECKBOX, 0, 0, 27,8, 8,1, "CD-ROM" },
+    { SGCHECKBOX, 0, 0, 15,8, 8,1, "CD-ROM" },
     { SGTEXT, 0, 0, 2,9, 46,1, NULL },
     
-    { SGBUTTON, SG_DEFAULT, 0, 9,13, 14,1, "Select" },
-    { SGBUTTON, 0, 0, 29,13, 14,1, "Quit" },
+    { SGBUTTON, SG_DEFAULT, 0, 4,13, 10,1, "Select" },
+    { SGBUTTON, 0, 0, 18,13, 9,1, "Eject" },
+    { SGBUTTON, 0, 0, 38,13, 10,1, "Quit" },
     { -1, 0, 0, 0,0, 0,0, NULL }
 };
 
@@ -228,60 +228,11 @@ void DlgMissing_SCSIdisk(int target)
     sprintf(missingscsi_target, "SCSI disk %i:", target);
     missingscsidlg[DLGMISSINGSCSI_TARGET].txt = missingscsi_target;
     
-    switch (target) {
-        case 0:
-            File_ShrinkName(dlgname_missingscsi, ConfigureParams.HardDisk.szSCSIDiskImage0, missingscsidlg[DLGMISSINGSCSI_NAME].w);
-            if (ConfigureParams.HardDisk.bCDROM0)
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state |= SG_SELECTED;
-            else
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state &= ~SG_SELECTED;
-            break;
-        case 1:
-            File_ShrinkName(dlgname_missingscsi, ConfigureParams.HardDisk.szSCSIDiskImage1, missingscsidlg[DLGMISSINGSCSI_NAME].w);
-            if (ConfigureParams.HardDisk.bCDROM1)
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state |= SG_SELECTED;
-            else
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state &= ~SG_SELECTED;
-            break;
-        case 2:
-            File_ShrinkName(dlgname_missingscsi, ConfigureParams.HardDisk.szSCSIDiskImage2, missingscsidlg[DLGMISSINGSCSI_NAME].w);
-            if (ConfigureParams.HardDisk.bCDROM2)
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state |= SG_SELECTED;
-            else
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state &= ~SG_SELECTED;
-            break;
-        case 3:
-            File_ShrinkName(dlgname_missingscsi, ConfigureParams.HardDisk.szSCSIDiskImage3, missingscsidlg[DLGMISSINGSCSI_NAME].w);
-            if (ConfigureParams.HardDisk.bCDROM3)
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state |= SG_SELECTED;
-            else
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state &= ~SG_SELECTED;
-            break;
-        case 4:
-            File_ShrinkName(dlgname_missingscsi, ConfigureParams.HardDisk.szSCSIDiskImage4, missingscsidlg[DLGMISSINGSCSI_NAME].w);
-            if (ConfigureParams.HardDisk.bCDROM4)
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state |= SG_SELECTED;
-            else
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state &= ~SG_SELECTED;
-            break;
-        case 5:
-            File_ShrinkName(dlgname_missingscsi, ConfigureParams.HardDisk.szSCSIDiskImage5, missingscsidlg[DLGMISSINGSCSI_NAME].w);
-            if (ConfigureParams.HardDisk.bCDROM5)
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state |= SG_SELECTED;
-            else
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state &= ~SG_SELECTED;
-            break;
-        case 6:
-            File_ShrinkName(dlgname_missingscsi, ConfigureParams.HardDisk.szSCSIDiskImage6, missingscsidlg[DLGMISSINGSCSI_NAME].w);
-            if (ConfigureParams.HardDisk.bCDROM6)
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state |= SG_SELECTED;
-            else
-                missingscsidlg[DLGMISSINGSCSI_CDROM].state &= ~SG_SELECTED;
-            break;
-            
-        default:
-            break;
-    }
+    File_ShrinkName(dlgname_missingscsi, ConfigureParams.SCSI.target[target].szImageName, missingscsidlg[DLGMISSINGSCSI_NAME].w);
+    if (ConfigureParams.SCSI.target[target].bCDROM)
+        missingscsidlg[DLGMISSINGSCSI_CDROM].state |= SG_SELECTED;
+    else
+        missingscsidlg[DLGMISSINGSCSI_CDROM].state &= ~SG_SELECTED;
     
 	missingscsidlg[DLGMISSINGSCSI_NAME].txt = dlgname_missingscsi;
         
@@ -293,111 +244,26 @@ void DlgMissing_SCSIdisk(int target)
 		switch (but)
 		{
             case DLGMISSINGSCSI_EJECT:
-                switch (target) {
-                    case 0:
-                        ConfigureParams.HardDisk.bSCSIImageAttached0 = false;
-                        ConfigureParams.HardDisk.szSCSIDiskImage0[0] = '\0';
-                        break;
-                    case 1:
-                        ConfigureParams.HardDisk.bSCSIImageAttached1 = false;
-                        ConfigureParams.HardDisk.szSCSIDiskImage1[0] = '\0';
-                        break;
-                    case 2:
-                        ConfigureParams.HardDisk.bSCSIImageAttached2 = false;
-                        ConfigureParams.HardDisk.szSCSIDiskImage2[0] = '\0';
-                        break;
-                    case 3:
-                        ConfigureParams.HardDisk.bSCSIImageAttached3 = false;
-                        ConfigureParams.HardDisk.szSCSIDiskImage3[0] = '\0';
-                        break;
-                    case 4:
-                        ConfigureParams.HardDisk.bSCSIImageAttached4 = false;
-                        ConfigureParams.HardDisk.szSCSIDiskImage4[0] = '\0';
-                        break;
-                    case 5:
-                        ConfigureParams.HardDisk.bSCSIImageAttached5 = false;
-                        ConfigureParams.HardDisk.szSCSIDiskImage5[0] = '\0';
-                        break;
-                    case 6:
-                        ConfigureParams.HardDisk.bSCSIImageAttached6 = false;
-                        ConfigureParams.HardDisk.szSCSIDiskImage6[0] = '\0';
-                        break;
-                        
-                    default:
-                        break;
-                }
+                ConfigureParams.SCSI.target[target].bAttached = false;
+                ConfigureParams.SCSI.target[target].szImageName[0] = '\0';
                 dlgname_missingscsi[0] = '\0';
                 break;
             case DLGMISSINGSCSI_BROWSE:
-                switch (target) {
-                    case 0:
-                        if (SDLGui_FileConfSelect(dlgname_missingscsi,
-                                                  ConfigureParams.HardDisk.szSCSIDiskImage0,
-                                                  missingscsidlg[DLGMISSINGSCSI_NAME].w, false))
-                            ConfigureParams.HardDisk.bSCSIImageAttached0 = true;
-                        break;
-                    case 1:
-                        if (SDLGui_FileConfSelect(dlgname_missingscsi,
-                                                  ConfigureParams.HardDisk.szSCSIDiskImage1,
-                                                  missingscsidlg[DLGMISSINGSCSI_NAME].w, false))
-                            ConfigureParams.HardDisk.bSCSIImageAttached1 = true;
-                        break;
-                    case 2:
-                        if (SDLGui_FileConfSelect(dlgname_missingscsi,
-                                                  ConfigureParams.HardDisk.szSCSIDiskImage2,
-                                                  missingscsidlg[DLGMISSINGSCSI_NAME].w, false))
-                            ConfigureParams.HardDisk.bSCSIImageAttached2 = true;
-                        break;
-                    case 3:
-                        if (SDLGui_FileConfSelect(dlgname_missingscsi,
-                                                  ConfigureParams.HardDisk.szSCSIDiskImage3,
-                                                  missingscsidlg[DLGMISSINGSCSI_NAME].w, false))
-                            ConfigureParams.HardDisk.bSCSIImageAttached3 = true;
-                        break;
-                    case 4:
-                        if (SDLGui_FileConfSelect(dlgname_missingscsi,
-                                                  ConfigureParams.HardDisk.szSCSIDiskImage4,
-                                                  missingscsidlg[DLGMISSINGSCSI_NAME].w, false))
-                            ConfigureParams.HardDisk.bSCSIImageAttached4 = true;
-                        break;
-                    case 5:
-                        if (SDLGui_FileConfSelect(dlgname_missingscsi,
-                                                  ConfigureParams.HardDisk.szSCSIDiskImage5,
-                                                  missingscsidlg[DLGMISSINGSCSI_NAME].w, false))
-                            ConfigureParams.HardDisk.bSCSIImageAttached5 = true;
-                        break;
-                    case 6:
-                        if (SDLGui_FileConfSelect(dlgname_missingscsi,
-                                                  ConfigureParams.HardDisk.szSCSIDiskImage6,
-                                                  missingscsidlg[DLGMISSINGSCSI_NAME].w, false))
-                            ConfigureParams.HardDisk.bSCSIImageAttached6 = true;
-                        break;
-
-                    default:
-                        break;
-                }
+                if (SDLGui_FileConfSelect(dlgname_missingscsi,
+                                          ConfigureParams.SCSI.target[target].szImageName,
+                                          missingscsidlg[DLGMISSINGSCSI_NAME].w, false))
+                    ConfigureParams.SCSI.target[target].bAttached = true;
                 break;
             case DLGMISSINGSCSI_QUIT:
                 bQuitProgram = true;
                 break;
 		}
 	}
-	while (but != DLGMISSINGSCSI_SELECT && but != SDLGUI_QUIT
+	while (but != DLGMISSINGSCSI_SELECT && but != DLGMISSINGSCSI_EJECT && but != SDLGUI_QUIT
            && but != SDLGUI_ERROR && !bQuitProgram);
     
     /* Read values from dialog: */
-    switch (target) {
-        case 0: ConfigureParams.HardDisk.bCDROM0 = (missingscsidlg[DLGMISSINGSCSI_CDROM].state & SG_SELECTED); break;
-        case 1: ConfigureParams.HardDisk.bCDROM1 = (missingscsidlg[DLGMISSINGSCSI_CDROM].state & SG_SELECTED); break;
-        case 2: ConfigureParams.HardDisk.bCDROM2 = (missingscsidlg[DLGMISSINGSCSI_CDROM].state & SG_SELECTED); break;
-        case 3: ConfigureParams.HardDisk.bCDROM3 = (missingscsidlg[DLGMISSINGSCSI_CDROM].state & SG_SELECTED); break;
-        case 4: ConfigureParams.HardDisk.bCDROM4 = (missingscsidlg[DLGMISSINGSCSI_CDROM].state & SG_SELECTED); break;
-        case 5: ConfigureParams.HardDisk.bCDROM5 = (missingscsidlg[DLGMISSINGSCSI_CDROM].state & SG_SELECTED); break;
-        case 6: ConfigureParams.HardDisk.bCDROM6 = (missingscsidlg[DLGMISSINGSCSI_CDROM].state & SG_SELECTED); break;
-
-        default:
-            break;
-    }
+    ConfigureParams.SCSI.target[target].bCDROM = (missingscsidlg[DLGMISSINGSCSI_CDROM].state & SG_SELECTED);
     
     SDL_ShowCursor(bOldMouseVisibility);
 	Main_WarpMouse(nOldMouseX, nOldMouseY);
