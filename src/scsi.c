@@ -46,17 +46,6 @@ void SCSI_Init(void) {
     /* Check if files exist. Present dialog to re-select missing files. */        
     int target;
     for (target = 0; target < ESP_MAX_DEVS; target++) {
-        while (ConfigureParams.SCSI.target[target].bAttached && !File_Exists(ConfigureParams.SCSI.target[target].szImageName)) {
-            DlgMissing_SCSIdisk(target);
-            if (bQuitProgram) {
-                Main_RequestQuit();
-                if (bQuitProgram)
-                    break;
-            }
-        }
-        if (bQuitProgram)
-            break;
-
         if (File_Exists(ConfigureParams.SCSI.target[target].szImageName) && ConfigureParams.SCSI.target[target].bAttached)
             scsiimage[target] = ConfigureParams.SCSI.target[target].bCDROM == true ? fopen(ConfigureParams.SCSI.target[target].szImageName, "r") : fopen(ConfigureParams.SCSI.target[target].szImageName, "r+");
         else

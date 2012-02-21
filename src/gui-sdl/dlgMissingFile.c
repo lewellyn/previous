@@ -85,14 +85,6 @@ static SGOBJ missingscsidlg[] =
  * Show and process the Missing ROM dialog.
  */
 void DlgMissing_Rom(void) {
-	bool bOldMouseVisibility;
-	int nOldMouseX, nOldMouseY;
-        
-	SDL_GetMouseState(&nOldMouseX, &nOldMouseY);
-	bOldMouseVisibility = SDL_ShowCursor(SDL_QUERY);
-	SDL_ShowCursor(SDL_ENABLE);
-
-
     int but;
     char szDlgMissingRom[47];
     
@@ -195,9 +187,6 @@ void DlgMissing_Rom(void) {
 	}
 	while (but != DLGMISSINGROM_SELECT && but != SDLGUI_QUIT
 	       && but != SDLGUI_ERROR && !bQuitProgram);
-    
-    SDL_ShowCursor(bOldMouseVisibility);
-	Main_WarpMouse(nOldMouseX, nOldMouseY);
 }
 
 
@@ -208,16 +197,10 @@ void DlgMissing_Rom(void) {
 void DlgMissing_SCSIdisk(int target)
 {
     int but;
-    bool bOldMouseVisibility;
-	int nOldMouseX, nOldMouseY;
 
     char dlgname_missingscsi[47];
     char missingscsi_alert[64];
     char missingscsi_target[64];
-    
-    SDL_GetMouseState(&nOldMouseX, &nOldMouseY);
-	bOldMouseVisibility = SDL_ShowCursor(SDL_QUERY);
-	SDL_ShowCursor(SDL_ENABLE);
     
 	SDLGui_CenterDlg(missingscsidlg);
     
@@ -264,7 +247,4 @@ void DlgMissing_SCSIdisk(int target)
     
     /* Read values from dialog: */
     ConfigureParams.SCSI.target[target].bCDROM = (missingscsidlg[DLGMISSINGSCSI_CDROM].state & SG_SELECTED);
-    
-    SDL_ShowCursor(bOldMouseVisibility);
-	Main_WarpMouse(nOldMouseX, nOldMouseY);
 }

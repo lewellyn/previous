@@ -587,31 +587,33 @@ static void Main_Init(void)
     if (!File_Exists(sConfigFileName) || ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup)
         Dialog_DoProperty();
     
-    /* If loading of the ROM fails, we bring up a dialog to let the
-     * user choose another ROM file. */
+    /* If loading of a file fails, we bring up a dialog to let the
+     * user choose another file. */
+    Dialog_CheckFiles();
 
-    const char *err_msg;
-    
-    while ((err_msg=Reset_Cold())!=NULL)
-    {
-        DlgMissing_Rom();
-        if (bQuitProgram) {
-            Main_RequestQuit();
-            break;
-        }
-    }
+//    const char *err_msg;
+//    
+//    while ((err_msg=Reset_Cold())!=NULL)
+//    {
+//        DlgMissing_Rom();
+//        if (bQuitProgram) {
+//            Main_RequestQuit();
+//            break;
+//        }
+//    }
 
     if (bQuitProgram)
     {
         SDL_Quit();
         exit(-2);
     }
+    Reset_Cold();
     
     SCSI_Init(); // experimental
-    if (bQuitProgram) {
-        SDL_Quit();
-        exit(-2);
-    }
+//    if (bQuitProgram) {
+//        SDL_Quit();
+//        exit(-2);
+//    }
 	rtc_checksum(1);
 	IoMem_Init();
 	

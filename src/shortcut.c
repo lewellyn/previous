@@ -175,6 +175,7 @@ void ShortCut_ActKey(void)
 	{
 	 case SHORTCUT_OPTIONS:
 		Dialog_DoProperty();           /* Show options dialog */
+        Dialog_CheckFiles();
 		break;
 	 case SHORTCUT_FULLSCREEN:
 		ShortCut_FullScreen();         /* Switch between fullscreen/windowed mode */
