@@ -87,6 +87,11 @@ void Dialog_CheckFiles(void) {
         case NEXT_CUBE030:
             while (!File_Exists(ConfigureParams.Rom.szRom030FileName)) {
                 DlgMissing_Rom();
+                if (bQuitProgram) {
+                    Main_RequestQuit();
+                    if (bQuitProgram)
+                        break;
+                }
             }
             break;
         case NEXT_CUBE040:
@@ -94,10 +99,20 @@ void Dialog_CheckFiles(void) {
             if (ConfigureParams.System.bTurbo) {
                 while (!File_Exists(ConfigureParams.Rom.szRomTurboFileName)) {
                     DlgMissing_Rom();
+                    if (bQuitProgram) {
+                        Main_RequestQuit();
+                        if (bQuitProgram)
+                            break;
+                    }
                 }
             } else {
                 while (!File_Exists(ConfigureParams.Rom.szRom040FileName)) {
                     DlgMissing_Rom();
+                    if (bQuitProgram) {
+                        Main_RequestQuit();
+                        if (bQuitProgram)
+                            break;
+                    }
                 }
             }
             break;
@@ -105,8 +120,7 @@ void Dialog_CheckFiles(void) {
         default:
             break;
     }
-    if (bQuitProgram)
-        return;
+
     
     /* Check if SCSI disk images exist. Present a dialog to select missing files. */
     int target;
@@ -124,4 +138,9 @@ void Dialog_CheckFiles(void) {
     }
     
     SDL_ShowCursor(bOldMouseVisibility);
+    if (bQuitProgram)
+    {
+        SDL_Quit();
+        exit(-2);
+    }
 }

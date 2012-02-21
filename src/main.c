@@ -584,12 +584,19 @@ static void Main_Init(void)
 
 
     /* call menu at startup */
-    if (!File_Exists(sConfigFileName) || ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup)
+    if (!File_Exists(sConfigFileName) || ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup) {
         Dialog_DoProperty();
+        if (bQuitProgram)
+        {
+            SDL_Quit();
+            exit(-2);
+        }
+    }
     
     /* If loading of a file fails, we bring up a dialog to let the
-     * user choose another file. */
-    Dialog_CheckFiles();
+     * user choose another file. 
+     * --> moved to Reset_ST()
+     */
 
 //    const char *err_msg;
 //    
@@ -602,11 +609,6 @@ static void Main_Init(void)
 //        }
 //    }
 
-    if (bQuitProgram)
-    {
-        SDL_Quit();
-        exit(-2);
-    }
     Reset_Cold();
     
     SCSI_Init(); // experimental
