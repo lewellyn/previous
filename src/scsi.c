@@ -50,7 +50,8 @@ void SCSI_Init(void) {
             DlgMissing_SCSIdisk(target);
             if (bQuitProgram) {
                 Main_RequestQuit();
-                break;
+                if (bQuitProgram)
+                    break;
             }
         }
         if (bQuitProgram)
@@ -109,6 +110,10 @@ void scsi_command_analyzer(Uint8 commandbuf[], int size, int target, int lun) {
     }
 
     SCSIcommand.opcode = SCSIcommand.command[0];
+    if (target >= ESP_MAX_DEVS) {
+        Log_Printf(LOG_WARN, "Invalid target: %i!\n", target);
+        abort();
+    }
     SCSIcommand.target = target;
     SCSIcommand.lun = lun;
     Log_Printf(LOG_WARN, "SCSI command: Length = %i, Opcode = $%02x, target = %i, lun=%i\n", size, SCSIcommand.opcode, SCSIcommand.target,SCSIcommand.lun);
@@ -124,9 +129,9 @@ void scsi_command_analyzer(Uint8 commandbuf[], int size, int target, int lun) {
 	return;
     }
     
-    scsidisk = scsiimage[SCSIcommand.target];
-    bCDROM = ConfigureParams.SCSI.target[SCSIcommand.target].bCDROM;
-    bTargetDevice = ConfigureParams.SCSI.target[SCSIcommand.target].bAttached;
+    scsidisk = scsiimage[target];
+    bCDROM = ConfigureParams.SCSI.target[target].bCDROM;
+    bTargetDevice = ConfigureParams.SCSI.target[target].bAttached;
 
     //bTargetDevice |= bCDROM; // handle empty cd-rom drive - does not work yet!
     if(scsidisk) { // experimental!
