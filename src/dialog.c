@@ -120,7 +120,8 @@ void Dialog_CheckFiles(void) {
         default:
             break;
     }
-
+    if (bQuitProgram)
+        return;
     
     /* Check if SCSI disk images exist. Present a dialog to select missing files. */
     int target;
@@ -136,11 +137,8 @@ void Dialog_CheckFiles(void) {
         if (bQuitProgram)
             break;
     }
+    if (bQuitProgram)
+        return;
     
     SDL_ShowCursor(bOldMouseVisibility);
-    if (bQuitProgram)
-    {
-        SDL_Quit();
-        exit(-2);
-    }
 }

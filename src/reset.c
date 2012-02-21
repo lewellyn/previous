@@ -20,6 +20,7 @@ const char Reset_fileid[] = "Hatari reset.c : " __DATE__ " " __TIME__;
 #include "debugcpu.h"
 #include "scsi.h"
 #include "dialog.h"
+#include "sdlgui.h"
 
 
 /*-----------------------------------------------------------------------*/
@@ -31,6 +32,11 @@ static const char* Reset_ST(bool bCold)
 {
     /* Check if all files exist */
     Dialog_CheckFiles(); // better have this in another place?
+    if (bQuitProgram)
+    {
+        SDL_Quit();
+        exit(-2);
+    }
 
 	if (bCold)
 	{
