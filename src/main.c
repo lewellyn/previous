@@ -585,20 +585,18 @@ static void Main_Init(void)
 
 
     /* call menu at startup */
-    if (!File_Exists(sConfigFileName) || ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup) {
+    if (!File_Exists(sConfigFileName) || ConfigureParams.ConfigDialog.bShowConfigDialogAtStartup)
         Dialog_DoProperty();
-        if (bQuitProgram)
-        {
-            SDL_Quit();
-            exit(-2);
-        }
+    else
+        Dialog_CheckFiles();
+    
+    if (bQuitProgram)
+    {
+        SDL_Quit();
+        exit(-2);
     }
     
-    /* If loading of a file fails, we bring up a dialog to let the
-     * user choose another file. 
-     * --> moved to Reset_ST()
-     */
-
+    
 //    const char *err_msg;
 //    
 //    while ((err_msg=Reset_Cold())!=NULL)

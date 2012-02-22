@@ -95,6 +95,14 @@ bool Change_CopyChangedParamsToConfiguration(CNF_PARAMS *current, CNF_PARAMS *ch
 		Screen_ModeChanged();
 	}
 
+    /* Check if all necessary files exist */
+    Dialog_CheckFiles();
+    if (bQuitProgram)
+    {
+        SDL_Quit();
+        exit(-2);
+    }
+
 	/* Do we need to perform reset? */
 	if (NeedReset)
 	{
