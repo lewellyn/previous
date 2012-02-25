@@ -25,6 +25,7 @@ const char Change_fileid[] = "Hatari change.c : " __DATE__ " " __TIME__;
 #include "statusbar.h"
 #include "video.h"
 #include "hatari-glue.h"
+#include "scsi.h"
 
 #define DEBUG 1
 #if DEBUG
@@ -42,67 +43,67 @@ bool Change_DoNeedReset(CNF_PARAMS *current, CNF_PARAMS *changed)
 {
     /* Did we change ROM file? */
     if (current->System.nMachineType == NEXT_CUBE030 && strcmp(current->Rom.szRom030FileName, changed->Rom.szRom030FileName)) {
-        printf("rom030 reset");
+        printf("rom030 reset\n");
         return true;
     }
     if (current->System.nMachineType == NEXT_CUBE040 || current->System.nMachineType == NEXT_STATION) {
         if (!current->System.bTurbo && strcmp(current->Rom.szRom040FileName, changed->Rom.szRom040FileName)) {
-            printf("rom040 reset");
+            printf("rom040 reset\n");
             return true;
         }
         if (current->System.bTurbo && strcmp(current->Rom.szRomTurboFileName, changed->Rom.szRomTurboFileName)) {
-            printf("romturbo reset");
+            printf("romturbo reset\n");
             return true;
         }
     }
     
     /* Did we change machine type? */
     if (current->System.nMachineType != changed->System.nMachineType) {
-        printf("machine type reset");
+        printf("machine type reset\n");
         return true;
     }
     if (current->System.bColor != changed->System.bColor) {
-        printf("machine type reset (color)");
+        printf("machine type reset (color)\n");
         return true;
     }
     if (current->System.bTurbo != changed->System.bTurbo) {
-        printf("machine type reset (turbo)");
+        printf("machine type reset (turbo)\n");
         return true;
     }
     
     /* Did we change CPU type? */
     if (current->System.nCpuLevel != changed->System.nCpuLevel) {
-        printf("cpu type reset");
+        printf("cpu type reset\n");
         return true;
     }
     
     /* Did we change FPU type? */
     if (current->System.n_FPUType != changed->System.n_FPUType) {
-        printf("fpu type reset");
+        printf("fpu type reset\n");
         return true;
     }
 
     /* Did we change SCSI controller? */
     if (current->System.nSCSI != changed->System.nSCSI) {
-        printf("scsi controller reset");
+        printf("scsi controller reset\n");
         return true;
     }
     
     /* Did we change RTC chip? */
     if (current->System.nRTC != changed->System.nRTC) {
-        printf("rtc chip reset");
+        printf("rtc chip reset\n");
         return true;
     }
     
     /* Did we change ADB emulation? */
     if (current->System.bADB != changed->System.bADB) {
-        printf("adb reset");
+        printf("adb reset\n");
         return true;
     }
     
     /* Did we change memory size? */
     if (current->Memory.nMemorySize != changed->Memory.nMemorySize) {
-        printf("memory size reset");
+        printf("memory size reset\n");
         return true;
     }
     
@@ -120,13 +121,13 @@ bool Change_DoNeedReset(CNF_PARAMS *current, CNF_PARAMS *changed)
         }
     }
     if (bSCSIdisk_change) {
-        printf("scsi disk reset");
+        printf("scsi disk reset\n");
         return true;
     }
     
-    printf("No Reset needed!");
-    /* Else no reset is needed */
-    return false; // need to fix resume execution first.
+    /* Else no reset is required */
+    printf("No Reset needed!\n");
+    return false;
 }
 
 
@@ -138,7 +139,7 @@ bool Change_CopyChangedParamsToConfiguration(CNF_PARAMS *current, CNF_PARAMS *ch
 {
 	bool NeedReset;
 	bool bReInitGemdosDrive = false;
-	bool bReInitAcsiEmu = false;
+	bool bReInitSCSIEmu = false;
 	bool bReInitIDEEmu = false;
 	bool bReInitIoMem = false;
 	bool bScreenModeChange = false;
@@ -152,7 +153,15 @@ bool Change_CopyChangedParamsToConfiguration(CNF_PARAMS *current, CNF_PARAMS *ch
 		NeedReset = bForceReset;
 	else
 		NeedReset = Change_DoNeedReset(current, changed);
-
+    
+    /* Do we need to change SCSI disks? */
+    int target;
+    for (target = 0; target < ESP_MAX_DEVS; target++) {
+        if (!NeedReset && (current->SCSI.target[target].bAttached != changed->SCSI.target[target].bAttached || strcmp(current->SCSI.target[target].szImageName, changed->SCSI.target[target].szImageName))) {
+            bReInitSCSIEmu = true;
+            break;
+        }
+    }
 
 	/* Copy details to configuration,
 	 * so it can be saved out or set on reset
@@ -164,23 +173,7 @@ bool Change_CopyChangedParamsToConfiguration(CNF_PARAMS *current, CNF_PARAMS *ch
 
 	/* Copy details to global, if we reset copy them all */
 	Configuration_Apply(NeedReset);
-
-
-	/* Re-init IO memory map? */
-	if (bReInitIoMem)
-	{
-		Dprintf("- IO mem<\n");
-		IoMem_Init();
-	}
-
-
-	/* Force things associated with screen change */
-	if (bScreenModeChange)
-	{
-		Dprintf("- screenmode<\n");
-		Screen_ModeChanged();
-	}
-
+    
     /* Check if all necessary files exist */
     Dialog_CheckFiles();
     if (bQuitProgram)
@@ -188,6 +181,26 @@ bool Change_CopyChangedParamsToConfiguration(CNF_PARAMS *current, CNF_PARAMS *ch
         SDL_Quit();
         exit(-2);
     }
+
+	/* Re-init IO memory map? */
+	if (bReInitIoMem)
+	{
+		Dprintf("- IO mem<\n");
+		IoMem_Init();
+	}
+    
+    /* Re-init SCSI disks? */
+    if (bReInitSCSIEmu) {
+        Dprintf("- SCSI disks<\n");
+        SCSI_Reset();
+    }
+
+	/* Force things associated with screen change */
+	if (bScreenModeChange)
+	{
+		Dprintf("- screenmode<\n");
+		Screen_ModeChanged();
+	}
 
 	/* Do we need to perform reset? */
 	if (NeedReset)
