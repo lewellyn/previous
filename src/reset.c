@@ -38,8 +38,7 @@ static const char* Reset_ST(bool bCold)
 	}
 	CycInt_Reset();               /* Reset interrupts */
 	Video_Reset();                /* Reset video */
-    SCSI_Uninit(); // experimental
-    SCSI_Init(); // experimental
+    SCSI_Reset();
 	Screen_Reset();               /* Reset screen */
 	M68000_Reset(bCold);          /* Reset CPU */
     	DebugCpu_SetDebugging();      /* Re-set debugging flag if needed */

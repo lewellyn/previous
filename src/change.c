@@ -40,7 +40,93 @@ const char Change_fileid[] = "Hatari change.c : " __DATE__ " " __TIME__;
  */
 bool Change_DoNeedReset(CNF_PARAMS *current, CNF_PARAMS *changed)
 {
-		return true;
+    /* Did we change ROM file? */
+    if (current->System.nMachineType == NEXT_CUBE030 && strcmp(current->Rom.szRom030FileName, changed->Rom.szRom030FileName)) {
+        printf("rom030 reset");
+        return true;
+    }
+    if (current->System.nMachineType == NEXT_CUBE040 || current->System.nMachineType == NEXT_STATION) {
+        if (!current->System.bTurbo && strcmp(current->Rom.szRom040FileName, changed->Rom.szRom040FileName)) {
+            printf("rom040 reset");
+            return true;
+        }
+        if (current->System.bTurbo && strcmp(current->Rom.szRomTurboFileName, changed->Rom.szRomTurboFileName)) {
+            printf("romturbo reset");
+            return true;
+        }
+    }
+    
+    /* Did we change machine type? */
+    if (current->System.nMachineType != changed->System.nMachineType) {
+        printf("machine type reset");
+        return true;
+    }
+    if (current->System.bColor != changed->System.bColor) {
+        printf("machine type reset (color)");
+        return true;
+    }
+    if (current->System.bTurbo != changed->System.bTurbo) {
+        printf("machine type reset (turbo)");
+        return true;
+    }
+    
+    /* Did we change CPU type? */
+    if (current->System.nCpuLevel != changed->System.nCpuLevel) {
+        printf("cpu type reset");
+        return true;
+    }
+    
+    /* Did we change FPU type? */
+    if (current->System.n_FPUType != changed->System.n_FPUType) {
+        printf("fpu type reset");
+        return true;
+    }
+
+    /* Did we change SCSI controller? */
+    if (current->System.nSCSI != changed->System.nSCSI) {
+        printf("scsi controller reset");
+        return true;
+    }
+    
+    /* Did we change RTC chip? */
+    if (current->System.nRTC != changed->System.nRTC) {
+        printf("rtc chip reset");
+        return true;
+    }
+    
+    /* Did we change ADB emulation? */
+    if (current->System.bADB != changed->System.bADB) {
+        printf("adb reset");
+        return true;
+    }
+    
+    /* Did we change memory size? */
+    if (current->Memory.nMemorySize != changed->Memory.nMemorySize) {
+        printf("memory size reset");
+        return true;
+    }
+    
+    /* Did we change SCSI disk? */
+    int target;
+    bool bSCSIdisk_change = false;
+    for (target = 0; target < ESP_MAX_DEVS; target++) {
+        if (!current->SCSI.target[target].bCDROM || !(current->SCSI.target[target].bCDROM == changed->SCSI.target[target].bCDROM)) {
+            if ((current->SCSI.target[target].bAttached || current->SCSI.target[target].bAttached != changed->SCSI.target[target].bAttached)) {
+                if (strcmp(current->SCSI.target[target].szImageName, changed->SCSI.target[target].szImageName)) {
+                    bSCSIdisk_change = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (bSCSIdisk_change) {
+        printf("scsi disk reset");
+        return true;
+    }
+    
+    printf("No Reset needed!");
+    /* Else no reset is needed */
+    return false; // need to fix resume execution first.
 }
 
 

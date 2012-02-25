@@ -610,7 +610,6 @@ static void Main_Init(void)
 
     Reset_Cold();
     
-    SCSI_Init(); // experimental
 //    if (bQuitProgram) {
 //        SDL_Quit();
 //        exit(-2);
