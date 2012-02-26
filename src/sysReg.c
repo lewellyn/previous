@@ -79,15 +79,22 @@ static Uint32 intMask=0x00000000;
  #define BOOT_POT           0x20
  #define TEST_MONITOR_POT	0x40
 
+/* bits in byte 17 */
+#define NEW_CLOCK_CHIP      0x80
+#define AUTO_POWERON        0x40
+#define USE_CONSOLE_SLOT    0x20
+#define CONSOLE_SLOT        0x18
+#define USE_PARITY_MEM      0x40
+
 
 /* RTC RAM */
 Uint8 rtc_ram[32]={
     0x94,0x0f,0x40,0x00, // byte 0 - 3
     0x00,0x00,0x00,0x00,0x00,0x00, // byte 4 - 9: hardware password, ethernet address (?)
-    0xfb,0x6d, // byte 10, 11: simm (4 simms, 4 bits per simm)
+    0xfb,0x6d, // byte 10, 11: simm (4 simms, 4 bits per simm), 3 bits per simm on old ROM?
     0x00,0x00, // byte 12, 13: adobe (?)
-    0x4b,0x00,0x41, // byte 14 - 16: POT
-    0x00, // byte 17: clock chip, etc
+    0x4b,0x00,0x00, // byte 14: POT, byte 15: oldest ..., byte 16: most recent selftest error code
+    0x00, // byte 17: bit7:clock chip; 6:auto poweron; 5:enable console slot; 3,4:console slot; 2:parity mem
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, // byte 18 - 29: boot command
     0x0F,0x13 // byte 30, 31: checksum
 };
@@ -95,7 +102,7 @@ Uint8 rtc_ram[32]={
 Uint8 rtc_ram_default[32]={
     0x94,0x0f,0x40,0x00,0x00,0x00,0x00,0x00,
     0x00,0x00,0xfb,0x6d,0x00,0x00,0x4b,0x00,
-    0x41,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
     0x00,0x00,0x00,0x00,0x00,0x00,0x0F,0x13
 };
 
@@ -148,7 +155,7 @@ void nvram_init(void) {
         default: break;
     }
     
-    /* Build POT bytes */
+    /* Build POT byte[0] */
     rtc_ram[14] = 0x00;
     if (ConfigureParams.Boot.bEnableDRAMTest)
         rtc_ram[14] |= TEST_DRAM_POT;
@@ -167,8 +174,8 @@ void nvram_init(void) {
     
     /* Set clock chip bit */
     switch (ConfigureParams.System.nRTC) {
-        case MCS1850: rtc_ram[17] |= 0x01; break;
-        case MC68HC68T1: rtc_ram[17] &= ~0x01; break;
+        case MCS1850: rtc_ram[17] |= NEW_CLOCK_CHIP; break;
+        case MC68HC68T1: rtc_ram[17] &= ~NEW_CLOCK_CHIP; break;
         default: break;
     }
         
