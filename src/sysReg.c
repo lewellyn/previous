@@ -71,22 +71,34 @@ static Uint32 intMask=0x00000000;
 // #define	VOL_NOM		0
 
 /* bits in ni_pot[0] */
-// #define POT_ON			0x01
-// #define EXTENDED_POT		0x02
-// #define LOOP_POT		0x04
-// #define	VERBOSE_POT		0x08
-// #define	TEST_DRAM_POT		0x10
-// #define	BOOT_POT		0x20
-// #define	TEST_MONITOR_POT	0x40
+ #define POT_ON             0x01
+ #define EXTENDED_POT		0x02
+ #define LOOP_POT           0x04
+ #define VERBOSE_POT		0x08
+ #define TEST_DRAM_POT		0x10
+ #define BOOT_POT           0x20
+ #define TEST_MONITOR_POT	0x40
 
-// Uint8 rtc_ram[32];
 
+/* RTC RAM */
 Uint8 rtc_ram[32]={
-0x94,0x0f,0x40,0x00,0x00,0x00,0x00,0x00,
-0x00,0x00,0xfb,0x6d,0x00,0x00,0x4b,0x00,
-0x41,0x00,0x20,0x00,0x00,0x00,0x00,0x00,
-0x00,0x00,0x00,0x00,0x00,0x00,0x0F,0x13
-}; 
+    0x94,0x0f,0x40,0x00, // byte 0 - 3
+    0x00,0x00,0x00,0x00,0x00,0x00, // byte 4 - 9: hardware password, ethernet address (?)
+    0xfb,0x6d, // byte 10, 11: simm (4 simms, 4 bits per simm)
+    0x00,0x00, // byte 12, 13: adobe (?)
+    0x4b,0x00,0x41, // byte 14 - 16: POT
+    0x00, // byte 17: clock chip, etc
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, // byte 18 - 29: boot command
+    0x0F,0x13 // byte 30, 31: checksum
+};
+
+Uint8 rtc_ram_default[32]={
+    0x94,0x0f,0x40,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x00,0xfb,0x6d,0x00,0x00,0x4b,0x00,
+    0x41,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0x0F,0x13
+};
+
 /*
 Uint8 rtc_ram[32]={ // values from nextcomputers.org forums
     0x94,0x0f,0x40,0x03,0x00,0x00,0x00,0x00,
@@ -105,6 +117,64 @@ Uint8 rtc_ram[32]={
 0x00,0x00,0x00,0x00,0x00,0x00,0x50,0x13
 };
 */
+
+void nvram_init(void) {
+    /* Reset RTC RAM to default values */
+    memcpy(rtc_ram, rtc_ram_default, sizeof(rtc_ram_default));
+
+    /* Build boot command */
+    switch (ConfigureParams.Boot.nBootDevice) {
+        case BOOT_ROM:
+            rtc_ram[18] = 0x00;
+            rtc_ram[19] = 0x00;
+            break;
+        case BOOT_SCSI:
+            rtc_ram[18] = 's';
+            rtc_ram[19] = 'd';
+            break;
+        case BOOT_ETHERNET:
+            rtc_ram[18] = 'e';
+            rtc_ram[19] = 'n';
+            break;
+        case BOOT_MO:
+            rtc_ram[18] = 'o';
+            rtc_ram[19] = 'd';
+            break;
+        case BOOT_FLOPPY:
+            rtc_ram[18] = 'f';
+            rtc_ram[19] = 'd';
+            break;
+            
+        default: break;
+    }
+    
+    /* Build POT bytes */
+    rtc_ram[14] = 0x00;
+    if (ConfigureParams.Boot.bEnableDRAMTest)
+        rtc_ram[14] |= TEST_DRAM_POT;
+    if (ConfigureParams.Boot.bEnablePot)
+        rtc_ram[14] |= POT_ON;
+    if (ConfigureParams.Boot.bEnableSoundTest)
+        rtc_ram[14] |= TEST_MONITOR_POT;
+    if (ConfigureParams.Boot.bEnableSCSITest)
+        rtc_ram[14] |= EXTENDED_POT;
+    if (ConfigureParams.Boot.bLoopPot)
+        rtc_ram[14] |= LOOP_POT;
+    if (ConfigureParams.Boot.bVerbose)
+        rtc_ram[14] |= VERBOSE_POT;
+    if (ConfigureParams.Boot.bExtendedPot)
+        rtc_ram[14] |= BOOT_POT;
+    
+    /* Set clock chip bit */
+    switch (ConfigureParams.System.nRTC) {
+        case MCS1850: rtc_ram[17] |= 0x01; break;
+        case MC68HC68T1: rtc_ram[17] &= ~0x01; break;
+        default: break;
+    }
+        
+    /* Re-calculate checksum */
+    rtc_checksum(1);
+}
 
 void rtc_checksum(int force) {
 	int sum,i;

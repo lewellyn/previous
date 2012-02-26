@@ -107,6 +107,40 @@ bool Change_DoNeedReset(CNF_PARAMS *current, CNF_PARAMS *changed)
         return true;
     }
     
+    /* Did we change boot options? */
+    if (current->Boot.nBootDevice != changed->Boot.nBootDevice) {
+        printf("boot options reset\n");
+        return true;
+    }
+    if (current->Boot.bEnableDRAMTest != changed->Boot.bEnableDRAMTest) {
+        printf("boot options reset\n");
+        return true;
+    }
+    if (current->Boot.bEnablePot != changed->Boot.bEnablePot) {
+        printf("boot options reset\n");
+        return true;
+    }
+    if (current->Boot.bEnableSoundTest != changed->Boot.bEnableSoundTest) {
+        printf("boot options reset\n");
+        return true;
+    }
+    if (current->Boot.bEnableSCSITest != changed->Boot.bEnableSCSITest) {
+        printf("boot options reset\n");
+        return true;
+    }
+    if (current->Boot.bLoopPot != changed->Boot.bLoopPot) {
+        printf("boot options reset\n");
+        return true;
+    }
+    if (current->Boot.bVerbose != changed->Boot.bVerbose) {
+        printf("boot options reset\n");
+        return true;
+    }
+    if (current->Boot.bExtendedPot != changed->Boot.bExtendedPot) {
+        printf("boot options reset\n");
+        return true;
+    }
+    
     /* Did we change SCSI disk? */
     int target;
     bool bSCSIdisk_change = false;

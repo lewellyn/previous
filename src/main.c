@@ -31,7 +31,6 @@ const char Main_fileid[] = "Hatari main.c : " __DATE__ " " __TIME__;
 #include "shortcut.h"
 #include "statusbar.h"
 #include "nextMemory.h"
-#include "sysReg.h"
 #include "str.h"
 #include "video.h"
 #include "avi_record.h"
@@ -614,7 +613,6 @@ static void Main_Init(void)
 //        SDL_Quit();
 //        exit(-2);
 //    }
-	rtc_checksum(1);
 	IoMem_Init();
 	
 	/* done as last, needs CPU & DSP running... */

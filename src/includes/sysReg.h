@@ -69,6 +69,7 @@ void HardclockWrite1(void);
 void HardclockWriteCSR(void);
 void HardclockReadCSR(void);
 
+void nvram_init(void);
 void rtc_checksum(int force);
 
 void set_interrupt(Uint32, Uint8);
