@@ -134,6 +134,15 @@ void DlgBoot_Main(void)
                     bootdlg[DLGBOOT_LOOP].state &= ~SG_SELECTED;
                     bootdlg[DLGBOOT_VERBOSE].state &= ~SG_SELECTED;
                 }
+                
+            case DLGBOOT_SOUNDTEST:
+            case DLGBOOT_SCSITEST:
+            case DLGBOOT_LOOP:
+            case DLGBOOT_VERBOSE:
+                if (bootdlg[but].state & SG_SELECTED) {
+                    bootdlg[DLGBOOT_ENABLE_POT].state |= SG_SELECTED;
+                }
+                break;
             default: break;
 		}
 	}

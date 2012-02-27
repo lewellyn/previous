@@ -9,6 +9,7 @@
 #include "sysdeps.h"
 #include "m68000.h"
 #include "sysReg.h"
+#include "statusbar.h"
 
 
 #define IO_SEG_MASK	0x1FFFF
@@ -652,9 +653,11 @@ void SCR2_Write3(void)
                    IoAccessCurrentAddress,scr2_3&SCR2_ROM,m68k_getpc());
 		   SCR_ROM_overlay=scr2_3&SCR2_ROM;
 		}
-	if ((old_scr2_3&SCR2_LED)!=(scr2_3&SCR2_LED))
+	if ((old_scr2_3&SCR2_LED)!=(scr2_3&SCR2_LED)) {
 		Log_Printf(LOG_WARN,"SCR2 LED change at $%08x val=%x PC=$%08x\n",
                    IoAccessCurrentAddress,scr2_3&SCR2_LED,m68k_getpc());
+        Statusbar_SetSCR2Led(scr2_3&SCR2_LED);
+    }
 }
 
 
