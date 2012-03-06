@@ -492,7 +492,9 @@ STATIC_INLINE int get_fp_value (uae_u32 opcode, uae_u16 extra, fptype *src)
 			wrd2 = x_get_long (ad);
 			ad += 4;
 			wrd3 = x_get_long (ad);
-			*src = to_pack (wrd1, wrd2, wrd3);
+//			*src = to_pack (wrd1, wrd2, wrd3); disabled by andreas_g
+            printf("FPU warning: calling temporary disabled function to_pack!\n");
+            *src = to_exten (wrd1, wrd2, wrd3); // temporary replacement
 			   }
 			   break;
 		case 4:
@@ -622,7 +624,9 @@ STATIC_INLINE int put_fp_value (fptype value, uae_u32 opcode, uae_u16 extra)
 		case 3:
 			{
 				uae_u32 wrd1, wrd2, wrd3;
-				from_pack (value, &wrd1, &wrd2, &wrd3);
+//				from_pack (value, &wrd1, &wrd2, &wrd3); disabled by andreas_g
+                printf("FPU warning: calling temporary disabled function from_pack!\n");
+                from_exten (value, &wrd1, &wrd2, &wrd3); // temporary replacement
 				x_put_long (ad, wrd1);
 				ad += 4;
 				x_put_long (ad, wrd2);
