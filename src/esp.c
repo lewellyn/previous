@@ -603,7 +603,7 @@ void esp_do_dma(void) {
     int dma_translen; // experimental
     dma_translen = readtranscountl | (readtranscounth << 8); // experimental
     Log_Printf(LOG_SCSI_LEVEL, "call dma_write\n"); // experimental
-    dma_memory_write(dma_write_buffer, dma_translen, NEXTDMA_SCSI);//experimental !!
+    dma_memory_write(dma_write_buffer, dma_translen, CHANNEL_SCSI);//experimental !!
 
     
     to_device = SCSIcommand.transferdirection_todevice;
@@ -713,7 +713,7 @@ void write_response(void) {
     esp_fifo[1] = 0x00; // message
     
     if(mode_dma == 1) {
-    dma_memory_write(esp_fifo, 2, NEXTDMA_SCSI);
+    dma_memory_write(esp_fifo, 2, CHANNEL_SCSI);
         status = (status & STAT_MASK) | STAT_TC | STAT_ST;
         intstatus = INTR_BS | INTR_FC;
         seqstep = SEQ_CD;

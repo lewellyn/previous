@@ -96,8 +96,8 @@ void DSP_icr_Write (void) {
 const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 {
 /* DMA control/status (writes MUST be 32-bit) */
-    	{ 0x02000010, SIZE_LONG, DMA_SCSI_CSR_Read, DMA_SCSI_CSR_Write },
-
+    	{ 0x02000010, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
+        { 0x020000c0, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     	{ 0x02000180, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     	{ 0x020001d0, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     	{ 0x020001c0, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
@@ -131,7 +131,7 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 	{ 0x02004155, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
 	{ 0x02004156, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
 	{ 0x02004157, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-	{ 0x02004158, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE},
+	{ 0x02004158, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
 	{ 0x0200415c, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
 
 
@@ -239,16 +239,16 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02014021, SIZE_BYTE, SCSI_CSR1_Read, SCSI_CSR1_Write },
     
     /* DMA SCSI */
-    { 0x02004000, SIZE_LONG, DMA_SCSI_Saved_Next_Read, DMA_SCSI_Saved_Next_Write },
-    { 0x02004004, SIZE_LONG, DMA_SCSI_Saved_Limit_Read, DMA_SCSI_Saved_Limit_Write },
-    { 0x02004008, SIZE_LONG, DMA_SCSI_Saved_Start_Read, DMA_SCSI_Saved_Start_Write },
-    { 0x0200400c, SIZE_LONG, DMA_SCSI_Saved_Stop_Read, DMA_SCSI_Saved_Stop_Write },
-    { 0x02004010, SIZE_LONG, DMA_SCSI_Next_Read, DMA_SCSI_Next_Write },
-    { 0x02004014, SIZE_LONG, DMA_SCSI_Limit_Read, DMA_SCSI_Limit_Write },
-    { 0x02004018, SIZE_LONG, DMA_SCSI_Start_Read, DMA_SCSI_Start_Write },
-    { 0x0200401c, SIZE_LONG, DMA_SCSI_Stop_Read, DMA_SCSI_Stop_Write },
-    { 0x02004210, SIZE_LONG, DMA_SCSI_Init_Read, DMA_SCSI_Init_Write },
-    { 0x02004214, SIZE_LONG, DMA_SCSI_Size_Read, DMA_SCSI_Size_Write },
+    { 0x02004000, SIZE_LONG, DMA_Saved_Next_Read, DMA_Saved_Next_Write },
+    { 0x02004004, SIZE_LONG, DMA_Saved_Limit_Read, DMA_Saved_Limit_Write },
+    { 0x02004008, SIZE_LONG, DMA_Saved_Start_Read, DMA_Saved_Start_Write },
+    { 0x0200400c, SIZE_LONG, DMA_Saved_Stop_Read, DMA_Saved_Stop_Write },
+    { 0x02004010, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
+    { 0x02004014, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
+    { 0x02004018, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
+    { 0x0200401c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
+    { 0x02004210, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
+    { 0x02004214, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
         
     /* SCSI Registers for NCR53C90 (68030) */
     { 0x02014000, SIZE_BYTE, SCSI_TransCountL_Read, SCSI_TransCountL_Write },
