@@ -155,6 +155,7 @@ static const struct Config_Tag configs_Sound[] =
 static const struct Config_Tag configs_Memory[] =
 {
 	{ "nMemorySize", Int_Tag, &ConfigureParams.Memory.nMemorySize },
+    { "nMemorySpeed", Int_Tag, &ConfigureParams.Memory.nMemorySpeed },
 	{ "bAutoSave", Bool_Tag, &ConfigureParams.Memory.bAutoSave },
 	{ "szMemoryCaptureFileName", String_Tag, ConfigureParams.Memory.szMemoryCaptureFileName },
 	{ "szAutoSaveFileName", String_Tag, ConfigureParams.Memory.szAutoSaveFileName },
@@ -394,6 +395,7 @@ void Configuration_SetDefault(void)
 
 	/* Set defaults for Memory */
 	ConfigureParams.Memory.nMemorySize = 8;     /* 8 MiB */
+    ConfigureParams.Memory.nMemorySpeed = MEMORY_100NS;
 	ConfigureParams.Memory.bAutoSave = false;
 	sprintf(ConfigureParams.Memory.szMemoryCaptureFileName, "%s%chatari.sav",
 	        psHomeDir, PATHSEP);
@@ -550,6 +552,8 @@ void Configuration_Apply(bool bReset)
     /* Cut memory size to supported values */
     if (ConfigureParams.System.nMachineType == NEXT_CUBE030 && ConfigureParams.Memory.nMemorySize > 64)
         ConfigureParams.Memory.nMemorySize = 64;
+    else if (ConfigureParams.System.nMachineType == NEXT_STATION && ConfigureParams.System.bColor && ConfigureParams.Memory.nMemorySize > 32)
+        ConfigureParams.Memory.nMemorySize = 32;
     else if (ConfigureParams.Memory.nMemorySize > 128)
         ConfigureParams.Memory.nMemorySize = 128;
     else if (ConfigureParams.Memory.nMemorySize < 8)
@@ -697,7 +701,9 @@ void Configuration_MemorySnapShot_Capture(bool bSave)
     MemorySnapShot_Store(ConfigureParams.Rom.szRom040FileName, sizeof(ConfigureParams.Rom.szRom040FileName));
     MemorySnapShot_Store(ConfigureParams.Rom.szRomTurboFileName, sizeof(ConfigureParams.Rom.szRomTurboFileName));
 
+    /* Memory options */
 	MemorySnapShot_Store(&ConfigureParams.Memory.nMemorySize, sizeof(ConfigureParams.Memory.nMemorySize));
+    MemorySnapShot_Store(&ConfigureParams.Memory.nMemorySpeed, sizeof(ConfigureParams.Memory.nMemorySpeed));
     
     /* SCSI disks */
     int target;

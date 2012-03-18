@@ -346,12 +346,12 @@ void SID_Read(void) {
  bits 28:31 slot ID: 0
  
  
- for Cube 040:
- 0000 0000 0000 0001 0011 0000 0101 0011
- 00 01 20 52
+ for Slab 040:
+ 0000 0000 0000 0001 0001 0000 0101 0010
+ 00 01 10 52
  
  for Cube 030:
- 0000 0000 0000 0001 0000 0001 0101 0011
+ 0000 0000 0000 0001 0000 0001 0101 0010
  00 01 01 52
  */
 
@@ -369,15 +369,35 @@ void SCR1_Read1(void)
 void SCR1_Read2(void)
 {
 	Log_Printf(LOG_WARN,"SCR1 read at $%08x PC=$%08x\n", IoAccessCurrentAddress,m68k_getpc());
-    if(ConfigureParams.System.nCpuLevel == 3)
-        IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x01; // Cube 030, board rev 1
-    else
-        IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x10; // Slab 040, board rev 0
+    switch (ConfigureParams.System.nMachineType) {
+        case NEXT_CUBE030:
+            IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x01; // Cube 030, board rev 1
+            break;
+        case NEXT_CUBE040:
+            IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x20; // Cube 040, board rev 0
+            break;
+        case NEXT_STATION:
+            if (ConfigureParams.System.bColor)
+                IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x30; // Slab 040, color, board rev 0
+            else
+                IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x10; // Slab 040, mono, board rev 0
+            break;
+        default: Log_Printf(LOG_WARN, "SCR1 error: unknown machine type\n"); break;
+    }
 }
 void SCR1_Read3(void)
 {
 	Log_Printf(LOG_WARN,"SCR1 read at $%08x PC=$%08x\n", IoAccessCurrentAddress,m68k_getpc());
-	IoMem[IoAccessCurrentAddress & 0x1FFFF]=0x52; // vmem speed 100ns, mem speed 100ns, cpu speed 25 MHz
+    Uint8 cpu_speed = ((ConfigureParams.System.nCpuFreq/8)-1)%4;
+    Uint8 memory_speed;
+    switch (ConfigureParams.Memory.nMemorySpeed) {
+        case MEMORY_120NS: memory_speed = 0x00; break;
+        case MEMORY_100NS: memory_speed = 0x50; break;
+        case MEMORY_80NS: memory_speed = 0xA0; break;
+        case MEMORY_60NS: memory_speed = 0xF0; break;
+        default: Log_Printf(LOG_WARN, "SCR1 error: unknown memory speed\n"); break;
+    }
+    IoMem[IoAccessCurrentAddress & 0x1FFFF]=(memory_speed&0xF0) | (cpu_speed&0x03); // vmem speed XXXns, mem speed XXXns, cpu speed XX MHz
 }
 
 

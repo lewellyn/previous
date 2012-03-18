@@ -30,13 +30,14 @@
 #define DMA_INITBUF     0x00200000 /* initialize DMA buffers */
 
 
-/* read and write CSR bits for 68030 based systems (we convert these to 68040 values before using in functions):
- read:
+/* Read and write CSR bits for 68030 based NeXT Computer.
+ * We convert these to 68040 values before using in functions.
+ * read CSR bits *
  #define DMA_ENABLE      0x01
  #define DMA_SUPDATE     0x02
  #define DMA_COMPLETE    0x08
  #define DMA_BUSEXC      0x10
- write:
+ * write CSR bits *
  #define DMA_SETENABLE   0x01
  #define DMA_SETSUPDATE  0x02
  #define DMA_M2DEV       0x00
@@ -48,7 +49,7 @@
 
 
 
-/* Address variables */
+/* DMA registers */
 
 typedef struct {
     Uint32 read_csr;
@@ -114,9 +115,9 @@ int get_interrupt_type(int channel) {
     }
 }
 
-void DMA_CSR_Read(void) { // 0x02000010, lengh of register is byte on 68030 ?
+void DMA_CSR_Read(void) { // 0x02000010, length of register is byte on 68030 based NeXT Computer
     int channel = get_channel(IoAccessCurrentAddress);
-    if(ConfigureParams.System.nCpuLevel == 3) { // for 68030, not sure if this is correct
+    if(ConfigureParams.System.nMachineType == NEXT_CUBE030) { // for 68030 based NeXT Computer
         IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = dma[channel].read_csr >> 24;
         Log_Printf(LOG_DMA_LEVEL,"DMA SCSI CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].read_csr >> 24, m68k_getpc());
     } else {
@@ -128,7 +129,7 @@ void DMA_CSR_Read(void) { // 0x02000010, lengh of register is byte on 68030 ?
 void DMA_CSR_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress);
     int interrupt = get_interrupt_type(channel);
-    if(ConfigureParams.System.nCpuLevel == 3) { // for 68030, not sure if this is correct
+    if(ConfigureParams.System.nMachineType == NEXT_CUBE030) { // for 68030 based NeXT Computer
         dma[channel].write_csr = IoMem[IoAccessCurrentAddress & IO_SEG_MASK] << 16;
         Log_Printf(LOG_DMA_LEVEL,"DMA SCSI CSR write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress,dma[channel].write_csr >> 16, m68k_getpc());
     } else {
@@ -137,8 +138,8 @@ void DMA_CSR_Write(void) {
     }
      
     if(dma[channel].write_csr & DMA_DEV2M) {
-        if(ConfigureParams.System.nCpuLevel == 3) {
-            dma[channel].read_csr |= (0x04 << 24); // use old DMA_DEV2M value for 68030, not sure if this is correct
+        if(ConfigureParams.System.nMachineType == NEXT_CUBE030) {
+            dma[channel].read_csr |= (0x04 << 24); // use 8 bit DMA_DEV2M value for 68030 based NeXT Computer
         } else {
             dma[channel].read_csr |= DMA_DEV2M;
         }

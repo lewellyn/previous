@@ -20,12 +20,17 @@ const char DlgMemory_fileid[] = "Hatari dlgMemory.c : " __DATE__ " " __TIME__;
 #define DLGMEM_64MB     7
 #define DLGMEM_128MB    8
 
-#define DLGMEM_FILENAME 12
-#define DLGMEM_SAVE     13
-#define DLGMEM_RESTORE  14
-#define DLGMEM_AUTOSAVE 15
+#define DLGMEM_120NS    11
+#define DLGMEM_100NS    12
+#define DLGMEM_80NS     13
+#define DLGMEM_60NS     14
 
-#define DLGMEM_EXIT     16
+#define DLGMEM_FILENAME 18
+#define DLGMEM_SAVE     19
+#define DLGMEM_RESTORE  20
+#define DLGMEM_AUTOSAVE 21
+
+#define DLGMEM_EXIT     22
 
 
 static char dlgSnapShotName[36+1];
@@ -34,18 +39,25 @@ static char dlgSnapShotName[36+1];
 /* The memory dialog: */
 static SGOBJ memorydlg[] =
 {
-	{ SGBOX, 0, 0, 0,0, 40,27, NULL },
+	{ SGBOX, 0, 0, 0,0, 41,27, NULL },
     { SGTEXT, 0, 0, 14,1, 12,1, "Memory options" },
 
-	{ SGBOX, 0, 0, 1,3, 16,9, NULL },
+	{ SGBOX, 0, 0, 1,3, 19,9, NULL },
 	{ SGTEXT, 0, 0, 2,4, 12,1, "Memory size" },
-	{ SGRADIOBUT, 0, 0, 3,6, 9,1, "8 MB" },
+	{ SGRADIOBUT, 0, 0, 3,6, 6,1, "8 MB" },
 	{ SGRADIOBUT, 0, 0, 3,7, 7,1, "16 MB" },
 	{ SGRADIOBUT, 0, 0, 3,8, 7,1, "32 MB" },
 	{ SGRADIOBUT, 0, 0, 3,9, 7,1, "64 MB" },
-	{ SGRADIOBUT, 0, 0, 3,10, 7,1, "128 MB" },
+	{ SGRADIOBUT, 0, 0, 3,10, 8,1, "128 MB" },
+    
+    { SGBOX, 0, 0, 21,3, 19,9, NULL },
+	{ SGTEXT, 0, 0, 22,4, 12,1, "Memory speed" },
+	{ SGRADIOBUT, 0, 0, 23,6, 8,1, "120 ns" },
+	{ SGRADIOBUT, 0, 0, 23,7, 8,1, "100 ns" },
+	{ SGRADIOBUT, 0, 0, 23,8, 7,1, "80 ns" },
+	{ SGRADIOBUT, 0, 0, 23,9, 7,1, "60 ns" },
 
-	{ SGBOX, 0, 0, 1,13, 38,10, NULL },
+	{ SGBOX, 0, 0, 1,13, 39,10, NULL },
 	{ SGTEXT, 0, 0, 2,14, 17,1, "Load/Save memory state (untested)" },
 	{ SGTEXT, 0, 0, 2,16, 20,1, "Snap-shot file name:" },
 	{ SGTEXT, 0, 0, 2,17, 36,1, dlgSnapShotName },
@@ -58,8 +70,11 @@ static SGOBJ memorydlg[] =
 };
 
 /* Variable objects */
-SGOBJ disable_128mb_option = { SGTEXT, 0, 0, 3,10, 7,1, " " };
-SGOBJ enable_128mb_option = { SGRADIOBUT, 0, 0, 3,10, 7,1, "128 MB" };
+SGOBJ disable_128mb_option = { SGTEXT, 0, 0, 3,10, 8,1, " " };
+SGOBJ enable_128mb_option = { SGRADIOBUT, 0, 0, 3,10, 8,1, "128 MB" };
+SGOBJ disable_64mb_option = { SGTEXT, 0, 0, 3,9, 7,1, " " };
+SGOBJ enable_64mb_option = { SGRADIOBUT, 0, 0, 3,9, 7,1, "64 MB" };
+
 
 /**
  * Show and process the memory dialog.
@@ -76,39 +91,85 @@ bool Dialog_MemDlg(void)
 	{
 		memorydlg[i].state &= ~SG_SELECTED;
 	}
+    
+    for (i = DLGMEM_120NS; i <= DLGMEM_60NS; i++)
+    {
+        memorydlg[i].state &= ~SG_SELECTED;
+    }
+    
+    /* Remove 64 and 128MB option if system is Color Slab,
+     * remove 128MB option if system is not NeXTstation */
+    if (ConfigureParams.System.nMachineType != NEXT_STATION) {
+        memorydlg[DLGMEM_64MB] = enable_64mb_option;
+        memorydlg[DLGMEM_128MB] = disable_128mb_option;
+    } else {
+        if (ConfigureParams.System.bColor) {
+            memorydlg[DLGMEM_64MB] = disable_64mb_option;
+            memorydlg[DLGMEM_128MB] = disable_128mb_option;
+        } else {
+            memorydlg[DLGMEM_64MB] = enable_64mb_option;
+            memorydlg[DLGMEM_128MB] = enable_128mb_option;
+        }
+    }
 
+    /* Draw dialog from actual values */
 	switch (ConfigureParams.Memory.nMemorySize)
 	{
-	 case 8:
-		memorydlg[DLGMEM_8MB].state |= SG_SELECTED;
-		break;
-	 case 16:
-		memorydlg[DLGMEM_16MB].state |= SG_SELECTED;
-		break;
-	 case 32:
-		memorydlg[DLGMEM_32MB].state |= SG_SELECTED;
-		break;
-	 case 64:
-		memorydlg[DLGMEM_64MB].state |= SG_SELECTED;
-		break;
-	 case 128:
+        case 8:
+            memorydlg[DLGMEM_8MB].state |= SG_SELECTED;
+            break;
+        case 16:
+            memorydlg[DLGMEM_16MB].state |= SG_SELECTED;
+            break;
+        case 32:
+            memorydlg[DLGMEM_32MB].state |= SG_SELECTED;
+            break;
+        case 64:
+            if (ConfigureParams.System.nMachineType == NEXT_STATION && ConfigureParams.System.bColor) {
+                ConfigureParams.Memory.nMemorySize = 32;
+                memorydlg[DLGMEM_32MB].state |= SG_SELECTED;
+            } else {
+                memorydlg[DLGMEM_64MB].state |= SG_SELECTED;
+            }
+            break;
+        case 128:
             if (ConfigureParams.System.nMachineType == NEXT_STATION) {
-                memorydlg[DLGMEM_128MB].state |= SG_SELECTED;
+                if (ConfigureParams.System.bColor) {
+                    ConfigureParams.Memory.nMemorySize = 32;
+                    memorydlg[DLGMEM_32MB].state |= SG_SELECTED;
+                } else {
+                    memorydlg[DLGMEM_128MB].state |= SG_SELECTED;
+                }
             } else {
                 ConfigureParams.Memory.nMemorySize = 64;
                 memorydlg[DLGMEM_64MB].state |= SG_SELECTED;
             }
-		
-		break;
-	 default:
-		memorydlg[DLGMEM_64MB].state |= SG_SELECTED;
-		break;
+            
+            break;
+        default:
+            ConfigureParams.Memory.nMemorySize = 32;
+            memorydlg[DLGMEM_32MB].state |= SG_SELECTED;
+            break;
 	}
-    /* Remove 128MB option if system is not NeXTstation */
-    if (ConfigureParams.System.nMachineType != NEXT_STATION) {
-        memorydlg[DLGMEM_128MB] = disable_128mb_option;
-    } else {
-        memorydlg[DLGMEM_128MB] = enable_128mb_option;
+    
+    switch (ConfigureParams.Memory.nMemorySpeed) {
+        case MEMORY_120NS:
+            memorydlg[DLGMEM_120NS].state |= SG_SELECTED;
+            break;
+        case MEMORY_100NS:
+            memorydlg[DLGMEM_100NS].state |= SG_SELECTED;
+            break;
+        case MEMORY_80NS:
+            memorydlg[DLGMEM_80NS].state |= SG_SELECTED;
+            break;
+        case MEMORY_60NS:
+            memorydlg[DLGMEM_60NS].state |= SG_SELECTED;
+            break;
+            
+        default:
+            ConfigureParams.Memory.nMemorySpeed = MEMORY_100NS;
+            memorydlg[DLGMEM_100NS].state |= SG_SELECTED;
+            break;
     }
 
 	File_ShrinkName(dlgSnapShotName, ConfigureParams.Memory.szMemoryCaptureFileName, memorydlg[DLGMEM_FILENAME].w);
@@ -160,6 +221,15 @@ bool Dialog_MemDlg(void)
 	else
 		ConfigureParams.Memory.nMemorySize = 128;
 
+    if (memorydlg[DLGMEM_120NS].state & SG_SELECTED)
+        ConfigureParams.Memory.nMemorySpeed = MEMORY_120NS;
+    else if (memorydlg[DLGMEM_100NS].state & SG_SELECTED)
+        ConfigureParams.Memory.nMemorySpeed = MEMORY_100NS;
+    else if (memorydlg[DLGMEM_80NS].state & SG_SELECTED)
+        ConfigureParams.Memory.nMemorySpeed = MEMORY_80NS;
+    else
+        ConfigureParams.Memory.nMemorySpeed = MEMORY_60NS;
+    
 	ConfigureParams.Memory.bAutoSave = (memorydlg[DLGMEM_AUTOSAVE].state & SG_SELECTED);
 
 	return false;

@@ -402,11 +402,17 @@ void SCSI_ClockConv_Write(void) { // 0x02014009
  	Log_Printf(LOG_SCSI_LEVEL,"ESP ClockConv write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_Test_Write(void) {
+void SCSI_Test_Write(void) { // 0x0201400a
     esptest=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP Test write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
+/* System reads this register to check if we use old or new SCSI controller.
+ * Return 0 to report old chip. */
+void SCSI_Conf2_Read(void) { // 0x0201400b
+    if (ConfigureParams.System.nSCSI == NCR53C90)
+        IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = 0x00;
+}
 
 
 /* Functions */
@@ -511,7 +517,7 @@ void handle_satn(void) {
      */
     scsi_command_group = (commandbuf[1] & 0xE0) >> 5;
     if(scsi_command_group < 3 || scsi_command_group > 4) {
-        if(ConfigureParams.System.nCpuLevel == 3 && scsi_command_group == 2) {
+        if(ConfigureParams.System.nSCSI == NCR53C90 && scsi_command_group == 2) {
             Log_Printf(LOG_WARN, "Invalid command group %i on NCR53C90\n", scsi_command_group);
         } else {
             status |= STAT_VGC;

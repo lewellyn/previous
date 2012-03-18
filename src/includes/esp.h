@@ -96,6 +96,7 @@ void SCSI_Configuration_Write(void);
 void SCSI_ClockConv_Write(void);
 void SCSI_Test_Write(void);
 
+void SCSI_Conf2_Read(void);
 
 void esp_reset_hard(void);
 void esp_reset_soft(void);
