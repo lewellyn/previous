@@ -32,11 +32,13 @@ static Uint8 nLastError;
 
 bool bCDROM;
 bool bTargetDevice;
+Uint32 nDiskSize;
 
 
 static FILE *scsidisk = NULL;
 
 FILE* scsiimage[ESP_MAX_DEVS];
+Uint32 nFileSize[ESP_MAX_DEVS];
 
 
 /* Initialize/Uninitialize SCSI disks */
@@ -46,13 +48,14 @@ void SCSI_Init(void) {
     /* Check if files exist. Present dialog to re-select missing files. */        
     int target;
     for (target = 0; target < ESP_MAX_DEVS; target++) {
-        if (File_Exists(ConfigureParams.SCSI.target[target].szImageName) && ConfigureParams.SCSI.target[target].bAttached)
-            scsiimage[target] = ConfigureParams.SCSI.target[target].bCDROM == true ? fopen(ConfigureParams.SCSI.target[target].szImageName, "r") : fopen(ConfigureParams.SCSI.target[target].szImageName, "r+");
-        else
+        if (File_Exists(ConfigureParams.SCSI.target[target].szImageName) && ConfigureParams.SCSI.target[target].bAttached) {
+            nFileSize[target] = File_Length(ConfigureParams.SCSI.target[target].szImageName);
+            scsiimage[target] = ConfigureParams.SCSI.target[target].bCDROM == true ? File_Open(ConfigureParams.SCSI.target[target].szImageName, "r") : File_Open(ConfigureParams.SCSI.target[target].szImageName, "r+");
+        } else {
+            nFileSize[target] = 0;
             scsiimage[target]=NULL;
+        }
     }
-
-//  TODO: Better get disksize here or in SCSI_ReadCapacity?
     
     for (target = 0; target < ESP_MAX_DEVS; target++) {
         Log_Printf(LOG_WARN, "Disk0: %s\n", ConfigureParams.SCSI.target[target].szImageName);
@@ -63,7 +66,7 @@ void SCSI_Uninit(void) {
     int target;
     for (target = 0; target < ESP_MAX_DEVS; target++) {
         if (scsiimage[target])
-    		fclose(scsiimage[target]);
+    		File_Close(scsiimage[target]);
     }
     
     scsidisk = NULL;
@@ -113,6 +116,7 @@ void scsi_command_analyzer(Uint8 commandbuf[], int size, int target, int lun) {
     Log_Printf(LOG_WARN, "SCSI command: Length = %i, Opcode = $%02x, target = %i, lun=%i\n", size, SCSIcommand.opcode, SCSIcommand.target,SCSIcommand.lun);
     
     scsidisk = scsiimage[target];
+    nDiskSize = nFileSize[target];
     bCDROM = ConfigureParams.SCSI.target[target].bCDROM;
     bTargetDevice = ConfigureParams.SCSI.target[target].bAttached;
 
@@ -269,6 +273,9 @@ int SCSI_GetCount(void)
 
 MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
     MODEPAGE page;
+    Uint32 sectors;
+    Uint32 cylinders;
+    Uint8 heads;
     
     switch (pagecode) {
         case 0x01: // error recovery page
@@ -290,11 +297,9 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
             break;
 
         case 0x04: // rigid disc geometry page
-            fseek(scsidisk, 0L, SEEK_END);
-            Uint32 filesize = ftell(scsidisk);
-            Uint32 sectors = filesize / BLOCKSIZE;
-            Uint8 heads = 16; // max heads per cylinder: 16
-            Uint32 cylinders = sectors / (63 * heads); // max sectors per track: 63
+            sectors = nDiskSize / BLOCKSIZE;
+            heads = 16; // max heads per cylinder: 16
+            cylinders = sectors / (63 * heads); // max sectors per track: 63
             if ((sectors % (63 * heads)) != 0) {
                 cylinders += 1;
             }
@@ -361,17 +366,12 @@ void SCSI_TestUnitReady(void)
 
 
 void SCSI_ReadCapacity(void)
-{
-    Uint32 filesize;
-        
-    fseek(scsidisk, 0L, SEEK_END);
-    filesize = ftell(scsidisk);
-    
-    Log_Printf(LOG_WARN, "Read disk image: size = %i\n", filesize);
+{        
+    Log_Printf(LOG_WARN, "Read disk image: size = %i\n", nDiskSize);
 
     SCSIcommand.transfer_data_len = 8;
   
-    Uint32 sectors = filesize / BLOCKSIZE;
+    Uint32 sectors = nDiskSize / BLOCKSIZE;
     
     static Uint8 scsi_disksize[8];
 
@@ -557,9 +557,7 @@ void SCSI_ModeSense(void) {
     Uint8 retbuf[256];
     MODEPAGE page;
     
-    fseek(scsidisk, 0L, SEEK_END);
-    Uint32 filesize = ftell(scsidisk);
-    Uint32 sectors = filesize / BLOCKSIZE;
+    Uint32 sectors = nDiskSize / BLOCKSIZE;
 
     Uint8 pagecontrol = (SCSIcommand.command[2] & 0x0C) >> 6;
     Uint8 pagecode = SCSIcommand.command[2] & 0x3F;
