@@ -2628,7 +2628,7 @@ STATIC_INLINE int time_for_interrupt (void)
 void doint (void)
 {
 	if (currprefs.cpu_cycle_exact) {
-		regs.ipl_pin = intlev ();
+		//regs.ipl_pin = intlev (); // temporary hack!
 		set_special (SPCFLAG_INT);
 		return;
 	}
