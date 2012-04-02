@@ -766,11 +766,7 @@ void set_interrupt(Uint32 interrupt_val, Uint8 int_set_release) {
    
     if(int_set_release == SET_INT) {
         Log_Printf(LOG_DEBUG,"Interrupt Level: %i", interrupt_level);
-        regs.ipl_pin = interrupt_level; // temporary hack!
-        doint(); // temporary hack!
-        //Exception(24+interrupt_level, 0, M68000_EXC_SRC_AUTOVEC);
-        //M68000_Exception(24+interrupt_level, M68000_EXC_SRC_AUTOVEC);
-        //M68000_Exception(((24+interrupt_level)*4), M68000_EXC_SRC_AUTOVEC);
+        M68000_Exception(((24+interrupt_level)*4), M68000_EXC_SRC_AUTOVEC);
     } else {
 //        M68000_Exception(((24+0)*4), M68000_EXC_SRC_AUTOVEC); // release interrupt - does this work???
     }
