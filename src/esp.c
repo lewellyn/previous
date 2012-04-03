@@ -246,14 +246,15 @@ void SCSI_Command_Write(void) {
 		status = (status&STAT_MASK)|STAT_MI;
             	seqstep = 0;
                 Log_Printf(LOG_SCSI_LEVEL,"Bus Reset raising IRQ configuration=%x\n",configuration);
-                esp_raise_irq();
+                //esp_raise_irq(); // temporary disabled for experiment! moved to read config reg.
             } else 
                 Log_Printf(LOG_SCSI_LEVEL,"Bus Reset not interrupting configuration=%x\n",configuration);
             break;
             /* Disconnected */
         case CMD_SEL:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: select without ATN sequence\n");
-	    abort();
+	    //abort();
+            handle_satn(); // endabled for experiment!
             break;
         case CMD_SELATN:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: select with ATN sequence\n");
@@ -390,6 +391,7 @@ void SCSI_SyncOffset_Write(void) {
 void SCSI_Configuration_Read(void) { // 0x02014008
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=configuration;
  	Log_Printf(LOG_SCSI_LEVEL,"ESP Configuration read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    esp_raise_irq(); // experimental!
 }
 
 void SCSI_Configuration_Write(void) {
