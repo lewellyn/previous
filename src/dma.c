@@ -11,7 +11,7 @@
 #include "configuration.h"
 
 
-#define LOG_DMA_LEVEL LOG_DEBUG
+#define LOG_DMA_LEVEL LOG_WARN
 
 #define IO_SEG_MASK	0x1FFFF
 
@@ -73,18 +73,18 @@ DMA_CONTROL dma[16];
 int get_channel(Uint32 address) {
     int channel = address&IO_SEG_MASK;
     switch (channel) {
-        case 0x010: return CHANNEL_SCSI; break;
-        case 0x040: return CHANNEL_SOUNDOUT; break;
-        case 0x050: return CHANNEL_DISK; break;
-        case 0x080: return CHANNEL_SOUNDIN; break;
-        case 0x090: return CHANNEL_PRINTER; break;
-        case 0x0c0: return CHANNEL_SCC; break;
-        case 0x0d0: return CHANNEL_DSP; break;
-        case 0x110: return CHANNEL_ENETX; break;
-        case 0x150: return CHANNEL_ENETR; break;
-        case 0x180: return CHANNEL_VIDEO; break;
-        case 0x1d0: return CHANNEL_M2R; break;
-        case 0x1c0: return CHANNEL_R2M; break;
+        case 0x010: printf("channel SCSI\n"); return CHANNEL_SCSI; break;
+        case 0x040: printf("channel SNDOUT\n"); return CHANNEL_SOUNDOUT; break;
+        case 0x050: printf("channel DISK\n"); return CHANNEL_DISK; break;
+        case 0x080: printf("channel SNDIN\n"); return CHANNEL_SOUNDIN; break;
+        case 0x090: printf("channel PRINT\n"); return CHANNEL_PRINTER; break;
+        case 0x0c0: printf("channel SCC\n"); return CHANNEL_SCC; break;
+        case 0x0d0: printf("channel DSP\n"); return CHANNEL_DSP; break;
+        case 0x110: printf("channel ENETX\n"); return CHANNEL_ENETX; break;
+        case 0x150: printf("channel ENETR\n"); return CHANNEL_ENETR; break;
+        case 0x180: printf("channel VIDEO\n"); return CHANNEL_VIDEO; break;
+        case 0x1d0: printf("channel M2R\n"); return CHANNEL_M2R; break;
+        case 0x1c0: printf("channel R2M\n"); return CHANNEL_R2M; break;
             
         default:
             Log_Printf(LOG_DMA_LEVEL, "Unknown DMA channel!\n");
@@ -312,18 +312,57 @@ void DMA_Size_Write(void) {
     NEXTMemory_Clear(start_addr, end_addr);
 }*/
 
-void dma_memory_read(Uint32 datalength) {
+Uint8 * dma_memory_read(int size, int channel) {
     Uint32 base_addr;
-    Uint32 lencount;
+    Uint8 align = 16;
+    int size_count = 0;
+    Uint32 read_addr;
+    int interrupt = get_interrupt_type(channel);
+    Uint8 *buf = dma_read_buffer;
     
-/*    if(dma_init == 0)
-        base_addr = dma_next;
+    if(channel == CHANNEL_ENETR || channel == CHANNEL_ENETX)
+        align = 32;
+    
+    if((size % align) != 0) {
+        size -= size % align;
+        size += align;
+    }
+    
+    
+    if(dma[channel].init == 0)
+        base_addr = dma[channel].next;
     else
-        base_addr = dma_init;
+        base_addr = dma[channel].init;
     
-    for (lencount = 0; lencount < datalength; lencount++) {
-        dma_read_buffer[lencount] = NEXTMemory_ReadByte(base_addr + lencount);
-    }*/
+    Log_Printf(LOG_WARN, "[DMA] Read from mem: at $%08x, $%x bytes",base_addr,size);
+    for (size_count = 0; size_count < size; size_count++) {
+        read_addr = base_addr + size_count;
+        buf[size_count] = NEXTMemory_ReadByte(read_addr);
+    }
+    printf("READ FROM MEMORY: %02x\n", buf[0]);
+    /* Test read/write */
+    //    Log_Printf(LOG_DMA_LEVEL, "DMA Write Test: $%02x,$%02x,$%02x,$%02x\n", NEXTMemory_ReadByte(base_addr),NEXTMemory_ReadByte(base_addr+16),NEXTMemory_ReadByte(base_addr+32),NEXTMemory_ReadByte(base_addr+384));
+    //    NEXTMemory_WriteByte(base_addr, 0x77);
+    //    Uint8 testvar = NEXTMemory_ReadByte(base_addr);
+    //    Log_Printf(LOG_DMA_LEVEL, "Write Test: $%02x at $%08x", testvar, base_addr);
+    
+    dma[channel].init = 0;
+    
+    /* saved limit is checked to calculate packet size
+     by both the rom and netbsd */ 
+    dma[channel].saved_limit = dma[channel].next + size;
+    dma[channel].saved_next  = dma[channel].next;
+    
+    if(!(dma[channel].read_csr & DMA_SUPDATE)) {
+        dma[channel].next = dma[channel].start;
+        dma[channel].limit = dma[channel].stop;
+    }
+    
+    dma[channel].read_csr |= DMA_COMPLETE;
+    
+    set_interrupt(interrupt, SET_INT);
+
+    return buf;
 }
 
 

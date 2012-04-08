@@ -561,7 +561,7 @@ Uint32 get_cmd (void) {
     
     if(mode_dma == 1) {
         command_len = readtranscountl | (readtranscounth << 8);
-        dma_memory_read(command_len);
+        //dma_memory_read(command_len);
         memcpy(commandbuf, dma_read_buffer, command_len);
     } else {
         command_len = fifo_write_ptr - fifo_read_ptr;

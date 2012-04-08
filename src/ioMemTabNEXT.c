@@ -22,6 +22,7 @@ const char IoMemTabST_fileid[] = "Previous ioMemTabST.c : " __DATE__ " " __TIME_
 #include "ethernet.h"
 #include "sysReg.h"
 #include "dma.h"
+#include "scc.h"
 
 
 
@@ -249,6 +250,18 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x0200401c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
     { 0x02004210, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
     { 0x02004214, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
+    
+    /* DMA SCC */
+    { 0x020040c0, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
+    { 0x020040c4, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
+//    { 0x02004008, SIZE_LONG, DMA_Saved_Start_Read, DMA_Saved_Start_Write },
+//    { 0x0200400c, SIZE_LONG, DMA_Saved_Stop_Read, DMA_Saved_Stop_Write },
+//    { 0x02004010, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
+//    { 0x02004014, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
+//    { 0x02004018, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
+//    { 0x0200401c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
+//    { 0x02004210, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
+//    { 0x02004214, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
         
     /* SCSI Registers for NCR53C90 (68030) */
     { 0x02014000, SIZE_BYTE, SCSI_TransCountL_Read, SCSI_TransCountL_Write },
@@ -282,9 +295,11 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     /* floppy external control */
     { 0x02014108, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 
-    
-	{ 0x02018000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02018001, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+    /* 8530 serial controller */
+	{ 0x02018000, SIZE_BYTE, SCC_Read, SCC_Write },
+	{ 0x02018001, SIZE_BYTE, SCC_Read, SCC_Write },
+    { 0x02018002, SIZE_BYTE, SCC_Read, IoMem_WriteWithoutInterceptionButTrace },
+	{ 0x02018003, SIZE_BYTE, SCC_Read, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x02018004, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0, 0, NULL, NULL }
 };
