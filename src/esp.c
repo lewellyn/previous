@@ -292,7 +292,7 @@ void SCSI_Command_Write(void) {
             } else {
                 Log_Printf(LOG_WARN, "Reselect: target %i, lun %i\n", SCSIcommand.target, SCSIcommand.lun);
                 status = (status&STAT_MASK)|STAT_MI;
-                intstatus = INTR_RESEL;
+                intstatus = INTR_RESEL|INTR_FC;
                 esp_fifo[0] = (1<<SCSIcommand.target); // target bit
                 esp_fifo[1] = 0x80|(SCSIcommand.lun&0x07); // identify message (identifymask|(lun&lun_mask))
                 fifoflags = 2;
@@ -301,12 +301,15 @@ void SCSI_Command_Write(void) {
 //                esp_raise_irq();
             }
             break;
+        case CMD_DISSEL:
+            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: disable selection/reselection\n");
+            intstatus = INTR_FC;
+            esp_raise_irq();
+            break;
             /* Initiator */
         case CMD_TI:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: transfer information\n");
             handle_ti();
-            //intstatus = INTR_FC; // test, only valid for data in, for data out intr_bs
-            state = INITIATOR;
     	    esp_raise_irq();
             break;
         case CMD_ICCS:
@@ -314,9 +317,7 @@ void SCSI_Command_Write(void) {
             write_response();
             intstatus = INTR_FC;
             status = (status&STAT_MASK)|STAT_MI;
-            fifoflags = 2;
             esp_raise_irq();
-            state = INITIATOR;
             break;
         case CMD_MSGACC:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: message accepted\n");
@@ -324,9 +325,7 @@ void SCSI_Command_Write(void) {
             intstatus = INTR_BS;
             seqstep = SEQ_0;
             fifoflags = 0x00;
-            state = ACCEPTINGMSG;
             esp_raise_irq();
-            state = DISCONNECTED;
             break;            
         case CMD_PAD:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: transfer pad\n");
@@ -463,6 +462,7 @@ void esp_reset_hard(void) {
     intstatus = 0x00;
     status &= ~(STAT_VGC | STAT_PE | STAT_GE); // need valid group code bit? clear transfer complete aka valid group code, parity error, gross error
     esp_flush_fifo();
+    esp_lower_irq();
     esp_reset_soft();
 }
 
@@ -485,9 +485,6 @@ void esp_reset_soft(void) {
     selecttimeout= 0x00;
     fifoflags = 0x00;
     esptest = 0x00;
-    
-    state = DISCONNECTED;
-    esp_lower_irq();
 }
 
 void esp_raise_irq(void) {
@@ -515,7 +512,8 @@ void esp_raise_irq(void) {
             case IGNOREILLCMD: sprintf(s, "ignoreillcmd"); break;
             default: sprintf(s, "unknown"); break;
         }
-        Log_Printf(LOG_WARN, "Raise IRQ: state: %s\n", s);
+//        Log_Printf(LOG_WARN, "Raise IRQ: state: %s\n", s);
+        Log_Printf(LOG_WARN, "Raise IRQ:");
         switch (status&STAT_MI) {
             case STAT_DO: sprintf(s, "data out"); break;
             case STAT_DI: sprintf(s, "data in"); break;
@@ -624,7 +622,6 @@ void do_busid_cmd(Uint8 busid) {
         seqstep = 0x00;//SEQ_SELTIMEOUT;
         status = (status&STAT_MASK)|STAT_MI; // seems weird... http://permalink.gmane.org/gmane.os.netbsd.ports.next68k/305
         no_target=true;
-        state = DISCONNECTED;
         esp_raise_irq();
 	return;
     }
@@ -635,13 +632,12 @@ void do_busid_cmd(Uint8 busid) {
         status = (status&STAT_MASK)|STAT_ST;
         intstatus = INTR_BS|INTR_FC;//INTR_DC;
         seqstep = SEQ_CD;//SEQ_SELTIMEOUT;
-        //state = DISCONNECTED;
         esp_raise_irq();
         return;
     }
     
     status = (status&STAT_MASK)| STAT_ST;
-    state = INITIATOR;
+
     if (data_len != 0) {
         Log_Printf(LOG_SCSI_LEVEL, "executing command\n");
         status = STAT_TC;
@@ -686,7 +682,6 @@ void esp_do_dma(void) {
     Uint32 len;
     int to_device;
     
-    state = DMAING;
     int dma_translen; // experimental
     dma_translen = readtranscountl | (readtranscounth << 8); // experimental
     Log_Printf(LOG_SCSI_LEVEL, "call dma_write\n"); // experimental
@@ -789,7 +784,6 @@ void esp_command_complete (void) {
 //  status = status; return status, not status register!!
     status = STAT_ST;
     seqstep = SEQ_0;
-    state = COMPLETING;
     if(mode_dma)    
 	esp_dma_done();
 }
@@ -799,7 +793,6 @@ void write_response(void) {
     esp_fifo[0] = SCSIcommand.returnCode; // status
     esp_fifo[1] = 0x00; // message
     
-    state = COMPLETING;
     if(mode_dma == 1) {
         dma_memory_write(esp_fifo, 2, CHANNEL_SCSI);
         status = (status & STAT_MASK) | STAT_TC | STAT_ST;
