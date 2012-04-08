@@ -272,7 +272,7 @@ void SCSI_Command_Write(void) {
         case CMD_SEL:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: select without ATN sequence\n");
 	    //abort();
-            handle_satn(); // endabled for experiment!
+            handle_satn(); // enabled for experiment!
             break;
         case CMD_SELATN:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: select with ATN sequence\n");
@@ -298,14 +298,14 @@ void SCSI_Command_Write(void) {
                 fifoflags = 2;
                 fifo_write_ptr = 2;
                 fifo_read_ptr = 0;
-                esp_raise_irq();
+//                esp_raise_irq();
             }
             break;
             /* Initiator */
         case CMD_TI:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: transfer information\n");
             handle_ti();
-            intstatus = INTR_FC; // test, only valid for data in, for data out intr_bs
+            //intstatus = INTR_FC; // test, only valid for data in, for data out intr_bs
             state = INITIATOR;
     	    esp_raise_irq();
             break;
@@ -321,7 +321,7 @@ void SCSI_Command_Write(void) {
         case CMD_MSGACC:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: message accepted\n");
             status = (status&STAT_MASK)|STAT_ST;	   
-            intstatus = INTR_BS|INTR_DC;
+            intstatus = INTR_BS;
             seqstep = SEQ_0;
             fifoflags = 0x00;
             state = ACCEPTINGMSG;
@@ -414,7 +414,7 @@ void SCSI_SyncPeriod_Write(void) {
 
 void SCSI_FIFOflags_Read(void) { // 0x02014007
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=fifoflags;
- 	Log_Printf(LOG_SCSI_LEVEL,"ESP FIFOflags read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+ 	Log_Printf(LOG_WARN,"ESP FIFOflags read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void SCSI_SyncOffset_Write(void) {
@@ -621,8 +621,8 @@ void do_busid_cmd(Uint8 busid) {
     if ((target >= ESP_MAX_DEVS) || (SCSIcommand.timeout==true)) { // experimental
     Log_Printf(LOG_SCSI_LEVEL, "No target found !! Target %d Lun %d raise irq %s at %d",target,lun,__FILE__,__LINE__);
         intstatus = INTR_DC;
-        seqstep = SEQ_SELTIMEOUT;
-        status = STAT_MI; // seems weird... http://permalink.gmane.org/gmane.os.netbsd.ports.next68k/305
+        seqstep = 0x00;//SEQ_SELTIMEOUT;
+        status = (status&STAT_MASK)|STAT_MI; // seems weird... http://permalink.gmane.org/gmane.os.netbsd.ports.next68k/305
         no_target=true;
         state = DISCONNECTED;
         esp_raise_irq();
@@ -633,9 +633,9 @@ void do_busid_cmd(Uint8 busid) {
     Log_Printf(LOG_SCSI_LEVEL, "No device found !! Target %d Lun %d raise irq %s at %d",target,lun,__FILE__,__LINE__);
 	
         status = (status&STAT_MASK)|STAT_ST;
-        intstatus |= INTR_DC;
-        seqstep = SEQ_SELTIMEOUT;
-        state = DISCONNECTED;
+        intstatus = INTR_BS|INTR_FC;//INTR_DC;
+        seqstep = SEQ_CD;//SEQ_SELTIMEOUT;
+        //state = DISCONNECTED;
         esp_raise_irq();
         return;
     }
