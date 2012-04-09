@@ -780,7 +780,7 @@ void IntRegMaskRead(void) {
 
 void IntRegMaskWrite(void) {
 	intMask = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-        Log_Printf(LOG_WARN,"Interrupt mask: %04x", intMask);
+        Log_Printf(LOG_WARN,"Interrupt mask: %08x", intMask);
 }
 
 /*

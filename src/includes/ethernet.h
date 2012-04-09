@@ -1,2 +1,2 @@
-void Ethernet_read(void);
-void Ethernet_write(void);
+void Ethernet_Read(void);
+void Ethernet_Write(void);
