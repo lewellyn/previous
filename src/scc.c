@@ -22,12 +22,9 @@
 #define LOG_SCC_LEVEL LOG_WARN
 #define IO_SEG_MASK	0x1FFFF
 
-void updateirqs(void);
-void resetchannel(int ch);
-void initchannel(int ch);
 
 /* Variables */
-int MasterIRQEnable;
+bool MasterIRQEnable;
 int lastIRQStat;
 typedef enum {
     IRQ_NONE,
@@ -60,22 +57,18 @@ SCC_CHANNEL channel[2];
 
 int IRQV;
 
-enum {
-    B = 0,
-    A = 1
-} ch;
-
-
 Sint8 regnum[2];
 
 
 void SCC_Read(void) {
     bool data;
+    Uint8 ch;
+    Uint8 reg;
         
     if (IoAccessCurrentAddress&0x1)
-        ch = A;
+        ch = 1; // Channel A
     else
-        ch = B;
+        ch = 0; // Channel B
     
     if (IoAccessCurrentAddress&0x2)
         data = true;
@@ -84,10 +77,11 @@ void SCC_Read(void) {
     
     if (data) {
         IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = channel[ch].data;
-        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Data read: %02x\n", ch == A?'A':'B', channel[ch].data);
+        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Data read: %02x\n", ch == 1?'A':'B', channel[ch].data);
     } else {
-        IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = channel[ch].wreg[channel[ch].reg];
-        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Reg%i read: %02x\n", ch == A?'A':'B', channel[ch].reg, channel[ch].wreg[channel[ch].reg]);
+        reg = channel[ch].reg;
+        IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = channel[ch].rreg[reg];
+        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Reg%i read: %02x\n", ch == 1?'A':'B', reg, channel[ch].rreg[reg]);
         
         regnum[ch] = -1;
     }
@@ -96,11 +90,14 @@ void SCC_Read(void) {
 
 void SCC_Write(void) {
     bool data;
+    Uint8 ch;
+    Uint8 reg;
+    Uint8 val;
     
     if (IoAccessCurrentAddress&0x1)
-        ch = A;
+        ch = 1;
     else
-        ch = B;
+        ch = 0;
     
     if (IoAccessCurrentAddress&0x2)
         data = true;
@@ -109,7 +106,7 @@ void SCC_Write(void) {
     
     if (data) {
         channel[ch].data = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
-        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Data write: %02x\n", ch == A?'A':'B', channel[ch].data);
+        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Data write: %02x\n", ch == 1?'A':'B', channel[ch].data);
         channel[ch].wreg[0] = 0x04|0x01; // Tx buffer empty | Rx Character Available
         return;
     }
@@ -118,84 +115,88 @@ void SCC_Write(void) {
         channel[ch].reg = regnum[ch] = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
         return;
     } else if (regnum[ch] >= 0) {
-        channel[ch].reg = regnum[ch];
-        channel[ch].wreg[channel[ch].reg] = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
-        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Reg%i write: %02x\n", ch == A?'A':'B', channel[ch].reg, channel[ch].wreg[channel[ch].reg]);
+        reg = channel[ch].reg = regnum[ch];
+        val = channel[ch].wreg[reg] = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
+        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Reg%i write: %02x\n", ch == 1?'A':'B', channel[ch].reg, channel[ch].wreg[reg]);
     
-        switch (channel[ch].reg) {
-            case 0:
-                switch ((channel[ch].wreg[channel[ch].reg]>>3) & 7) {
-                    case 1: break; // select high registers (handled elsewhere)
-                    case 2: channel[0].txIRQPending = false; break; // reset external and status IRQs
-                    case 5: updateirqs(); break; // ack Tx IRQ
-                    case 0: // nothing
-                    case 3: // send SDLC abort
-                    case 4: // enable IRQ on next Rx byte
-                    case 6: // reset errors
-                    case 7: // reset highest IUS
-                        break; // not handled
+        switch (reg) {
+            case W_INIT:
+                switch ((val>>3) & 7) {
+                    case 2: SCC_Interrupt(); break; // Reset Ext/Status Interrupts
+                    case 5: channel[0].txIRQPending = false; break; // Reset pending Tx Interrupt
+                    case 0: // Nothing
+                    case 3: // Send SDLC abort
+                    case 4: // Enable interrupt on next char Rx
+                    case 6: // Error reset
+                    case 7: // Reset Interrupt Under Service
+                        break; // Not handled
+                    default: break;
                 }
                 break;
                 
-            case 1: // Tx/Rx IRQ and data transfer mode definition
-                channel[ch].extIRQEnable = (channel[ch].wreg[channel[ch].reg]&1);
-                channel[ch].txIRQEnable = (channel[ch].wreg[channel[ch].reg]&2)?1:0;
-                channel[ch].rxIRQEnable = ((channel[ch].wreg[channel[ch].reg]>>3)&3);
-                updateirqs();
+            case W_MODE: // Tx/Rx IRQ and data transfer mode definition
+                channel[ch].extIRQEnable = (val&1)?true:false; // External Interrupt Enable
+                channel[ch].txIRQEnable = (val&2)?true:false; // Transmit Interrupt Enable
+                channel[ch].rxIRQEnable = ((val&0x18)==0x18)?true:false; // Interrupt on Special only
+                SCC_Interrupt();
                 
-                if (channel[ch].wreg[channel[ch].reg]&0x40 && channel[ch].wreg[channel[ch].reg]&0x80) {
+                if (val&0x40 && val&0x80) {
                     channel[ch].data = *dma_memory_read(1, CHANNEL_SCC);
-                    channel[ch].wreg[0] = 0x01; // Rx Character Available
+                    channel[ch].rreg[R_STATUS] = RR0_RXAVAIL; // Rx Character Available
                 }
                 break;
                 
-            case 2: // IRQ vector
-                IRQV = channel[ch].wreg[channel[ch].reg];
+            case W_INTVEC: // Interrupt vector
+                IRQV = channel[ch].rreg[R_INTVEC] = val;
                 break;
                 
-            case 3: // Rx parameters and controls
-                channel[ch].rxEnable = channel[ch].wreg[channel[ch].reg]&1;
-                channel[ch].syncHunt = (channel[ch].wreg[channel[ch].reg]&0x10)?1:0;
+            case W_RECCONT: // Rx parameters and controls
+                channel[ch].rxEnable = channel[ch].wreg[reg]&1; // Rx Enable
+                channel[ch].syncHunt = (channel[ch].wreg[reg]&0x10)?true:false; // Enter Hunt Mode
                 break;
                 
-            case 5: // Tx parameters and controls
-                channel[ch].rxEnable = channel[ch].wreg[channel[ch].reg]&8;
+            case W_TRANSCONT: // Tx parameters and controls
+                channel[ch].rxEnable = channel[ch].wreg[reg]&8;
                 if (channel[ch].txEnable)
-                    channel[ch].wreg[0] |= 0x04; // Tx empty
+                    channel[ch].rreg[R_STATUS] |= RR0_TXEMPTY; // Tx Empty
                 
-            case 4: // Tx/Rx misc parameters and modes
-            case 6: // sync chars/SDLC address field
-            case 7: // sync char/SDLC flag
+            case W_MISCMODE:  // Tx/Rx miscellaneous parameters and modes
+            case W_SYNCCHARA: // sync chars/SDLC address field
+            case W_SYNCCHARF: // sync char/SDLC flag
                 break;
                 
-            case 9: // master IRQ control
-                MasterIRQEnable = (channel[ch].wreg[channel[ch].reg]&8)?1:0;
-                updateirqs();
+            case W_TRANSBUF:
+                channel[ch].data = val;
+                break;
                 
-                // channel reset command
-                switch ((channel[ch].wreg[channel[ch].reg]>>6)&3) {
-                    case 0: break; // do nothing
-                    case 1: resetchannel(0); break; // reset channel B
-                    case 2: resetchannel(1); break; // reset channel A
-                    case 3: // force h/w reset (entire chip)
+            case W_MASTERINT: // Master Interrupt Control
+                MasterIRQEnable = (val&8)?true:false;
+                SCC_Interrupt();
+                
+                /* Reset channels */
+                switch ((val>>6)&3) {
+                    case 1: SCC_ResetChannel(0); break; // Reset Channel B
+                    case 2: SCC_ResetChannel(1); break; // Reset Channel A
+                    case 3: // Hardware Reset
                         SCC_Reset();
-                        updateirqs();
+                        SCC_Interrupt();
                         break;
+                    default: break;
                 }
                 break;
                 
-            case 10: // misc transmitter/receiver control bits
-            case 11: // clock mode control
-            case 12: // lower byte of baud rate gen
-            case 13: // upper byte of baud rate gen
+            case W_MISCCONT: // Miscellaneous transmitter/receiver control bits
+            case W_CLOCK:    // Clock mode control
+            case W_BRG_LOW:  // Lower byte of baud rate generator
+            case W_BRG_HIGH: // Upper byte of baud rate generator
                 break;
                 
-            case 14: // misc control bits
-                if (channel[ch].wreg[channel[ch].reg]&0x01) // baud rate generator enable?
+            case W_MISC: // Miscellaneous control bits
+                if (val&0x01) // Baud rate generator enable?
                 {} // later
                 break;
                 
-            case 15: // later
+            case W_EXTSTAT: // later ...
                 break;
         }
         
@@ -207,7 +208,7 @@ void SCC_Write(void) {
 
 /* Functions */
 
-void updateirqs(void)
+void SCC_Interrupt(void)
 {
 	int irqstat;
     
@@ -265,7 +266,7 @@ void updateirqs(void)
 }
 
 
-void resetchannel(int ch)
+void SCC_ResetChannel(int ch)
 {
 //	emu_timer *timersave = channel[ch].baudtimer;
     
@@ -277,7 +278,7 @@ void resetchannel(int ch)
 //	channel[ch].baudtimer->adjust(attotime::never, ch);
 }
 
-void initchannel(int ch)
+void SCC_InitChannel(int ch)
 {
 	channel[ch].syncHunt = 1;
 }
@@ -285,18 +286,18 @@ void initchannel(int ch)
 void SCC_Reset(void) {
     Log_Printf(LOG_WARN, "SCC: Device Reset (Hacked!)");
     IRQType = IRQ_NONE;
-    MasterIRQEnable = 0;
+    MasterIRQEnable = false;
     IRQV = 0;
     
-    initchannel(0);
-    initchannel(1);
-    resetchannel(0);
-    resetchannel(1);
+    SCC_InitChannel(0);
+    SCC_InitChannel(1);
+    SCC_ResetChannel(0);
+    SCC_ResetChannel(1);
     
     regnum[0] = -1;
     regnum[1] = -1;
     
     /*--- Hack to pass power-on test ---*/
-    channel[0].wreg[0] = 0xFF;
-    channel[1].wreg[0] = 0xFF;
+    channel[0].rreg[R_STATUS] = 0xFF;
+    channel[1].rreg[R_STATUS] = 0xFF;
 }
