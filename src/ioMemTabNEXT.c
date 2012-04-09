@@ -298,8 +298,8 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     /* 8530 serial controller */
 	{ 0x02018000, SIZE_BYTE, SCC_Read, SCC_Write },
 	{ 0x02018001, SIZE_BYTE, SCC_Read, SCC_Write },
-    { 0x02018002, SIZE_BYTE, SCC_Read, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02018003, SIZE_BYTE, SCC_Read, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x02018002, SIZE_BYTE, SCC_Read, SCC_Write },
+	{ 0x02018003, SIZE_BYTE, SCC_Read, SCC_Write },
 	{ 0x02018004, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0, 0, NULL, NULL }
 };
