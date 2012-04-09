@@ -7,7 +7,7 @@
  
  Based on MESS source code.
  
- Port to Previous incomplete.
+ Port to Previous incomplete. Hacked to pass Power-on test.
  
  */
 
@@ -89,13 +89,18 @@ void SCC_Read(void) {
             
     if (rregnum[ch] < 0) {
         IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = reg = rregnum[ch] = 1;
+        if (!(IoAccessCurrentAddress&0x1)) {
+            IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = reg = rregnum[ch] = 5;
+            channel[ch].rreg[reg] = 0x40;
+        }
         return;
     } else if (rregnum[ch] >= 0) {
         reg = rregnum[ch];
         IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = channel[ch].rreg[reg];
         printf("SCC %c, Reg%i read: %02x\n", ch == A?'A':'B', reg, channel[ch].rreg[reg]);
         
-        rregnum[ch] = -1;
+        if ((IoAccessBaseAddress&0x3)!=0x3)
+            rregnum[ch] = -1;
     }
 }
 
