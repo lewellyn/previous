@@ -22,6 +22,14 @@
 #define LOG_EN_LEVEL LOG_WARN
 #define IO_SEG_MASK	0x1FFFF
 
+
+/* Function Prototypes */
+void EnTx_Lower_IRQ(void);
+void EnRx_Lower_IRQ(void);
+void EnTx_Raise_IRQ(void);
+void EnRx_Raise_IRQ(void);
+
+
 /* Ethernet Regisers */
 #define EN_TXSTAT   0
 #define EN_TXMASK   1
@@ -32,6 +40,11 @@
 
 #define EN_RESET    6
 
+
+/* Ethernet Register Constants */
+#define TXSTAT_RDY  0x80    // Ready for Packet
+
+#define RESET_VAL   0x80    // Generate Reset
 
 typedef struct {
     Uint8 tx_status;
@@ -48,26 +61,31 @@ ETHERNET_CONTROLLER ethernet;
 Uint8 MACaddress[6];
 
 void Ethernet_Read(void) {
-	int addr=IoAccessCurrentAddress & IO_SEG_MASK;
-	int reg=addr%16;
-	int val=0;
-    
-    Log_Printf(LOG_EN_LEVEL, "[Ethernet] read reg %d val %02x PC=%x %s at %d",reg,val,m68k_getpc(),__FILE__,__LINE__);
+	Uint8 reg = IoAccessCurrentAddress&0x0F;
+	Uint8 val;
     
 	switch (reg) {
 		case EN_TXSTAT:
-			IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=0x80;
+			val = ethernet.tx_status;
 			break;
         case EN_TXMASK:
+            val = ethernet.tx_mask;
             break;
         case EN_RXSTAT:
+            val = ethernet.rx_status;
             break;
         case EN_RXMASK:
+            val = ethernet.rx_mask;
             break;
         case EN_TXMODE:
+            val = ethernet.tx_mode;
             break;
         case EN_RXMODE:
+            val = ethernet.rx_mode;
             break;
+        case EN_RESET:
+            break;
+            
         /* Read MAC Address */
         case 8:
         case 9:
@@ -75,18 +93,56 @@ void Ethernet_Read(void) {
         case 11:
         case 12:
         case 13:
-            IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = MACaddress[reg-8];
+            val = MACaddress[reg-8];
             break;
-	}    	
+        default:
+            break;
+	}
+    IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = val;
+    
+    Log_Printf(LOG_EN_LEVEL, "[Ethernet] read reg %d val %02x PC=%x %s at %d",reg,val,m68k_getpc(),__FILE__,__LINE__);
 }
 
 void Ethernet_Write(void) {
-	int val=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
-	int reg=IoAccessCurrentAddress%16;
+	Uint8 val = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+	Uint8 reg = IoAccessCurrentAddress&0xF;
     
     Log_Printf(LOG_EN_LEVEL, "[Ethernet] write reg %d val %02x PC=%x %s at %d",reg,val,m68k_getpc(),__FILE__,__LINE__);
     
     switch (reg) {
+        case EN_TXSTAT:
+            if (val == 0xFF)
+                ethernet.tx_status = 0x80; // ? temp hack
+            else
+                ethernet.tx_status = val; //ethernet.tx_status & (0xF0 | ~val); ?
+            EnTx_Raise_IRQ(); // check irq
+			break;
+        case EN_TXMASK:
+            ethernet.tx_mask = val & 0xAF;
+            EnTx_Raise_IRQ(); // check irq
+            break;
+        case EN_RXSTAT:
+            if (val == 0xFF)
+                ethernet.rx_status = 0x00;
+            else
+                ethernet.rx_status = val; //ethernet.rx_status & (0x07 | ~val); ?
+            EnRx_Raise_IRQ(); // check irq
+            break;
+        case EN_RXMASK:
+            ethernet.rx_mask = val & 0x9F;
+            EnRx_Raise_IRQ(); // check irq
+            break;
+        case EN_TXMODE:
+            ethernet.tx_mode = val;
+            break;
+        case EN_RXMODE:
+            ethernet.rx_mode = val;
+            break;
+        case EN_RESET:
+            if (val&RESET_VAL)
+                Ethernet_Reset();
+            break;
+
         /* Write MAC Address */
         case 8:
         case 9:
@@ -94,7 +150,7 @@ void Ethernet_Write(void) {
         case 11:
         case 12:
         case 13:
-            MACaddress[reg-8] = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
+            MACaddress[reg-8] = val;
             break;
             
         default:
@@ -102,3 +158,36 @@ void Ethernet_Write(void) {
     }
 }
 
+
+void Ethernet_Reset(void) {
+    ethernet.tx_status = TXSTAT_RDY;
+    ethernet.tx_mask = 0x00;
+    ethernet.tx_mode = 0x00;
+    ethernet.rx_status = 0x00;
+    ethernet.rx_mask = 0x00;
+    ethernet.rx_mode = 0x00;
+    
+    EnTx_Lower_IRQ();
+    EnRx_Lower_IRQ();
+    
+    // txlen = rxlen = txcount = 0;
+    // set_promisc(true);
+    // start_send();
+}
+
+
+void EnTx_Lower_IRQ(void) {
+    
+}
+
+void EnRx_Lower_IRQ(void) {
+    
+}
+
+void EnTx_Raise_IRQ(void) {
+    
+}
+
+void EnRx_Raise_IRQ(void) {
+    
+}

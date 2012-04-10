@@ -8,11 +8,11 @@ typedef enum {
     CHANNEL_PRINTER,    // 0x00000090
     CHANNEL_SCC,        // 0x000000c0
     CHANNEL_DSP,        // 0x000000d0
-    CHANNEL_ENETX,      // 0x00000110
-    CHANNEL_ENETR,      // 0x00000150
+    CHANNEL_EN_TX,      // 0x00000110
+    CHANNEL_EN_RX,      // 0x00000150
     CHANNEL_VIDEO,      // 0x00000180
     CHANNEL_M2R,        // 0x000001d0
-    CHANNEL_R2M        // 0x000001c0
+    CHANNEL_R2M         // 0x000001c0
 }DMA_CHANNEL;
 
 int get_channel(Uint32 address);

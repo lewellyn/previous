@@ -721,8 +721,8 @@ void set_interrupt(Uint32 interrupt_val, Uint8 int_set_release) {
         case INT_DSP_L3:
         case INT_PHONE:
         case INT_SOUND_OVRUN:
-        case INT_ENETR:
-        case INT_ENETX:
+        case INT_EN_RX:
+        case INT_EN_TX:
         case INT_PRINTER:
         case INT_SCSI:
         case INT_DISK: interrupt_level = 3;
@@ -742,8 +742,8 @@ void set_interrupt(Uint32 interrupt_val, Uint8 int_set_release) {
         case INT_PRINTER_DMA:
         case INT_DISK_DMA:
         case INT_SCSI_DMA:
-        case INT_ENETR_DMA:
-        case INT_ENETX_DMA:
+        case INT_EN_RX_DMA:
+        case INT_EN_TX_DMA:
 			interrupt_level = 6;
 		break;
         case INT_TIMER:

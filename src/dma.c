@@ -52,8 +52,7 @@
 /* DMA registers */
 
 typedef struct {
-    Uint32 read_csr;
-    Uint32 write_csr;
+    Uint32 csr;
     Uint32 saved_next;
     Uint32 saved_limit;
     Uint32 saved_start;
@@ -73,18 +72,18 @@ DMA_CONTROL dma[16];
 int get_channel(Uint32 address) {
     int channel = address&IO_SEG_MASK;
     switch (channel) {
-        case 0x010: printf("channel SCSI\n"); return CHANNEL_SCSI; break;
-        case 0x040: printf("channel SNDOUT\n"); return CHANNEL_SOUNDOUT; break;
-        case 0x050: printf("channel DISK\n"); return CHANNEL_DISK; break;
-        case 0x080: printf("channel SNDIN\n"); return CHANNEL_SOUNDIN; break;
-        case 0x090: printf("channel PRINT\n"); return CHANNEL_PRINTER; break;
-        case 0x0c0: printf("channel SCC\n"); return CHANNEL_SCC; break;
-        case 0x0d0: printf("channel DSP\n"); return CHANNEL_DSP; break;
-        case 0x110: printf("channel ENETX\n"); return CHANNEL_ENETX; break;
-        case 0x150: printf("channel ENETR\n"); return CHANNEL_ENETR; break;
-        case 0x180: printf("channel VIDEO\n"); return CHANNEL_VIDEO; break;
-        case 0x1d0: printf("channel M2R\n"); return CHANNEL_M2R; break;
-        case 0x1c0: printf("channel R2M\n"); return CHANNEL_R2M; break;
+        case 0x010: printf("channel SCSI:\n"); return CHANNEL_SCSI; break;
+        case 0x040: printf("channel Sound Out:\n"); return CHANNEL_SOUNDOUT; break;
+        case 0x050: printf("channel MO Disk:\n"); return CHANNEL_DISK; break;
+        case 0x080: printf("channel Sound in:\n"); return CHANNEL_SOUNDIN; break;
+        case 0x090: printf("channel Printer:\n"); return CHANNEL_PRINTER; break;
+        case 0x0c0: printf("channel SCC:\n"); return CHANNEL_SCC; break;
+        case 0x0d0: printf("channel DSP:\n"); return CHANNEL_DSP; break;
+        case 0x110: printf("channel Ethernet Tx:\n"); return CHANNEL_EN_TX; break;
+        case 0x150: printf("channel Ethernet Rx:\n"); return CHANNEL_EN_RX; break;
+        case 0x180: printf("channel Video:\n"); return CHANNEL_VIDEO; break;
+        case 0x1d0: printf("channel M2R:\n"); return CHANNEL_M2R; break;
+        case 0x1c0: printf("channel R2M:\n"); return CHANNEL_R2M; break;
             
         default:
             Log_Printf(LOG_DMA_LEVEL, "Unknown DMA channel!\n");
@@ -102,8 +101,8 @@ int get_interrupt_type(int channel) {
         case CHANNEL_PRINTER: return INT_PRINTER_DMA; break;
         case CHANNEL_SCC: return INT_SCC_DMA; break;
         case CHANNEL_DSP: return INT_DSP_DMA; break;
-        case CHANNEL_ENETX: return INT_ENETX_DMA; break;
-        case CHANNEL_ENETR: return INT_ENETR_DMA; break;
+        case CHANNEL_EN_TX: return INT_EN_TX_DMA; break;
+        case CHANNEL_EN_RX: return INT_EN_RX_DMA; break;
         case CHANNEL_VIDEO: return 0; break;                   // no interrupt? CHECK THIS
         case CHANNEL_M2R: return INT_M2R_DMA; break;
         case CHANNEL_R2M: return INT_R2M_DMA; break;
@@ -118,54 +117,55 @@ int get_interrupt_type(int channel) {
 void DMA_CSR_Read(void) { // 0x02000010, length of register is byte on 68030 based NeXT Computer
     int channel = get_channel(IoAccessCurrentAddress);
     if(ConfigureParams.System.nMachineType == NEXT_CUBE030) { // for 68030 based NeXT Computer
-        IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = dma[channel].read_csr >> 24;
-        Log_Printf(LOG_DMA_LEVEL,"DMA SCSI CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].read_csr >> 24, m68k_getpc());
+        IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = dma[channel].csr >> 24;
+        Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].csr >> 24, m68k_getpc());
     } else {
-        IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].read_csr);
-        Log_Printf(LOG_DMA_LEVEL,"DMA SCSI CSR read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].read_csr, m68k_getpc());
+        IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].csr);
+        Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].csr, m68k_getpc());
     }
 }
 
 void DMA_CSR_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress);
     int interrupt = get_interrupt_type(channel);
+    Uint32 writecsr;
     if(ConfigureParams.System.nMachineType == NEXT_CUBE030) { // for 68030 based NeXT Computer
-        dma[channel].write_csr = IoMem[IoAccessCurrentAddress & IO_SEG_MASK] << 16;
-        Log_Printf(LOG_DMA_LEVEL,"DMA SCSI CSR write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress,dma[channel].write_csr >> 16, m68k_getpc());
+        writecsr = IoMem[IoAccessCurrentAddress & IO_SEG_MASK] << 16;
+        Log_Printf(LOG_DMA_LEVEL,"DMA CSR write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, writecsr >> 16, m68k_getpc());
     } else {
-        dma[channel].write_csr = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-        Log_Printf(LOG_DMA_LEVEL,"DMA SCSI CSR write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].write_csr, m68k_getpc());
+        writecsr = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
+        Log_Printf(LOG_DMA_LEVEL,"DMA CSR write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, writecsr, m68k_getpc());
     }
      
-    if(dma[channel].write_csr & DMA_DEV2M) {
+    if(writecsr & DMA_DEV2M) {
         if(ConfigureParams.System.nMachineType == NEXT_CUBE030) {
-            dma[channel].read_csr |= (0x04 << 24); // use 8 bit DMA_DEV2M value for 68030 based NeXT Computer
+            dma[channel].csr |= (0x04 << 24); // use 8 bit DMA_DEV2M value for 68030 based NeXT Computer
         } else {
-            dma[channel].read_csr |= DMA_DEV2M;
+            dma[channel].csr |= DMA_DEV2M;
         }
         Log_Printf(LOG_DMA_LEVEL,"DMA from dev to mem");
     }
-    if(dma[channel].write_csr & DMA_SETENABLE) {
-        dma[channel].read_csr |= DMA_ENABLE;
+    if(writecsr & DMA_SETENABLE) {
+        dma[channel].csr |= DMA_ENABLE;
         Log_Printf(LOG_DMA_LEVEL,"DMA enable transfer");
     }
-    if(dma[channel].write_csr & DMA_SETSUPDATE) {
-        dma[channel].read_csr |= DMA_SUPDATE;
+    if(writecsr & DMA_SETSUPDATE) {
+        dma[channel].csr |= DMA_SUPDATE;
         Log_Printf(LOG_DMA_LEVEL,"DMA set single update");
     }
-    if(dma[channel].write_csr & DMA_CLRCOMPLETE) {
-        dma[channel].read_csr &= ~DMA_COMPLETE;
+    if(writecsr & DMA_CLRCOMPLETE) {
+        dma[channel].csr &= ~DMA_COMPLETE;
         Log_Printf(LOG_DMA_LEVEL,"DMA clear complete conditional");
 
 	set_interrupt(interrupt, RELEASE_INT); // also somewhat experimental...
     }
-    if(dma[channel].write_csr & DMA_RESET) {
-        dma[channel].read_csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE | DMA_DEV2M);
+    if(writecsr & DMA_RESET) {
+        dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE | DMA_DEV2M);
         Log_Printf(LOG_WARN,"DMA reset");
         
 	set_interrupt(interrupt, RELEASE_INT); // also somewhat experimental...
     }
-    if(dma[channel].write_csr & DMA_INITBUF) { // needs to be filled
+    if(writecsr & DMA_INITBUF) { // needs to be filled
         Log_Printf(LOG_DMA_LEVEL,"DMA initialize buffers");
     }
 }
@@ -173,121 +173,121 @@ void DMA_CSR_Write(void) {
 void DMA_Saved_Next_Read(void) { // 0x02004000
     int channel = get_channel(IoAccessCurrentAddress-0x3FF0);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].saved_next);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA SCSI SNext read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_next, m68k_getpc());
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA SNext read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_next, m68k_getpc());
 }
 
 void DMA_Saved_Next_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x3FF0);
     dma[channel].saved_next = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA SCSI SNext write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_next, m68k_getpc());
+    Log_Printf(LOG_DMA_LEVEL,"DMA SNext write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_next, m68k_getpc());
 }
 
 void DMA_Saved_Limit_Read(void) { // 0x02004004
     int channel = get_channel(IoAccessCurrentAddress-0x3FF4);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].saved_limit);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA SCSI SLimit read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_limit, m68k_getpc());
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA SLimit read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_limit, m68k_getpc());
 }
 
 void DMA_Saved_Limit_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x3FF4);
     dma[channel].saved_limit = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA SCSI SLimit write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_limit, m68k_getpc());
+    Log_Printf(LOG_DMA_LEVEL,"DMA SLimit write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_limit, m68k_getpc());
 }
 
 void DMA_Saved_Start_Read(void) { // 0x02004008
     int channel = get_channel(IoAccessCurrentAddress-0x3FF8);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].saved_start);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA SCSI SStart read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_start, m68k_getpc());
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA SStart read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_start, m68k_getpc());
 }
 
 void DMA_Saved_Start_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x3FF8);
     dma[channel].saved_start = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA SCSI SStart write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_start, m68k_getpc());
+    Log_Printf(LOG_DMA_LEVEL,"DMA SStart write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_start, m68k_getpc());
 }
 
 void DMA_Saved_Stop_Read(void) { // 0x0200400c
     int channel = get_channel(IoAccessCurrentAddress-0x3FFC);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].saved_stop);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA SCSI SStop read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_stop, m68k_getpc());
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA SStop read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_stop, m68k_getpc());
 }
 
 void DMA_Saved_Stop_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x3FFC);
     dma[channel].saved_stop = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA SCSI SStop write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_stop, m68k_getpc());
+    Log_Printf(LOG_DMA_LEVEL,"DMA SStop write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].saved_stop, m68k_getpc());
 }
 
 void DMA_Next_Read(void) { // 0x02004010
     int channel = get_channel(IoAccessCurrentAddress-0x4000);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].next);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Next read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].next, m68k_getpc());
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA Next read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].next, m68k_getpc());
 }
 
 void DMA_Next_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x4000);
     dma[channel].next = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Next write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].next, m68k_getpc());
+    Log_Printf(LOG_DMA_LEVEL,"DMA Next write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].next, m68k_getpc());
 }
 
 void DMA_Limit_Read(void) { // 0x02004014
     int channel = get_channel(IoAccessCurrentAddress-0x4004);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].limit);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Limit read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].limit, m68k_getpc());
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA Limit read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].limit, m68k_getpc());
 }
 
 void DMA_Limit_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x4004);
     dma[channel].limit = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Limit write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].limit, m68k_getpc());
+    Log_Printf(LOG_DMA_LEVEL,"DMA Limit write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].limit, m68k_getpc());
 }
 
 void DMA_Start_Read(void) { // 0x02004018
     int channel = get_channel(IoAccessCurrentAddress-0x4008);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].start);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Start read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].start, m68k_getpc());
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA Start read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].start, m68k_getpc());
 }
 
 void DMA_Start_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x4008);
     dma[channel].start = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Start write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].start, m68k_getpc());
+    Log_Printf(LOG_DMA_LEVEL,"DMA Start write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].start, m68k_getpc());
 }
 
 void DMA_Stop_Read(void) { // 0x0200401c
     int channel = get_channel(IoAccessCurrentAddress-0x400C);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].stop);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Stop read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].stop, m68k_getpc());
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA Stop read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].stop, m68k_getpc());
 }
 
 void DMA_Stop_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x400C);
     dma[channel].stop = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Stop write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].stop, m68k_getpc());
+    Log_Printf(LOG_DMA_LEVEL,"DMA Stop write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].stop, m68k_getpc());
 }
 
 void DMA_Init_Read(void) { // 0x02004210
     int channel = get_channel(IoAccessCurrentAddress-0x4200);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].init);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Init read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].init, m68k_getpc());
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA Init read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].init, m68k_getpc());
 }
 
 void DMA_Init_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x4200);
     dma[channel].init = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Init write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].init, m68k_getpc());
+    Log_Printf(LOG_DMA_LEVEL,"DMA Init write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].init, m68k_getpc());
 }
 
 void DMA_Size_Read(void) { // 0x02004214
     int channel = get_channel(IoAccessCurrentAddress-0x4204);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].size);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Size read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].size, m68k_getpc());
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA Size read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].size, m68k_getpc());
 }
 
 void DMA_Size_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x4204);
     dma[channel].size = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA SCSI Size write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].size, m68k_getpc());
+    Log_Printf(LOG_DMA_LEVEL,"DMA Size write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].size, m68k_getpc());
 }
 
 
@@ -320,7 +320,7 @@ Uint8 * dma_memory_read(int size, int channel) {
     int interrupt = get_interrupt_type(channel);
     Uint8 *buf = dma_read_buffer;
     
-    if(channel == CHANNEL_ENETR || channel == CHANNEL_ENETX)
+    if(channel == CHANNEL_EN_RX || channel == CHANNEL_EN_TX)
         align = 32;
     
     if((size % align) != 0) {
@@ -353,12 +353,12 @@ Uint8 * dma_memory_read(int size, int channel) {
     dma[channel].saved_limit = dma[channel].next + size;
     dma[channel].saved_next  = dma[channel].next;
     
-    if(!(dma[channel].read_csr & DMA_SUPDATE)) {
+    if(!(dma[channel].csr & DMA_SUPDATE)) {
         dma[channel].next = dma[channel].start;
         dma[channel].limit = dma[channel].stop;
     }
     
-    dma[channel].read_csr |= DMA_COMPLETE;
+    dma[channel].csr |= DMA_COMPLETE;
     
     set_interrupt(interrupt, SET_INT);
 
@@ -373,7 +373,7 @@ void dma_memory_write(Uint8 *buf, int size, int channel) {
     Uint32 write_addr;
     int interrupt = get_interrupt_type(channel);
     
-    if(channel == CHANNEL_ENETR || channel == CHANNEL_ENETX)
+    if(channel == CHANNEL_EN_RX || channel == CHANNEL_EN_TX)
         align = 32;
         
     if((size % align) != 0) {
@@ -406,12 +406,12 @@ void dma_memory_write(Uint8 *buf, int size, int channel) {
     dma[channel].saved_limit = dma[channel].next + size;
     dma[channel].saved_next  = dma[channel].next;
     
-    if(!(dma[channel].read_csr & DMA_SUPDATE)) {
+    if(!(dma[channel].csr & DMA_SUPDATE)) {
         dma[channel].next = dma[channel].start;
         dma[channel].limit = dma[channel].stop;
     }
 
-    dma[channel].read_csr |= DMA_COMPLETE;
+    dma[channel].csr |= DMA_COMPLETE;
     
     set_interrupt(interrupt, SET_INT);
 //    set_interrupt(INT_SCSI_DMA, RELEASE_INT);
