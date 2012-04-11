@@ -22,6 +22,8 @@
 #define LOG_SCC_LEVEL LOG_WARN
 #define IO_SEG_MASK	0x1FFFF
 
+#define SCC_BUFSIZE 10  // what is actual buffer size of our controller?
+
 
 /* Variables */
 bool MasterIRQEnable;
@@ -37,8 +39,6 @@ typedef enum {
 IRQ_TYPES IRQType;
 
 typedef struct {
-    Uint8 reg;
-    Uint8 data;
     Uint8 rreg[16];
     Uint8 wreg[16];
     bool txIRQEnable;
@@ -51,13 +51,19 @@ typedef struct {
     bool txEnable;
     bool syncHunt;
     bool txUnderrun;
+    
+    Uint8 rx_buf[SCC_BUFSIZE];
+    Uint8 tx_buf[SCC_BUFSIZE];
+    Uint32 rx_buf_size;
+    Uint32 tx_buf_size;
 } SCC_CHANNEL;
 
 SCC_CHANNEL channel[2];
 
 int IRQV;
 
-Sint8 regnum[2];
+bool write_reg_pointer; // true --> byte written is number of register, false --> byte gets written to register
+Uint8 regnumber;
 
 
 void SCC_Read(void) {
@@ -76,15 +82,14 @@ void SCC_Read(void) {
         data = false;
     
     if (data) {
-        IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = channel[ch].data;
-        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Data read: %02x\n", ch == 1?'A':'B', channel[ch].data);
+        IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = channel[ch].rx_buf[0];
+        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Data read: %02x\n", ch == 1?'A':'B', channel[ch].rx_buf[0]);
     } else {
-        reg = channel[ch].reg;
+        reg = regnumber;
         IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = channel[ch].rreg[reg];
         Log_Printf(LOG_SCC_LEVEL, "SCC %c, Reg%i read: %02x\n", ch == 1?'A':'B', reg, channel[ch].rreg[reg]);
-        
-        regnum[ch] = -1;
     }
+    write_reg_pointer = true;
 }
 
 
@@ -105,19 +110,20 @@ void SCC_Write(void) {
         data = false;
     
     if (data) {
-        channel[ch].data = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
-        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Data write: %02x\n", ch == 1?'A':'B', channel[ch].data);
-        channel[ch].wreg[0] = 0x04|0x01; // Tx buffer empty | Rx Character Available
+        channel[ch].rx_buf[0] = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
+        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Data write: %02x\n", ch == 1?'A':'B', channel[ch].rx_buf[0]);
+        channel[ch].rreg[R_STATUS] = RR0_TXEMPTY|RR0_RXAVAIL; // Tx buffer empty | Rx Character Available
         return;
     }
     
-    if (regnum[ch] < 0) {
-        channel[ch].reg = regnum[ch] = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
+    if (write_reg_pointer == true) {
+        regnumber = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
+        write_reg_pointer = false;
         return;
-    } else if (regnum[ch] >= 0) {
-        reg = channel[ch].reg = regnum[ch];
+    } else if (write_reg_pointer == false) {
+        reg = regnumber;
         val = channel[ch].wreg[reg] = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
-        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Reg%i write: %02x\n", ch == 1?'A':'B', channel[ch].reg, channel[ch].wreg[reg]);
+        Log_Printf(LOG_SCC_LEVEL, "SCC %c, Reg%i write: %02x\n", ch == 1?'A':'B', reg, channel[ch].wreg[reg]);
     
         switch (reg) {
             case W_INIT:
@@ -141,7 +147,7 @@ void SCC_Write(void) {
                 SCC_Interrupt();
                 
                 if (val&0x40 && val&0x80) {
-                    channel[ch].data = *dma_memory_read(1, CHANNEL_SCC);
+                    dma_memory_read(channel[ch].rx_buf, &channel[ch].rx_buf_size, CHANNEL_SCC);
                     channel[ch].rreg[R_STATUS] = RR0_RXAVAIL; // Rx Character Available
                 }
                 break;
@@ -166,7 +172,7 @@ void SCC_Write(void) {
                 break;
                 
             case W_TRANSBUF:
-                channel[ch].data = val;
+                channel[ch].tx_buf[0] = val;
                 break;
                 
             case W_MASTERINT: // Master Interrupt Control
@@ -198,10 +204,9 @@ void SCC_Write(void) {
                 
             case W_EXTSTAT: // later ...
                 break;
-        }
-        
-        regnum[ch] = -1;
+        }        
     }
+    write_reg_pointer = true;
 }
 
 
@@ -294,8 +299,8 @@ void SCC_Reset(void) {
     SCC_ResetChannel(0);
     SCC_ResetChannel(1);
     
-    regnum[0] = -1;
-    regnum[1] = -1;
+    write_reg_pointer = true;
+    regnumber = 0;
     
     /*--- Hack to pass power-on test ---*/
     channel[0].rreg[R_STATUS] = 0xFF;

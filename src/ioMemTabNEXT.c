@@ -118,20 +118,6 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 	{ 0x02000153, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
 
 
-#define SERIAL_IO_WRITE IoMem_WriteWithoutInterception
-#define SERIAL_IO_READ IoMem_ReadWithoutInterception
-	{ 0x02004150, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-	{ 0x02004151, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-	{ 0x02004152, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-	{ 0x02004153, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-	{ 0x02004154, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-	{ 0x02004155, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-	{ 0x02004156, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-	{ 0x02004157, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-	{ 0x02004158, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-	{ 0x0200415c, SIZE_BYTE, SERIAL_IO_READ, SERIAL_IO_WRITE },
-
-
 	{ 0x02004188, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x02004189, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200418a, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
@@ -271,6 +257,7 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02004314, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
     /* DMA Ethernet Receive */
+    { 0x02004144, SIZE_LONG, DMA_Saved_Limit_Read, DMA_Saved_Limit_Write },
     { 0x02004150, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
     { 0x02004154, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
     { 0x02004158, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },

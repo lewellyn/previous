@@ -45,8 +45,8 @@ void DMA_Size_Read(void);
 void DMA_Size_Write(void);
 
 
-void dma_memory_write(Uint8 *buf, int size, int dma_channel);
-Uint8 * dma_memory_read(int size, int channel);
+void dma_memory_write(Uint8 *buf, Uint32 size, int channel);
+void dma_memory_read(Uint8 *buf, Uint32 *size, int channel);
 void dma_clear_memory(Uint32 datalength);
 
 /* Buffers */

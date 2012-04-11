@@ -682,7 +682,7 @@ void esp_do_dma(void) {
     Uint32 len;
     int to_device;
     
-    int dma_translen; // experimental
+    Uint32 dma_translen; // experimental
     dma_translen = readtranscountl | (readtranscounth << 8); // experimental
     Log_Printf(LOG_SCSI_LEVEL, "call dma_write\n"); // experimental
     dma_memory_write(dma_write_buffer, dma_translen, CHANNEL_SCSI);//experimental !!

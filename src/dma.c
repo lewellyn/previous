@@ -9,6 +9,7 @@
 #include "sysReg.h"
 #include "dma.h"
 #include "configuration.h"
+#include "ethernet.h"
 
 
 #define LOG_DMA_LEVEL LOG_WARN
@@ -144,10 +145,15 @@ void DMA_CSR_Write(void) {
             dma[channel].csr |= DMA_DEV2M;
         }
         Log_Printf(LOG_DMA_LEVEL,"DMA from dev to mem");
+    } else {
+        Log_Printf(LOG_DMA_LEVEL,"DMA from mem to dev");
     }
     if(writecsr & DMA_SETENABLE) {
         dma[channel].csr |= DMA_ENABLE;
         Log_Printf(LOG_DMA_LEVEL,"DMA enable transfer");
+        if ((channel == CHANNEL_EN_TX) && !(writecsr&DMA_DEV2M)) {
+            Ethernet_Transmit(); // Ethernet Transmit
+        }
     }
     if(writecsr & DMA_SETSUPDATE) {
         dma[channel].csr |= DMA_SUPDATE;
@@ -312,64 +318,48 @@ void DMA_Size_Write(void) {
     NEXTMemory_Clear(start_addr, end_addr);
 }*/
 
-Uint8 * dma_memory_read(int size, int channel) {
+void dma_memory_read(Uint8 *buf, Uint32 *size, int channel) {
     Uint32 base_addr;
     Uint8 align = 16;
-    int size_count = 0;
+    Uint32 size_count = 0;
     Uint32 read_addr;
     int interrupt = get_interrupt_type(channel);
-    Uint8 *buf = dma_read_buffer;
+    
+    if (channel == CHANNEL_EN_TX)
+        *size = (dma[channel].limit&0x0FFFFFFF) - (dma[channel].init&0x0FFFFFFF);
+    else
+        *size = (dma[channel].limit&0x0FFFFFFF) - (dma[channel].next&0x0FFFFFFF);
     
     if(channel == CHANNEL_EN_RX || channel == CHANNEL_EN_TX)
         align = 32;
     
-    if((size % align) != 0) {
-        size -= size % align;
-        size += align;
+    if((*size % align) != 0) {
+        *size -= *size % align;
+        *size += align;
     }
-    
     
     if(dma[channel].init == 0)
         base_addr = dma[channel].next;
     else
         base_addr = dma[channel].init;
     
-    Log_Printf(LOG_WARN, "[DMA] Read from mem: at $%08x, $%x bytes",base_addr,size);
-    for (size_count = 0; size_count < size; size_count++) {
+    Log_Printf(LOG_WARN, "[DMA] Read from mem: at $%08x, %i bytes",base_addr, *size);
+    for (size_count = 0; size_count < *size; size_count++) {
         read_addr = base_addr + size_count;
         buf[size_count] = NEXTMemory_ReadByte(read_addr);
     }
     printf("READ FROM MEMORY: %02x\n", buf[0]);
-    /* Test read/write */
-    //    Log_Printf(LOG_DMA_LEVEL, "DMA Write Test: $%02x,$%02x,$%02x,$%02x\n", NEXTMemory_ReadByte(base_addr),NEXTMemory_ReadByte(base_addr+16),NEXTMemory_ReadByte(base_addr+32),NEXTMemory_ReadByte(base_addr+384));
-    //    NEXTMemory_WriteByte(base_addr, 0x77);
-    //    Uint8 testvar = NEXTMemory_ReadByte(base_addr);
-    //    Log_Printf(LOG_DMA_LEVEL, "Write Test: $%02x at $%08x", testvar, base_addr);
-    
-    dma[channel].init = 0;
-    
-    /* saved limit is checked to calculate packet size
-     by both the rom and netbsd */ 
-    dma[channel].saved_limit = dma[channel].next + size;
-    dma[channel].saved_next  = dma[channel].next;
-    
-    if(!(dma[channel].csr & DMA_SUPDATE)) {
-        dma[channel].next = dma[channel].start;
-        dma[channel].limit = dma[channel].stop;
-    }
-    
-    dma[channel].csr |= DMA_COMPLETE;
+
+    dma[channel].csr |= DMA_COMPLETE | DMA_SUPDATE;
     
     set_interrupt(interrupt, SET_INT);
-
-    return buf;
 }
 
 
-void dma_memory_write(Uint8 *buf, int size, int channel) {
+void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
     Uint32 base_addr;
     Uint8 align = 16;
-    int size_count = 0;
+    Uint32 size_count = 0;
     Uint32 write_addr;
     int interrupt = get_interrupt_type(channel);
     

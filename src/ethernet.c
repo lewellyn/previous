@@ -57,6 +57,8 @@ typedef struct {
 
 ETHERNET_CONTROLLER ethernet;
 
+Uint8 ethernet_buffer[1600];
+
 
 Uint8 MACaddress[6];
 
@@ -173,6 +175,15 @@ void Ethernet_Reset(void) {
     // txlen = rxlen = txcount = 0;
     // set_promisc(true);
     // start_send();
+}
+
+void Ethernet_Transmit(void) {
+    Uint32 size;
+    dma_memory_read(ethernet_buffer, &size, CHANNEL_EN_TX);
+    ethernet.tx_status = TXSTAT_RDY;
+    
+    printf("DMA TRANSMIT: Ethernet, size = %i byte\n", size);
+    dma_memory_write(ethernet_buffer, size, CHANNEL_EN_RX); // loop back for experiment
 }
 
 
