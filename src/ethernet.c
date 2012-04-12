@@ -44,6 +44,8 @@ void EnRx_Raise_IRQ(void);
 /* Ethernet Register Constants */
 #define TXSTAT_RDY  0x80    // Ready for Packet
 
+#define RXSTAT_OK   0x80    // Packet received is correct
+
 #define RESET_VAL   0x80    // Generate Reset
 
 typedef struct {
@@ -181,24 +183,36 @@ void Ethernet_Transmit(void) {
     Uint32 size;
     dma_memory_read(ethernet_buffer, &size, CHANNEL_EN_TX);
     ethernet.tx_status = TXSTAT_RDY;
+    EnTx_Raise_IRQ();
+    
+    Uint32 i;
+    for (i=0; i<size; i++) {
+        printf("%02x,", ethernet_buffer[i]);
+    }
     
     printf("DMA TRANSMIT: Ethernet, size = %i byte\n", size);
-    dma_memory_write(ethernet_buffer, size, CHANNEL_EN_RX); // loop back for experiment
+    if ((ethernet_buffer[5] == MACaddress[5]) || (ethernet_buffer[5] == 0xFF)) { // if packet is for us
+        dma_memory_write(ethernet_buffer, size, CHANNEL_EN_RX); // loop back for experiment
+        ethernet.rx_status = RXSTAT_OK; // packet received is correct
+    } else { // if packet is not for us
+        ethernet.rx_status = 0x00;
+    }
+    EnRx_Raise_IRQ();
 }
 
 
 void EnTx_Lower_IRQ(void) {
-    
+    set_interrupt(INT_EN_TX, RELEASE_INT);
 }
 
 void EnRx_Lower_IRQ(void) {
-    
+    set_interrupt(INT_EN_RX, RELEASE_INT);
 }
 
 void EnTx_Raise_IRQ(void) {
-    
+    set_interrupt(INT_EN_TX, SET_INT);
 }
 
 void EnRx_Raise_IRQ(void) {
-    
+    set_interrupt(INT_EN_RX, SET_INT);
 }

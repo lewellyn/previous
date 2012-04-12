@@ -257,11 +257,17 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02004314, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
     /* DMA Ethernet Receive */
+    { 0x02004140, SIZE_LONG, DMA_Saved_Next_Read, DMA_Saved_Next_Write },
     { 0x02004144, SIZE_LONG, DMA_Saved_Limit_Read, DMA_Saved_Limit_Write },
+    { 0x02004148, SIZE_LONG, DMA_Saved_Start_Read, DMA_Saved_Start_Write },
+    { 0x0200414c, SIZE_LONG, DMA_Saved_Stop_Read, DMA_Saved_Stop_Write },
     { 0x02004150, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
     { 0x02004154, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
     { 0x02004158, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
     { 0x0200415c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
+    { 0x02004350, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
+    { 0x02004354, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
+
         
     /* SCSI Registers for NCR53C90 (68030) */
     { 0x02014000, SIZE_BYTE, SCSI_TransCountL_Read, SCSI_TransCountL_Write },

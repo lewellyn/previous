@@ -333,10 +333,10 @@ void dma_memory_read(Uint8 *buf, Uint32 *size, int channel) {
     if(channel == CHANNEL_EN_RX || channel == CHANNEL_EN_TX)
         align = 32;
     
-    if((*size % align) != 0) {
-        *size -= *size % align;
-        *size += align;
-    }
+//    if((*size % align) != 0) {
+//        *size -= *size % align;
+//        *size += align;
+//    }
     
     if(dma[channel].init == 0)
         base_addr = dma[channel].next;
@@ -366,10 +366,10 @@ void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
     if(channel == CHANNEL_EN_RX || channel == CHANNEL_EN_TX)
         align = 32;
         
-    if((size % align) != 0) {
-        size -= size % align;
-        size += align;
-    }
+//    if((size % align) != 0) {
+//        size -= size % align;
+//        size += align;
+//    }
 
     
     if(dma[channel].init == 0)
@@ -384,7 +384,7 @@ void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
     }
     
     /* Test read/write */
-//    Log_Printf(LOG_DMA_LEVEL, "DMA Write Test: $%02x,$%02x,$%02x,$%02x\n", NEXTMemory_ReadByte(base_addr),NEXTMemory_ReadByte(base_addr+16),NEXTMemory_ReadByte(base_addr+32),NEXTMemory_ReadByte(base_addr+384));
+    Log_Printf(LOG_DMA_LEVEL, "DMA Write Test: $%02x,$%02x,$%02x,$%02x\n", NEXTMemory_ReadByte(base_addr),NEXTMemory_ReadByte(base_addr+16),NEXTMemory_ReadByte(base_addr+32),NEXTMemory_ReadByte(base_addr+384));
 //    NEXTMemory_WriteByte(base_addr, 0x77);
 //    Uint8 testvar = NEXTMemory_ReadByte(base_addr);
 //    Log_Printf(LOG_DMA_LEVEL, "Write Test: $%02x at $%08x", testvar, base_addr);
