@@ -42,11 +42,20 @@ void EnRx_Raise_IRQ(void);
 
 
 /* Ethernet Register Constants */
-#define TXSTAT_RDY  0x80    // Ready for Packet
+#define TXSTAT_RDY          0x80    // Ready for Packet
 
-#define RXSTAT_OK   0x80    // Packet received is correct
+#define RXSTAT_OK           0x80    // Packet received is correct
 
-#define RESET_VAL   0x80    // Generate Reset
+#define TXMODE_NOLOOP       0x02    // Loop back control disabled
+
+#define RXMODE_ADDRSIZE     0x10    // Reduces NODE match to 5 chars
+#define RXMODE_NOPACKETS    0x00    // Accept no packets
+#define RXMODE_LIMITED      0x01    // Accept Broadcast/limited
+#define RXMODE_NORMAL       0x02    // Accept Broadcast/multicasts
+#define RXMODE_PROMISCUOUS  0x03    // Accept all packets
+#define RXMODE_RESETENABLE  0x04    // One for reset packet enable
+
+#define RESET_VAL           0x80    // Generate Reset
 
 typedef struct {
     Uint8 tx_status;
@@ -185,19 +194,26 @@ void Ethernet_Transmit(void) {
     ethernet.tx_status = TXSTAT_RDY;
     EnTx_Raise_IRQ();
     
-    Uint32 i;
-    for (i=0; i<size; i++) {
-        printf("%02x,", ethernet_buffer[i]);
+    Log_Printf(LOG_EN_LEVEL, "Ethernet: Send packet to %02X:%02X:%02X:%02X:%02X:%02X",
+               ethernet_buffer[0], ethernet_buffer[1], ethernet_buffer[2],
+               ethernet_buffer[3], ethernet_buffer[4], ethernet_buffer[5]);
+    
+    if (!(ethernet.tx_mode&TXMODE_NOLOOP)) { // if loop back is not disabled
+        Ethernet_Receive(ethernet_buffer, size); // loop back
     }
     
-    printf("DMA TRANSMIT: Ethernet, size = %i byte\n", size);
-    if ((ethernet_buffer[5] == MACaddress[5]) || (ethernet_buffer[5] == 0xFF)) { // if packet is for us
-        dma_memory_write(ethernet_buffer, size, CHANNEL_EN_RX); // loop back for experiment
-        ethernet.rx_status = RXSTAT_OK; // packet received is correct
-    } else { // if packet is not for us
-        ethernet.rx_status = 0x00;
+    // TODO: send packet to real network
+}
+
+void Ethernet_Receive(Uint8 *packet, Uint32 size) {
+    if (Packet_Receiver_Me(packet)) {
+        Log_Printf(LOG_EN_LEVEL, "Ethernet: Receive packet from %02X:%02X:%02X:%02X:%02X:%02X",
+                   packet[6], packet[7], packet[8], packet[9], packet[10], packet[11]);
+                   
+        dma_memory_write(packet, size, CHANNEL_EN_RX); // loop back for experiment
+        ethernet.rx_status |= RXSTAT_OK; // packet received is correct
+        EnRx_Raise_IRQ();
     }
-    EnRx_Raise_IRQ();
 }
 
 
@@ -215,4 +231,73 @@ void EnTx_Raise_IRQ(void) {
 
 void EnRx_Raise_IRQ(void) {
     set_interrupt(INT_EN_RX, SET_INT);
+}
+
+
+/* Functions to find out if we are intended to receive a packet */
+
+bool Packet_Receiver_Me(Uint8 *packet) {
+    switch (ethernet.rx_mode&0x02) {
+        case RXMODE_NOPACKETS:
+            return false;
+            
+        case RXMODE_NORMAL:
+            if (Broadcast(packet) || Me(packet) || Local_Multicast(packet))
+                return true;
+            else
+                return false;
+            
+        case RXMODE_LIMITED:
+            if (Broadcast(packet) || Me(packet) || Multicast(packet))
+                return true;
+            else
+                return false;
+            
+        case RXMODE_PROMISCUOUS:
+            return true;
+            
+        default: return false;
+    }
+}
+
+bool Multicast(Uint8 *packet) {
+    if (packet[0]&0x01)
+        return true;
+    else 
+        return false;
+}
+
+bool Local_Multicast(Uint8 *packet) {
+    if (packet[0]&0x01 &&
+        (packet[0]&0xFE) == MACaddress[0] //&&
+        //        packet[1] == MACaddress[1] &&
+        //        packet[2] == MACaddress[2]
+        )
+        return true;
+    else 
+        return false;
+}
+
+bool Me(Uint8 *packet) {
+    if (packet[0] == MACaddress[0] &&
+        //        packet[1] == MACaddress[1] &&
+        //        packet[2] == MACaddress[2] &&
+        //        packet[3] == MACaddress[3] &&
+        packet[4] == MACaddress[4] &&
+        (packet[5] == MACaddress[5] || (ethernet.rx_mode&RXMODE_ADDRSIZE)))
+        return true;
+    else 
+        return false;
+}
+
+bool Broadcast(Uint8 *packet) {
+    if (packet[0] == 0xFF &&
+        //        packet[1] == 0xFF &&
+        //        packet[2] == 0xFF &&
+        //        packet[3] == 0xFF &&
+        packet[4] == 0xFF &&
+        packet[5] == 0xFF)
+        return true;
+    else 
+        return false;
 }

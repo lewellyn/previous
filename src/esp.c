@@ -75,7 +75,7 @@ int command_len;
 
 /* Experimental */
 
-Uint32 dma;
+//Uint32 dma;
 Uint32 do_cmdvar;
 Uint32 dma_counter;
 Uint32 data_len;

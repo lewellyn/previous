@@ -37,6 +37,7 @@
 #define SET_INT         0x01
 #define RELEASE_INT     0x00
 
+Uint8 read_rtc_ram(Uint8 position);
 
 void SID_Read(void);
 
