@@ -23,6 +23,7 @@ const char IoMemTabST_fileid[] = "Previous ioMemTabST.c : " __DATE__ " " __TIME_
 #include "sysReg.h"
 #include "dma.h"
 #include "scc.h"
+#include "mo.h"
 
 
 
@@ -38,27 +39,15 @@ struct timer_reg {
     : 6;
 };
 
-// 
-void System_Timer0_Read(void) {
-    IoMem[IoAccessCurrentAddress & 0x1FFFF] = 0;
-//    Log_Printf(LOG_WARN, "[CLK] read val0 %d PC=%x %s at %d",0,m68k_getpc(),__FILE__,__LINE__);
-}
+Uint32 eventcounter;
+Uint32 lasteventc;
 
-void System_Timer1_Read(void) {
-    IoMem[IoAccessCurrentAddress & 0x1FFFF] = ((nCyclesMainCounter/33)& 0xF0000) >> 16;
-//    Log_Printf(LOG_WARN, "[CLK] read val1 %d PC=%x %s at %d",IoMem[IoAccessCurrentAddress & 0x1FFFF],m68k_getpc(),__FILE__,__LINE__);
+void System_Timer_Read(void) { // experimental for power-on test
+    lasteventc = eventcounter;
+    eventcounter = (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF;
+    IoMem_WriteLong(IoAccessCurrentAddress&0x1FFFF, (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3)));
+    printf("DIFFERENCE = %i\n",eventcounter-lasteventc);
 }
-
-void System_Timer2_Read(void) {
-    IoMem[IoAccessCurrentAddress & 0x1FFFF] = ((nCyclesMainCounter/33) & 0xFF00) >> 8;
-//    Log_Printf(LOG_WARN, "[CLK] read val2 %d PC=%x %s at %d",IoMem[IoAccessCurrentAddress & 0x1FFFF],m68k_getpc(),__FILE__,__LINE__);
-}
-
-void System_Timer3_Read(void) {
-    IoMem[IoAccessCurrentAddress & 0x1FFFF] = ((nCyclesMainCounter/33)& 0xFF);
-//    Log_Printf(LOG_WARN, "[CLK] read val3 %d PC=%x %s at %d",IoMem[IoAccessCurrentAddress & 0x1FFFF],m68k_getpc(),__FILE__,__LINE__);
-}
-
 
 /* Floppy Disk Drive - Work on this later */
 void FDD_Main_Status_Read (void) {
@@ -98,6 +87,7 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 {
 /* DMA control/status (writes MUST be 32-bit) */
     	{ 0x02000010, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
+        { 0x02000050, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
         { 0x020000c0, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
         { 0x02000110, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     	{ 0x02000180, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
@@ -182,10 +172,12 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 
     
     	/* Event counter */
-    	{ 0x0201a000, SIZE_BYTE, System_Timer0_Read, IoMem_WriteWithoutInterception },
-    	{ 0x0201a001, SIZE_BYTE, System_Timer1_Read, IoMem_WriteWithoutInterception },
-    	{ 0x0201a002, SIZE_BYTE, System_Timer2_Read, IoMem_WriteWithoutInterception },
-    	{ 0x0201a003, SIZE_BYTE, System_Timer3_Read, IoMem_WriteWithoutInterception },
+    { 0x0201a000, SIZE_LONG, System_Timer_Read, IoMem_WriteWithoutInterception },
+
+//    	{ 0x0201a000, SIZE_BYTE, System_Timer0_Read, IoMem_WriteWithoutInterception },
+//    	{ 0x0201a001, SIZE_BYTE, System_Timer1_Read, IoMem_WriteWithoutInterception },
+//    	{ 0x0201a002, SIZE_BYTE, System_Timer2_Read, IoMem_WriteWithoutInterception },
+//    	{ 0x0201a003, SIZE_BYTE, System_Timer3_Read, IoMem_WriteWithoutInterception },
 
 
   	// internal hardclock
@@ -198,23 +190,40 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 
     	{ 0x02010000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
   
-    	/* MO-Drive Registers */
-    	{ 0x02012000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02012001, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02012002, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02012003, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02012004, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02012005, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02012006, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02012007, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02012008, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02012009, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0201200a, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0201200b, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0201200c, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0201200d, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0201200e, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0201200f, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+    /* MO-Drive Registers */
+    { 0x02012000, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012001, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012002, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012003, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012004, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012005, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012006, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012007, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012008, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+    { 0x02012009, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201200a, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201200b, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201200c, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201200d, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201200e, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201200f, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012010, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012011, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012012, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012013, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012014, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012015, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012016, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012017, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x02012018, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+    { 0x02012019, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201201a, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201201b, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201201c, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201201d, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201201e, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+	{ 0x0201201f, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+
 
     /* Device Command/Status Registers */
     { 0x02014020, SIZE_BYTE, SCSI_CSR0_Read, SCSI_CSR0_Write },
@@ -231,6 +240,18 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x0200401c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
     { 0x02004210, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
     { 0x02004214, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
+    
+    /* MO Drive */
+    { 0x02004040, SIZE_LONG, DMA_Saved_Next_Read, DMA_Saved_Next_Write },
+    { 0x02004044, SIZE_LONG, DMA_Saved_Limit_Read, DMA_Saved_Limit_Write },
+    { 0x02004048, SIZE_LONG, DMA_Saved_Start_Read, DMA_Saved_Start_Write },
+    { 0x0200404c, SIZE_LONG, DMA_Saved_Stop_Read, DMA_Saved_Stop_Write },
+    { 0x02004050, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
+    { 0x02004054, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
+    { 0x02004058, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
+    { 0x0200405c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
+    { 0x02004250, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
+    { 0x02004254, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
     /* DMA SCC */
     { 0x020040c0, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
