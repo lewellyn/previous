@@ -38,38 +38,22 @@ struct timer_reg {
     t_update : 1,		/* copy latch to counter */
     : 6;
 };
-#define NEW_EVENT_COUNTER 0
-#if NEW_EVENT_COUNTER == 1
-Uint32 eventcounter;
-Uint32 lasteventc;
 
-void System_Timer_Read(void) { // experimental for power-on test
+
+Uint32 eventcounter; // debugging code
+Uint32 lasteventc; // debugging code
+
+void System_Timer_Read(void) { // tuned for power-on test
     lasteventc = eventcounter;
-    eventcounter = (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF;
-    IoMem_WriteLong(IoAccessCurrentAddress&0x1FFFF, (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF);
+    if (ConfigureParams.System.nCpuLevel == 3) {
+//        eventcounter = (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF; // debugging code
+        IoMem_WriteLong(IoAccessCurrentAddress&0x1FFFF, (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF);
+    } else { // System has 68040 CPU
+//        eventcounter = (nCyclesMainCounter/((64/ConfigureParams.System.nCpuFreq)*9))&0xFFFFF; // debugging code
+        IoMem_WriteLong(IoAccessCurrentAddress&0x1FFFF, (nCyclesMainCounter/((64/ConfigureParams.System.nCpuFreq)*9))&0xFFFFF);
+    }
 //    printf("DIFFERENCE = %i\n",eventcounter-lasteventc);
 }
-#else
-void System_Timer0_Read(void) {
-    IoMem[IoAccessCurrentAddress & 0x1FFFF] = 0;
-    //    Log_Printf(LOG_WARN, "[CLK] read val0 %d PC=%x %s at %d",0,m68k_getpc(),__FILE__,__LINE__);
-}
-
-void System_Timer1_Read(void) {
-    IoMem[IoAccessCurrentAddress & 0x1FFFF] = ((nCyclesMainCounter/33)& 0xF0000) >> 16;
-    //    Log_Printf(LOG_WARN, "[CLK] read val1 %d PC=%x %s at %d",IoMem[IoAccessCurrentAddress & 0x1FFFF],m68k_getpc(),__FILE__,__LINE__);
-}
-
-void System_Timer2_Read(void) {
-    IoMem[IoAccessCurrentAddress & 0x1FFFF] = ((nCyclesMainCounter/33) & 0xFF00) >> 8;
-    //    Log_Printf(LOG_WARN, "[CLK] read val2 %d PC=%x %s at %d",IoMem[IoAccessCurrentAddress & 0x1FFFF],m68k_getpc(),__FILE__,__LINE__);
-}
-
-void System_Timer3_Read(void) {
-    IoMem[IoAccessCurrentAddress & 0x1FFFF] = ((nCyclesMainCounter/33)& 0xFF);
-    //    Log_Printf(LOG_WARN, "[CLK] read val3 %d PC=%x %s at %d",IoMem[IoAccessCurrentAddress & 0x1FFFF],m68k_getpc(),__FILE__,__LINE__);
-}
-#endif
 
 /* Floppy Disk Drive - Work on this later */
 void FDD_Main_Status_Read (void) {
@@ -178,14 +162,10 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x0200e008, SIZE_LONG, Keycode_Read, IoMem_WriteWithoutInterceptionButTrace },
 
     /* Event counter */
-#if NEW_EVENT_COUNTER == 1
-    { 0x0201a000, SIZE_LONG, System_Timer_Read, IoMem_WriteWithoutInterceptionButTrace },
-#else
-    { 0x0201a000, SIZE_BYTE, System_Timer0_Read, IoMem_WriteWithoutInterceptionButTrace },
-    { 0x0201a001, SIZE_BYTE, System_Timer1_Read, IoMem_WriteWithoutInterceptionButTrace },
-    { 0x0201a002, SIZE_BYTE, System_Timer2_Read, IoMem_WriteWithoutInterceptionButTrace },
-    { 0x0201a003, SIZE_BYTE, System_Timer3_Read, IoMem_WriteWithoutInterceptionButTrace },
-#endif
+    { 0x0201a000, SIZE_BYTE, System_Timer_Read, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0201a001, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0201a002, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0201a003, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterceptionButTrace },
     	
   	/* Internal Hardclock */
     { 0x02016000, SIZE_BYTE, HardclockRead0, HardclockWrite0 },

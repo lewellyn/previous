@@ -138,7 +138,7 @@ void Monitor_CSR_Read(void) {
 void Monitor_CSR_Write(void) {
     Uint8 reg = IoAccessCurrentAddress&0x3;
     Uint8 val = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
-    Uint8 sound[8192];
+    Uint8 sound[32768];
     Uint32 length;
     
     switch (reg) {
