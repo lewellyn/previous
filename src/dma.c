@@ -396,7 +396,7 @@ void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
     dma[channel].saved_limit = dma[channel].next + size;
     dma[channel].saved_next  = dma[channel].next;
     
-    if(!(dma[channel].csr & DMA_SUPDATE)) {
+    if(!(dma[channel].csr & DMA_SUPDATE)||(channel==CHANNEL_EN_RX)) { // Ethernet: this needs to be checked!
         dma[channel].next = dma[channel].start;
         dma[channel].limit = dma[channel].stop;
     }

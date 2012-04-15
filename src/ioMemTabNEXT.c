@@ -46,7 +46,7 @@ Uint32 lasteventc;
 void System_Timer_Read(void) { // experimental for power-on test
     lasteventc = eventcounter;
     eventcounter = (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF;
-    IoMem_WriteLong(IoAccessCurrentAddress&0x1FFFF, (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3)));
+    IoMem_WriteLong(IoAccessCurrentAddress&0x1FFFF, (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF);
 //    printf("DIFFERENCE = %i\n",eventcounter-lasteventc);
 }
 #else
@@ -107,38 +107,22 @@ void DSP_icr_Write (void) {
 */
 const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 {
-/* DMA control/status (writes MUST be 32-bit) */
-    { 0x02000010, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
-    { 0x02000040, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
-    { 0x02000050, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
-    { 0x020000c0, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
-    { 0x02000110, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
-//    { 0x02000150, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write }, // this breaks ethernet POT, fix ethernet first
+    { 0x02010000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     
-    { 0x02000180, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-    { 0x020001d0, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-    { 0x020001c0, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-
-
 	// blocking device?
 	{ 0x02004350, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 
-	// DSP 
-	{ 0x02008000, SIZE_BYTE, DSP_icr_Read, DSP_icr_Write },
-
-    
-//	{ 0x02000150, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
-//	{ 0x02000151, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
-//	{ 0x02000152, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
-//	{ 0x02000153, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
-
-
+    // this is for video DMA channel
 	{ 0x02004188, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x02004189, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200418a, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200418b, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 
-	// network adapter
+    
+    /* DSP (Motorola XSP56001) */
+	{ 0x02008000, SIZE_BYTE, DSP_icr_Read, DSP_icr_Write },
+
+	/* Network Adapter (MB8795) */
 	{ 0x02006000, SIZE_BYTE, Ethernet_Read, Ethernet_Write },
 	{ 0x02006001, SIZE_BYTE, Ethernet_Read, Ethernet_Write },
 	{ 0x02006002, SIZE_BYTE, Ethernet_Read, Ethernet_Write },
@@ -159,30 +143,30 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 	{ 0x02006012, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x02006013, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x02006014, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+    
+    /* Interrupt Status and Mask Registers */
 	{ 0x02007000, SIZE_LONG, IntRegStatRead, IntRegStatWrite },
 	{ 0x02007800, SIZE_LONG, IntRegMaskRead, IntRegMaskWrite },
 
-
-	// system control register 1
+	/* System Control Register 1 */
 	{ 0x0200c000, SIZE_BYTE, SCR1_Read0, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200c001, SIZE_BYTE, SCR1_Read1, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200c002, SIZE_BYTE, SCR1_Read2, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200c003, SIZE_BYTE, SCR1_Read3, IoMem_WriteWithoutInterceptionButTrace },
 
-
-	{ 0x0200c800, SIZE_BYTE, SID_Read, IoMem_WriteWithoutInterceptionButTrace }, // Next cube slot Id
+    /* Slot ID (NeXT Cube) */
+	{ 0x0200c800, SIZE_BYTE, SID_Read, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200c801, SIZE_BYTE, SID_Read, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200c802, SIZE_BYTE, SID_Read, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x0200c803, SIZE_BYTE, SID_Read, IoMem_WriteWithoutInterceptionButTrace },
 
-
-	// system control register 2
+	/* System Control Register 2 */
 	{ 0x0200d000, SIZE_BYTE, SCR2_Read0, SCR2_Write0 },
 	{ 0x0200d001, SIZE_BYTE, SCR2_Read1, SCR2_Write1 },
 	{ 0x0200d002, SIZE_BYTE, SCR2_Read2, SCR2_Write2 },
 	{ 0x0200d003, SIZE_BYTE, SCR2_Read3, SCR2_Write3 },
 
- 	/* Monitor Registers - Keyboard, Mouse, Sound */
+ 	/* Monitor Registers (Keyboard, Mouse, Sound) */
     { 0x0200e000, SIZE_BYTE, Monitor_CSR_Read, Monitor_CSR_Write },
 	{ 0x0200e001, SIZE_BYTE, Monitor_CSR_Read, Monitor_CSR_Write },
 	{ 0x0200e002, SIZE_BYTE, Monitor_CSR_Read, Monitor_CSR_Write },
@@ -195,25 +179,21 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 
     /* Event counter */
 #if NEW_EVENT_COUNTER == 1
-    { 0x0201a000, SIZE_LONG, System_Timer_Read, IoMem_WriteWithoutInterception },
+    { 0x0201a000, SIZE_LONG, System_Timer_Read, IoMem_WriteWithoutInterceptionButTrace },
 #else
-    { 0x0201a000, SIZE_BYTE, System_Timer0_Read, IoMem_WriteWithoutInterception },
-    { 0x0201a001, SIZE_BYTE, System_Timer1_Read, IoMem_WriteWithoutInterception },
-    { 0x0201a002, SIZE_BYTE, System_Timer2_Read, IoMem_WriteWithoutInterception },
-    { 0x0201a003, SIZE_BYTE, System_Timer3_Read, IoMem_WriteWithoutInterception },
+    { 0x0201a000, SIZE_BYTE, System_Timer0_Read, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0201a001, SIZE_BYTE, System_Timer1_Read, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0201a002, SIZE_BYTE, System_Timer2_Read, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0201a003, SIZE_BYTE, System_Timer3_Read, IoMem_WriteWithoutInterceptionButTrace },
 #endif
     	
-
   	/* Internal Hardclock */
     { 0x02016000, SIZE_BYTE, HardclockRead0, HardclockWrite0 },
     { 0x02016001, SIZE_BYTE, HardclockRead1, HardclockWrite1 },
     { 0x02016004, SIZE_BYTE, HardclockReadCSR, HardclockWriteCSR },
 
-
-
-    	{ 0x02010000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
   
-    /* MO-Drive Registers */
+    /* Magneto-Optical Drive */
     { 0x02012000, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 	{ 0x02012001, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 	{ 0x02012002, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
@@ -247,12 +227,22 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 	{ 0x0201201e, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 	{ 0x0201201f, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 
-
-    /* Device Command/Status Registers */
-    { 0x02014020, SIZE_BYTE, SCSI_CSR0_Read, SCSI_CSR0_Write },
-    { 0x02014021, SIZE_BYTE, SCSI_CSR1_Read, SCSI_CSR1_Write },
     
-    /* DMA SCSI */
+    /*------------------ DMA ------------------*/
+    
+    /* DMA Control/Status Registers (writes MUST be 32-bit) */
+    { 0x02000010, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
+    { 0x02000040, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
+    { 0x02000050, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
+    { 0x020000c0, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
+    { 0x02000110, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
+    { 0x02000150, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
+    
+    { 0x02000180, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x020001d0, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x020001c0, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+    
+    /* Channel SCSI */
     { 0x02004000, SIZE_LONG, DMA_Saved_Next_Read, DMA_Saved_Next_Write },
     { 0x02004004, SIZE_LONG, DMA_Saved_Limit_Read, DMA_Saved_Limit_Write },
     { 0x02004008, SIZE_LONG, DMA_Saved_Start_Read, DMA_Saved_Start_Write },
@@ -264,13 +254,13 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02004210, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
     { 0x02004214, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
-    /* DMA Sound out */
+    /* Channel Sound out */
     { 0x02004040, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
     { 0x02004044, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
     { 0x02004048, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
     { 0x0200404c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
 
-    /* DMA Magneto-optical Drive */
+    /* Channel MO Drive */
     { 0x02004050, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
     { 0x02004054, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
     { 0x02004058, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
@@ -278,19 +268,20 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02004250, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
     { 0x02004254, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
-    /* DMA SCC */
+    /* Channel SCC */
     { 0x020040c0, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
     { 0x020040c4, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
-//    { 0x02004008, SIZE_LONG, DMA_Saved_Start_Read, DMA_Saved_Start_Write },
-//    { 0x0200400c, SIZE_LONG, DMA_Saved_Stop_Read, DMA_Saved_Stop_Write },
-//    { 0x02004010, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
-//    { 0x02004014, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
-//    { 0x02004018, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
-//    { 0x0200401c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
-//    { 0x02004210, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
-//    { 0x02004214, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
+//    { 0x020040c8, SIZE_LONG, DMA_Saved_Start_Read, DMA_Saved_Start_Write },
+//    { 0x020040cc, SIZE_LONG, DMA_Saved_Stop_Read, DMA_Saved_Stop_Write },
     
-    /* DMA Ethernet Transmit */
+//    { 0x020040d0, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
+//    { 0x020040d4, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
+//    { 0x020040d8, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
+//    { 0x020040dc, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
+//    { 0x020042d0, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
+//    { 0x020042d4, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
+    
+    /* Channel Ethernet Transmit */
     { 0x02004100, SIZE_LONG, DMA_Saved_Next_Read, DMA_Saved_Next_Write },
     { 0x02004104, SIZE_LONG, DMA_Saved_Limit_Read, DMA_Saved_Limit_Write },
     { 0x02004108, SIZE_LONG, DMA_Saved_Start_Read, DMA_Saved_Start_Write },
@@ -302,7 +293,7 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02004310, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
     { 0x02004314, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
-    /* DMA Ethernet Receive */
+    /* Channel Ethernet Receive */
     { 0x02004140, SIZE_LONG, DMA_Saved_Next_Read, DMA_Saved_Next_Write },
     { 0x02004144, SIZE_LONG, DMA_Saved_Limit_Read, DMA_Saved_Limit_Write },
     { 0x02004148, SIZE_LONG, DMA_Saved_Start_Read, DMA_Saved_Start_Write },
@@ -313,9 +304,14 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x0200415c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
     { 0x02004350, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
     { 0x02004354, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
+    /*-------------------- End of DMA -------------------*/
 
         
-    /* SCSI Registers for NCR53C90 (68030) */
+    /* SCSI Command/Status Registers */
+    { 0x02014020, SIZE_BYTE, SCSI_CSR0_Read, SCSI_CSR0_Write },
+    { 0x02014021, SIZE_BYTE, SCSI_CSR1_Read, SCSI_CSR1_Write },
+
+    /* SCSI Controller (NCR53C90) */
     { 0x02014000, SIZE_BYTE, SCSI_TransCountL_Read, SCSI_TransCountL_Write },
     { 0x02014001, SIZE_BYTE, SCSI_TransCountH_Read, SCSI_TransCountH_Write },
     { 0x02014002, SIZE_BYTE, SCSI_FIFO_Read, SCSI_FIFO_Write },
@@ -327,14 +323,14 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02014008, SIZE_BYTE, SCSI_Configuration_Read, SCSI_Configuration_Write },
     { 0x02014009, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, SCSI_ClockConv_Write },
     { 0x0201400a, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, SCSI_Test_Write },
-    /* additional Registers for NCR53C90A (68040) */
+    /* Additional Register for NCR53C90A (68040) */
     { 0x0201400b, SIZE_BYTE, SCSI_Conf2_Read, IoMem_WriteWithoutInterceptionButTrace },
 //  { 0x0201400c, SIZE_BYTE, SCSI_CMD_Read, SCSI_CMD_Write },
 //  { 0x0201400d, SIZE_BYTE, SCSI_CMD_Read, SCSI_CMD_Write },
 //  { 0x0201400e, SIZE_BYTE, SCSI_CMD_Read, SCSI_CMD_Write },
 //  { 0x0201400f, SIZE_BYTE, SCSI_CMD_Read, SCSI_CMD_Write },
     
-    /* Floppy 82077 */
+    /* Floppy Controller (82077AA) */
     { 0x02014100, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x02014101, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x02014102, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
@@ -344,10 +340,10 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02014106, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x02014107, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 
-    /* floppy external control */
+    /* Floppy External Control */
     { 0x02014108, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 
-    /* Z8530 Serial Communication Controller */
+    /* Serial Communication Controller (Z8530) */
 	{ 0x02018000, SIZE_BYTE, SCC_Read, SCC_Write },
 	{ 0x02018001, SIZE_BYTE, SCC_Read, SCC_Write },
     { 0x02018002, SIZE_BYTE, SCC_Read, SCC_Write },
