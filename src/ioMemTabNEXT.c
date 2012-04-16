@@ -44,7 +44,7 @@ Uint32 eventcounter; // debugging code
 Uint32 lasteventc; // debugging code
 
 void System_Timer_Read(void) { // tuned for power-on test
-    lasteventc = eventcounter;
+//    lasteventc = eventcounter;
     if (ConfigureParams.System.nCpuLevel == 3) {
 //        eventcounter = (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF; // debugging code
         IoMem_WriteLong(IoAccessCurrentAddress&0x1FFFF, (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF);
@@ -197,15 +197,6 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 	{ 0x02012014, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 	{ 0x02012015, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 	{ 0x02012016, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
-	{ 0x02012017, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
-	{ 0x02012018, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
-    { 0x02012019, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
-	{ 0x0201201a, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
-	{ 0x0201201b, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
-	{ 0x0201201c, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
-	{ 0x0201201d, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
-	{ 0x0201201e, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
-	{ 0x0201201f, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 
     
     /*------------------ DMA ------------------*/

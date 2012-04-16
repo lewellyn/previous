@@ -23,22 +23,38 @@
 #define IO_SEG_MASK	0x1FFFF
 
 
-typedef struct {
+struct {
     Uint16 track_num;
     Uint8 sector_incrnum;
     Uint8 sector_count;
-    Uint8 int_status;
-    Uint8 int_mask;
+    Uint8 intstatus;
+    Uint8 intmask;
+    Uint8 ctrlr_csr2;
+    Uint8 ctrlr_csr1;
 } mo_drive;
 
 Uint8 ECC_buffer[1600];
 Uint32 length;
-
-Uint8 reg4;
-Uint8 reg5;
-Uint8 reg6;
-Uint8 reg7;
 Uint8 sector_position;
+
+/* MO Drive Registers */
+#define MO_INTSTATUS    4
+#define MO_INTMASK      5
+#define MO_CTRLR_CSR2   6
+#define MO_CTRLR_CSR1   7
+
+#define MO_INIT         12
+#define MO_FORMAT       13
+#define MO_MARK         14
+
+/* MO Drive Register Constants */
+#define INTSTAT_CLR     0xFC
+#define INTSTAT_RESET   0x01
+// controller csr 2
+#define ECC_MODE        0x20
+// controller csr 1
+#define ECC_READ        0x80
+#define ECC_WRITE       0x40
 
 void check_ecc(void);
 void compute_ecc(void);
@@ -49,20 +65,20 @@ void MOdrive_Read(void) {
 	Uint8 reg = IoAccessCurrentAddress&0x1F;
     
     switch (reg) {
-        case 4:
-            val = reg4;
+        case MO_INTSTATUS:
+            val = mo_drive.intstatus;
             break;
             
-        case 5:
-            val = reg5;
+        case MO_INTMASK:
+            val = mo_drive.intmask;
             break;
             
-        case 6:
-            val = reg6;
+        case MO_CTRLR_CSR2:
+            val = mo_drive.ctrlr_csr2;
             break;
 
-        case 7:
-            val = reg7;
+        case MO_CTRLR_CSR1:
+            val = mo_drive.ctrlr_csr1;
             break;
 
         case 8:
@@ -101,43 +117,101 @@ void MOdrive_Write(void) {
     Log_Printf(LOG_MO_LEVEL, "[MO Drive] write reg %d val %02x PC=%x %s at %d",reg,val,m68k_getpc(),__FILE__,__LINE__);
     
     switch (reg) {
-        case 4:
-            if (val) {
-                //if (reg4&1)
-                    //MOdrive_Reset();
+        case MO_INTSTATUS: // reg 4
+            switch (val) {
+                case INTSTAT_CLR:
+                    mo_drive.intstatus &= 0x02;
+                    mo_drive.intstatus |= 0x01;
+                    break;
                     
-                reg4 = (reg4 & (~val & 0xfc)) | (val & 3);
+                case INTSTAT_RESET:
+                    mo_drive.intstatus |= 0x01;
+                    //MOdrive_Reset();
+
+                default:
+                    break;
+                    
+                //mo_drive.intstatus = (mo_drive.intstatus & (~val & 0xfc)) | (val & 3);
             }
             break;
             
-        case 5:
-            reg5 = val;
+        case MO_INTMASK: // reg 5
+            mo_drive.intmask = val;
             break;
             
-        case 6:
-            reg6 = val;
+        case MO_CTRLR_CSR2: // reg 6
+            mo_drive.ctrlr_csr2 = val;
             break;
             
-        case 7:
-            reg7 = val;
-            if (reg7 & 0xc0) {
-                sector_position = 0;
-                set_interrupt(INT_DISK_DMA, SET_INT);
-            }
-            
-            if (reg7&0x40) { // ECC write
-                dma_memory_read(ECC_buffer, &length, CHANNEL_DISK);
-                reg4 |= 0xFF;
-                if (reg6&0x20)
-                    check_ecc();
-                else
-                    compute_ecc();
-            }
-            if (reg7&0x80) { // ECC read
-                dma_memory_write(ECC_buffer, length, CHANNEL_DISK);
-                reg4 |= 0xFF;
+        case MO_CTRLR_CSR1: // reg 7
+            mo_drive.ctrlr_csr1 = val;
+            switch (mo_drive.ctrlr_csr1) {
+                case ECC_WRITE:
+                    dma_memory_read(ECC_buffer, &length, CHANNEL_DISK);
+                    mo_drive.intstatus |= 0xFF;
+                    if (mo_drive.ctrlr_csr2&ECC_MODE)
+                        check_ecc();
+                    else
+                        compute_ecc();
+                    break;
+                    
+                case ECC_READ:
+                    dma_memory_write(ECC_buffer, length, CHANNEL_DISK);
+                    mo_drive.intstatus |= 0xFF;
+                    break;
+                    
+                case 0x20: // RD_STAT
+                    mo_drive.intstatus |= 0x01; // set cmd complete
+                    break;
+                    
+                default:
+                    break;
             }
             break;
+            
+        case 9:
+            mo_drive.intstatus &= ~0x01; // release cmd complete
+            set_interrupt(INT_DISK, SET_INT);
+            break;
+            
+        case MO_INIT: // reg 12
+            if (val&0x80) { // sector > enable
+                printf("MO Init: sector > enable\n");
+            }
+            if (val&0x40) { // ECC starve disable
+                printf("MO Init: ECC starve disable\n");
+            }
+            if (val&0x20) { // ID cmp on track, not sector
+                printf("MO Init: ID cmp on track not sector\n");
+            }
+            if (val&0x10) { // 25 MHz ECC clk for 3600 RPM
+                printf("MO Init: 25 MHz ECC clk for 3600 RPM\n");
+            }
+            if (val&0x08) { // DMA starve enable
+                printf("MO Init: DMA starve enable\n");
+            }
+            if (val&0x04) { // diag: generate bad parity
+                printf("MO Init: diag: generate bad parity\n");
+            }
+            if (val&0x03) {
+                printf("MO Init: %i IDs must match\n", val&0x03);
+            }
+            break;
+            
+        case MO_FORMAT: // reg 13
+            break;
+            
+        case MO_MARK: // reg 14
+            break;
+            
+        case 16:
+        case 17:
+        case 18:
+        case 19:
+        case 20:
+        case 21:
+        case 22:
+            break; // flag strategy
             
         default:
             break;
