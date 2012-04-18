@@ -31,6 +31,7 @@ struct {
     Uint8 intmask;
     Uint8 ctrlr_csr2;
     Uint8 ctrlr_csr1;
+    Uint16 command;
 } mo_drive;
 
 Uint8 ECC_buffer[1600];
@@ -42,7 +43,8 @@ Uint8 sector_position;
 #define MO_INTMASK      5
 #define MO_CTRLR_CSR2   6
 #define MO_CTRLR_CSR1   7
-
+#define MO_COMMAND_HI   8
+#define MO_COMMAND_LO   9
 #define MO_INIT         12
 #define MO_FORMAT       13
 #define MO_MARK         14
@@ -56,6 +58,15 @@ Uint8 sector_position;
 #define ECC_READ        0x80
 #define ECC_WRITE       0x40
 
+// drive commands
+#define OD_SEEK         0x0000
+#define OD_HOS          0xA000
+#define OD_RECALIB      0x1000
+#define OD_RDS          0x2000
+#define OD_RCA          0x2200
+
+#define OD_RID          0x5000
+
 void check_ecc(void);
 void compute_ecc(void);
 
@@ -67,6 +78,7 @@ void MOdrive_Read(void) {
     switch (reg) {
         case MO_INTSTATUS:
             val = mo_drive.intstatus;
+            mo_drive.intstatus |= 0x01;
             break;
             
         case MO_INTMASK:
@@ -81,11 +93,11 @@ void MOdrive_Read(void) {
             val = mo_drive.ctrlr_csr1;
             break;
 
-        case 8:
+        case MO_COMMAND_HI:
             val = 0x00;
             break;
 
-        case 9:
+        case MO_COMMAND_LO:
             val = 0x00;
             break;
             
@@ -168,10 +180,14 @@ void MOdrive_Write(void) {
                     break;
             }
             break;
-            
-        case 9:
-            mo_drive.intstatus &= ~0x01; // release cmd complete
-            set_interrupt(INT_DISK, SET_INT);
+        case MO_COMMAND_HI:
+            mo_drive.command = (val << 8)&0xFF00;
+            break;
+        case MO_COMMAND_LO:
+            mo_drive.command |= val&0xFF;
+            MOdrive_Execute_Command(mo_drive.command);
+//            mo_drive.intstatus &= ~0x01; // release cmd complete
+//            set_interrupt(INT_DISK, SET_INT);
             break;
             
         case MO_INIT: // reg 12
@@ -217,6 +233,25 @@ void MOdrive_Write(void) {
             break;
     }
 }
+
+
+void MOdrive_Execute_Command(Uint16 command) {
+    mo_drive.intstatus &= ~0x01; // release cmd complete
+    switch (command) {
+        case OD_SEEK:
+//            set_interrupt(INT_DISK, SET_INT);
+            break;
+        case OD_RDS:
+            break;
+            
+        case OD_RID:
+            break;
+            
+        default:
+            break;
+    }
+}
+
 
 void check_ecc(void) {
     int i;

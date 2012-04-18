@@ -128,22 +128,22 @@ void Ethernet_Write(void) {
                 ethernet.tx_status = 0x80; // ? temp hack
             else
                 ethernet.tx_status = val; //ethernet.tx_status & (0xF0 | ~val); ?
-            EnTx_Raise_IRQ(); // check irq
+//            EnTx_Raise_IRQ(); // check irq
 			break;
         case EN_TXMASK:
             ethernet.tx_mask = val & 0xAF;
-            EnTx_Raise_IRQ(); // check irq
+//            EnTx_Raise_IRQ(); // check irq
             break;
         case EN_RXSTAT:
             if (val == 0xFF)
                 ethernet.rx_status = 0x00;
             else
                 ethernet.rx_status = val; //ethernet.rx_status & (0x07 | ~val); ?
-            EnRx_Raise_IRQ(); // check irq
+//            EnRx_Raise_IRQ(); // check irq
             break;
         case EN_RXMASK:
             ethernet.rx_mask = val & 0x9F;
-            EnRx_Raise_IRQ(); // check irq
+//            EnRx_Raise_IRQ(); // check irq
             break;
         case EN_TXMODE:
             ethernet.tx_mode = val;
@@ -237,7 +237,7 @@ void EnRx_Raise_IRQ(void) {
 /* Functions to find out if we are intended to receive a packet */
 
 bool Packet_Receiver_Me(Uint8 *packet) {
-    switch (ethernet.rx_mode&0x02) {
+    switch (ethernet.rx_mode&0x03) {
         case RXMODE_NOPACKETS:
             return false;
             
