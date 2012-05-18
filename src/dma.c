@@ -325,7 +325,7 @@ void dma_memory_read(Uint8 *buf, Uint32 *size, int channel) {
     Uint32 read_addr;
     int interrupt = get_interrupt_type(channel);
     
-    if (channel == CHANNEL_EN_TX)
+    if ((channel == CHANNEL_EN_TX) && !ConfigureParams.System.bTurbo)
         *size = (dma[channel].limit&0x0FFFFFFF) - (dma[channel].init&0x0FFFFFFF);
     else
         *size = (dma[channel].limit&0x0FFFFFFF) - (dma[channel].next&0x0FFFFFFF);
@@ -377,7 +377,7 @@ void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
     else
         base_addr = dma[channel].init;
 
-    Log_Printf(LOG_WARN, "[DMA] Write to mem: at $%08x, $%x bytes",base_addr,size);
+    Log_Printf(LOG_WARN, "[DMA] Write to mem: at $%08x, %i bytes",base_addr,size);
     for (size_count = 0; size_count < size; size_count++) {
         write_addr = base_addr + size_count;
         NEXTMemory_WriteByte(write_addr, buf[size_count]);

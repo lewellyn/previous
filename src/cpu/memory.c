@@ -67,19 +67,27 @@ const char Memory_fileid[] = "Hatari memory.c : " __DATE__ " " __TIME__;
 
 uae_u32	NEXTmem_size; // unused
 #define NEXTmem_mask		0x03FFFFFF
-// for a mono screen
+
+/* Video RAM for a monochrome systems */
 #define NEXT_SCREEN			0x0B000000
 #define NEXT_SCREEN_SIZE	0x00040000
 #define NEXTvideo_size NEXT_SCREEN_SIZE
 #define NEXTvideo_mask		0x0003FFFF
 uae_u8  NEXTVideo[256*1024];
 
+/* Video RAM for color systems */
+#define NEXT_COLORSCREEN    0x2C000000
+#define NEXT_COLORSCREEN_SIZE 0x00200000
+#define NEXTcolorvideo_size NEXT_COLORSCREEN_SIZE
+#define NEXTcolorvideo_mask 0x001FFFFF
+uae_u8 NEXTColorVideo[2*1024*1024];
 
 
 #define IOmem_mask 			0x0001FFFF
 #define	IOmem_size			0x0001C000
-#define NEXT_IO_START   	0x02000000
-#define NEXT_IO2_START   	0x02100000
+#define NEXT_IO_START   	0x02000000  /* IO for 68030 based NeXT Computer */
+#define NEXT_IO2_START   	0x02100000  /* additional IO for 68040 based systems */
+#define NEXT_IO3_START      0x02200000  /* additional IO for turbo systems */
 #define NEXT_IO_SIZE		0x00020000
 
 #define NEXT_BMAP_START		0x020C0000
@@ -779,11 +787,13 @@ const char* memory_init(uae_u32 nNewNEXTMemSize)
     map_banks(&ROMmem_bank, NEXT_EPROM_START >> 16, NEXT_EPROM_SIZE>>16);
     map_banks(&ROMmem_bank, NEXT_EPROM2_START >> 16, NEXT_EPROM_SIZE>>16);
     
+    map_banks(&IOmem_bank, NEXT_IO_START >> 16, NEXT_IO_SIZE>>16);
     
-    map_banks(&IOmem_bank, NEXT_IO_START >> 16, NEXT_IO_SIZE>>16); 
+    if (ConfigureParams.System.nMachineType != NEXT_CUBE030)
+        map_banks(&IOmem_bank, NEXT_IO2_START >> 16, NEXT_IO_SIZE>>16);
 
-    if (ConfigureParams.System.nCpuLevel > 3)
-    	map_banks(&IOmem_bank, NEXT_IO2_START >> 16, NEXT_IO_SIZE>>16);
+    if (ConfigureParams.System.bTurbo)
+        map_banks(&IOmem_bank, NEXT_IO3_START >> 16, NEXT_IO_SIZE>>16);
     
     map_banks(&bmap_bank, NEXT_BMAP_START >> 16, NEXT_BMAP_SIZE>>16);
 

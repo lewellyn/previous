@@ -39,6 +39,11 @@ struct timer_reg {
     : 6;
 };
 
+/* Functions to be moved to other places */
+void System_Timer_Read(void);
+void FDD_Main_Status_Read(void);
+void DSP_icr_Read(void);
+void DSP_icr_Write(void);
 
 Uint32 eventcounter; // debugging code
 Uint32 lasteventc; // debugging code
@@ -61,13 +66,13 @@ void FDD_Main_Status_Read (void) {
 }
 
 
-static Uint8 DSP_icr=0;
+static Uint32 DSP_icr=0;
 
 
 /* DSP registers - Work on this later */
 void DSP_icr_Read (void) {
     Log_Printf(LOG_WARN, "[DSP] read val %d PC=%x %s at %d",DSP_icr,m68k_getpc(),__FILE__,__LINE__);
-    IoMem[IoAccessCurrentAddress & 0x1FFFF] = 0;
+    IoMem_WriteLong(IoAccessCurrentAddress & 0x1FFFF,0x7FFFFFFF);
 }
 
 void DSP_icr_Write (void) {
@@ -93,9 +98,6 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 {
     { 0x02010000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     
-	// blocking device?
-	{ 0x02004350, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-
     // this is for video DMA channel
 	{ 0x02004188, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
 	{ 0x02004189, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
@@ -104,7 +106,7 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 
     
     /* DSP (Motorola XSP56001) */
-	{ 0x02008000, SIZE_BYTE, DSP_icr_Read, DSP_icr_Write },
+	{ 0x02008000, SIZE_LONG, DSP_icr_Read, DSP_icr_Write },
 
 	/* Network Adapter (MB8795) */
 	{ 0x02006000, SIZE_BYTE, Ethernet_Read, Ethernet_Write },
