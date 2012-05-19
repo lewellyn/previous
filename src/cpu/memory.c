@@ -202,8 +202,7 @@ static uae_u32 BusErrMem_lget(uaecptr addr)
 	write_log ("Bus error lget at %08lx\n", (long)addr);
 
     M68000_BusError(addr, 1);
-    //return 0;
-    return addr;
+    return addr; // experimental
 }
 
 static uae_u32 BusErrMem_wget(uaecptr addr)
@@ -223,16 +222,23 @@ static uae_u32 BusErrMem_bget(uaecptr addr)
     M68000_BusError(addr, 1);
     return 0;
 }
-static void NEXTmem_lput(uaecptr addr, uae_u32 l); // experimental!!
+/*------------------- this part is experimental ---------------------*/
+static void NEXTmem_lput(uaecptr addr, uae_u32 l);
+uae_u32 bankmask = 0x07000000;
+
 static void BusErrMem_lput(uaecptr addr, uae_u32 l)
 {
-    NEXTmem_lput((addr%0x400000), l); // very experimental!!
+    uae_u8 bank = (addr>>24)-4;
+    
+    if (MemBank_Size[bank])
+        NEXTmem_lput((addr%MemBank_Size[bank])|(addr&bankmask), l);
 
     if (illegal_mem)
 	write_log ("Bus error lput at %08lx\n", (long)addr);
 
     M68000_BusError(addr, 0);
 }
+/*-------------------- end of experimental code ----------------------*/
 
 static void BusErrMem_wput(uaecptr addr, uae_u32 w)
 {
@@ -770,14 +776,16 @@ const char* memory_init(uae_u32 nNewNEXTMemSize)
     
     
 //    map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
+    MemBank_Size[0] = 0x400000; // 4 MB
+    MemBank_Size[1] = 0x1000000; // 16 MB
+    MemBank_Size[2] = 0x400000; // 4 MB
+    MemBank_Size[3] = 0; // empty
     
-    map_banks(&NEXTmem_bank, 0x04000000>>16, 0x400000 >> 16);
-    map_banks(&NEXTmem_bank, 0x05000000>>16, 0x400000 >> 16);
-    map_banks(&NEXTmem_bank, 0x06000000>>16, 0x400000 >> 16);
-    map_banks(&NEXTmem_bank, 0x07000000>>16, 0x400000 >> 16);
-    
-    map_banks(&NEXTmem_bank, 0x07FFE000>>16, 0x10000 >> 16);
-    
+    map_banks(&NEXTmem_bank, 0x04000000>>16, MemBank_Size[0] >> 16);
+    map_banks(&NEXTmem_bank, 0x05000000>>16, MemBank_Size[1] >> 16);
+    map_banks(&NEXTmem_bank, 0x06000000>>16, MemBank_Size[2] >> 16);
+    map_banks(&NEXTmem_bank, 0x07000000>>16, MemBank_Size[3] >> 16);
+        
     // also map here... need to check address for function (weird?)
     /*
     map_banks(&NEXTmem_bank, 0x10000000>>16, NEXT_RAM_SIZE >> 16);

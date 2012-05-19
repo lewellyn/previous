@@ -31,6 +31,8 @@ extern void cache_free (uae_u8*);
 #define NEXT_SCREEN_SIZE	0x00040000
 extern uae_u8 NEXTVideo[256*1024];
 
+uae_u32 MemBank_Size[4]; // experimental, sizes for all 4 memory banks
+
 
 /* Enabling this adds one additional native memory reference per 68k memory
  * access, but saves one shift (on the x86). Enabling this is probably

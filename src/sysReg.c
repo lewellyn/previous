@@ -125,7 +125,7 @@ Uint8 read_rtc_ram(Uint8 position) {
 
 Uint8 rtc_ram_default[32]={
     0x94,0x0f,0x40,0x00,0x00,0x00,0x00,0x00,
-    0x00,0x00,0xFB,0x6D,0x00,0x00,0x4b,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0x4b,0x00,
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
     0x00,0x00,0x00,0x00,0x00,0x00,0x0F,0x13
 };
@@ -178,6 +178,24 @@ void nvram_init(void) {
             
         default: break;
     }
+    
+    /* Build SIMM bytes (for now only valid on monochrome systems) */
+    Uint16 SIMMconfig = 0x0000;
+    Uint8 simm[4];
+    Uint8 parity = 0xF0;
+    int i;
+    for (i = 0; i<4; i++) {
+        switch (MemBank_Size[i]>>20) {
+            case 0: simm[i] = SIMM_EMPTY; parity &= ~(0x10<<i); break;
+            case 1: simm[i] = SIMM_1MB | SIMM_PAGE_MODE; break;
+            case 4: simm[i] = SIMM_4MB | SIMM_PAGE_MODE; break;
+            case 16: simm[i] = SIMM_16MB | SIMM_PAGE_MODE; break;
+            default: simm[i] = SIMM_EMPTY | SIMM_PAGE_MODE; break;
+        }
+    }
+    SIMMconfig = ((parity&0xF0)<<8) | (simm[3]<<9) | (simm[2]<<6) | (simm[1]<<3) | simm[0];
+    rtc_ram[10] = (SIMMconfig>>8)&0xFF;
+    rtc_ram[11] = SIMMconfig&0xFF;
     
     /* Build POT byte[0] */
     rtc_ram[14] = 0x00;
