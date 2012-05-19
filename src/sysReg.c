@@ -72,13 +72,13 @@ static Uint32 intMask=0x00000000;
 // #define	VOL_NOM		0
 
 /* bits in ni_pot[0] */
- #define POT_ON             0x01
- #define EXTENDED_POT		0x02
- #define LOOP_POT           0x04
- #define VERBOSE_POT		0x08
- #define TEST_DRAM_POT		0x10
- #define BOOT_POT           0x20
- #define TEST_MONITOR_POT	0x40
+#define POT_ON              0x01
+#define EXTENDED_POT        0x02
+#define LOOP_POT            0x04
+#define VERBOSE_POT         0x08
+#define TEST_DRAM_POT       0x10
+#define BOOT_POT            0x20
+#define TEST_MONITOR_POT    0x40
 
 /* bits in byte 17 */
 #define NEW_CLOCK_CHIP      0x80
@@ -87,12 +87,32 @@ static Uint32 intMask=0x00000000;
 #define CONSOLE_SLOT        0x18
 #define USE_PARITY_MEM      0x40
 
+/* bits in ni_simm (rtc ram byte 10 and 11) *
+ * -------- -----xxx bit 0 - 2: 1st simm: bit 1+2 define size, bit 3 defines page mode
+ * -------- --xxx--- bit 3 - 5: 2nd simm: bit 1+2 define size, bit 3 defines page mode
+ * -------x xx------ bit 6 - 8: 3rd simm: bit 1+2 define size, bit 3 defines page mode
+ * ----xxx- -------- bit 9 -11: 4th simm: bit 1+2 define size, bit 3 defines page mode
+ * xxxx---- -------- bit 12-15: defines parity, 1 bit for each simm (ignored on 68030)
+ */
+/* for 68030 */
+#define SIMM_EMPTY          0x0
+#define SIMM_16MB           0x1
+#define SIMM_4MB            0x2
+#define SIMM_1MB            0x3
+#define SIMM_PAGE_MODE      0x4
+/* additional for 68040 */
+#define SIMM_PARITY         0x8
+/* for color systems (page mode bit is ignored) */
+#define SIMM_8MB            0x1 /* Pair of 4 Mbyte SIMMs */
+#define SIMM_2MB            0x2 /* Pair of 1 Mbyte SIMMs */
+#define SIMM_EMPTY2         0x3 /* reserved */
+
 
 /* RTC RAM */
 Uint8 rtc_ram[32]={
     0x94,0x0f,0x40,0x00, // byte 0 - 3
     0x00,0x00,0x00,0x00,0x00,0x00, // byte 4 - 9: hardware password, ethernet address (?)
-    0xfb,0x6d, // byte 10, 11: simm (4 simms, 4 bits per simm), 3 bits per simm on old ROM?
+    0x00,0x00, // byte 10, 11: simm type and size (4 simms, 4 bits per simm), see bits in ni_simm above
     0x00,0x00, // byte 12, 13: adobe (?)
     0x4b,0x00,0x00, // byte 14: POT, byte 15: oldest ..., byte 16: most recent selftest error code
     0x00, // byte 17: bit7:clock chip; 6:auto poweron; 5:enable console slot; 3,4:console slot; 2:parity mem
@@ -105,7 +125,7 @@ Uint8 read_rtc_ram(Uint8 position) {
 
 Uint8 rtc_ram_default[32]={
     0x94,0x0f,0x40,0x00,0x00,0x00,0x00,0x00,
-    0x00,0x00,0xfb,0x6d,0x00,0x00,0x4b,0x00,
+    0x00,0x00,0xFB,0x6D,0x00,0x00,0x4b,0x00,
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
     0x00,0x00,0x00,0x00,0x00,0x00,0x0F,0x13
 };

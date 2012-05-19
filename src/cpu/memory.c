@@ -202,7 +202,8 @@ static uae_u32 BusErrMem_lget(uaecptr addr)
 	write_log ("Bus error lget at %08lx\n", (long)addr);
 
     M68000_BusError(addr, 1);
-    return 0;
+    //return 0;
+    return addr;
 }
 
 static uae_u32 BusErrMem_wget(uaecptr addr)
@@ -222,9 +223,11 @@ static uae_u32 BusErrMem_bget(uaecptr addr)
     M68000_BusError(addr, 1);
     return 0;
 }
-
+static void NEXTmem_lput(uaecptr addr, uae_u32 l); // experimental!!
 static void BusErrMem_lput(uaecptr addr, uae_u32 l)
 {
+    NEXTmem_lput((addr%0x400000), l); // very experimental!!
+
     if (illegal_mem)
 	write_log ("Bus error lput at %08lx\n", (long)addr);
 
@@ -673,7 +676,7 @@ static addrbank BusErrMem_bank =
 {
     BusErrMem_lget, BusErrMem_wget, BusErrMem_bget,
     BusErrMem_lput, BusErrMem_wput, BusErrMem_bput,
-    BusErrMem_xlate, BusErrMem_check, NULL, "BusError memory",
+    BusErrMem_xlate, BusErrMem_check, NULL, (char*)"BusError memory",
     BusErrMem_lget, BusErrMem_wget, ABFLAG_NONE
 };
 
@@ -681,7 +684,7 @@ static addrbank NEXTmem_bank =
 {
     NEXTmem_lget, NEXTmem_wget, NEXTmem_bget,
     NEXTmem_lput, NEXTmem_wput, NEXTmem_bput,
-    NEXTmem_xlate, NEXTmem_check, NULL, "NEXT memory",
+    NEXTmem_xlate, NEXTmem_check, NULL, (char*)"NEXT memory",
     NEXTmem_lget, NEXTmem_wget, ABFLAG_RAM
 
 };
@@ -690,7 +693,7 @@ static addrbank NEXTmem_bank2 =
 {
     NEXTmem2_lget, NEXTmem2_wget, NEXTmem2_bget,
     NEXTmem2_lput, NEXTmem2_wput, NEXTmem2_bput,
-    NEXTmem2_xlate, NEXTmem2_check, NULL, "NEXT memory",
+    NEXTmem2_xlate, NEXTmem2_check, NULL, (char*)"NEXT memory",
     NEXTmem2_lget, NEXTmem2_wget, ABFLAG_RAM
 };
 
@@ -698,7 +701,7 @@ static addrbank VoidMem_bank =
 {
     VoidMem_lget, VoidMem_wget, VoidMem_bget,
     VoidMem_lput, VoidMem_wput, VoidMem_bput,
-    VoidMem_xlate, VoidMem_check, NULL, "Void memory",
+    VoidMem_xlate, VoidMem_check, NULL, (char*)"Void memory",
     VoidMem_lget, VoidMem_wget, ABFLAG_NONE
 };
 
@@ -706,7 +709,7 @@ static addrbank Video_bank =
 {
     NEXTvideo_lget, NEXTvideo_wget, NEXTvideo_bget,
     NEXTvideo_lput, NEXTvideo_wput, NEXTvideo_bput,
-    NEXTvideo_xlate, NEXTvideo_check, NULL, "Video memory",
+    NEXTvideo_xlate, NEXTvideo_check, NULL, (char*)"Video memory",
     NEXTvideo_lget, NEXTvideo_wget, ABFLAG_RAM
 };
 
@@ -714,7 +717,7 @@ static addrbank bmap_bank =
 {
     NEXTbmap_lget, NEXTbmap_wget, NEXTbmap_bget,
     NEXTbmap_lput, NEXTbmap_wput, NEXTbmap_bput,
-    NEXTbmap_xlate, NEXTbmap_check, NULL, "bmap memory",
+    NEXTbmap_xlate, NEXTbmap_check, NULL, (char*)"bmap memory",
     NEXTbmap_lget, NEXTbmap_wget, ABFLAG_RAM
 };
 
@@ -722,7 +725,7 @@ static addrbank x06_bank =
 {
     NEXTx06_lget, NEXTx06_wget, NEXTx06_bget,
     NEXTx06_lput, NEXTx06_wput, NEXTx06_bput,
-    NEXTx06_xlate, NEXTx06_check, NULL, "x06 memory",
+    NEXTx06_xlate, NEXTx06_check, NULL, (char*)"x06 memory",
     NEXTx06_lget, NEXTx06_wget, ABFLAG_RAM
 };
 
@@ -730,7 +733,7 @@ static addrbank ROMmem_bank =
 {
     ROMmem_lget, ROMmem_wget, ROMmem_bget,
     ROMmem_lput, ROMmem_wput, ROMmem_bput,
-    ROMmem_xlate, ROMmem_check, NULL, "ROM memory",
+    ROMmem_xlate, ROMmem_check, NULL, (char*)"ROM memory",
     ROMmem_lget, ROMmem_wget, ABFLAG_ROM
 };
 
@@ -738,7 +741,7 @@ static addrbank IOmem_bank =
 {
     IoMem_lget, IoMem_wget, IoMem_bget,
     IoMem_lput, IoMem_wput, IoMem_bput,
-    IOmem_xlate, IOmem_check, NULL, "IO memory",
+    IOmem_xlate, IOmem_check, NULL, (char*)"IO memory",
     IoMem_lget, IoMem_wget, ABFLAG_RAM
 };
 
@@ -757,17 +760,24 @@ static void init_mem_banks (void)
  */
 const char* memory_init(uae_u32 nNewNEXTMemSize)
 {
-    NEXTmem_size = (nNewNEXTMemSize + 65535) & 0xFFFF0000;
+//    NEXTmem_size = (nNewNEXTMemSize + 65535) & 0xFFFF0000;
     
-    write_log("memory_init: NEXTmem_size=$%x (not used yet)\n",
-              nNewNEXTMemSize);
+//    write_log("memory_init: NEXTmem_size=$%x (not used yet)\n",
+//              nNewNEXTMemSize);
     
 	/* fill every 65536 bank with dummy */
     init_mem_banks(); 
     
     
-    map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
-
+//    map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
+    
+    map_banks(&NEXTmem_bank, 0x04000000>>16, 0x400000 >> 16);
+    map_banks(&NEXTmem_bank, 0x05000000>>16, 0x400000 >> 16);
+    map_banks(&NEXTmem_bank, 0x06000000>>16, 0x400000 >> 16);
+    map_banks(&NEXTmem_bank, 0x07000000>>16, 0x400000 >> 16);
+    
+    map_banks(&NEXTmem_bank, 0x07FFE000>>16, 0x10000 >> 16);
+    
     // also map here... need to check address for function (weird?)
     /*
     map_banks(&NEXTmem_bank, 0x10000000>>16, NEXT_RAM_SIZE >> 16);

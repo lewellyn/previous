@@ -49,7 +49,7 @@ Uint32 eventcounter; // debugging code
 Uint32 lasteventc; // debugging code
 
 void System_Timer_Read(void) { // tuned for power-on test
-//    lasteventc = eventcounter;
+//    lasteventc = eventcounter; // debugging code
     if (ConfigureParams.System.nCpuLevel == 3) {
 //        eventcounter = (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF; // debugging code
         IoMem_WriteLong(IoAccessCurrentAddress&0x1FFFF, (nCyclesMainCounter/((128/ConfigureParams.System.nCpuFreq)*3))&0xFFFFF);
@@ -76,7 +76,7 @@ void DSP_icr_Read (void) {
 }
 
 void DSP_icr_Write (void) {
-    DSP_icr=IoMem[IoAccessCurrentAddress & 0x1FFFF];
+    DSP_icr=IoMem_ReadLong(IoAccessCurrentAddress & 0x1FFFF);
     Log_Printf(LOG_WARN, "[DSP] write val %d PC=%x %s at %d",DSP_icr,m68k_getpc(),__FILE__,__LINE__);
 }
 
