@@ -1,5 +1,8 @@
 /* NeXT DMA Emulation 
  * Contains informations from QEMU-NeXT
+ * NeXT DMA consists of 12 channel processors with 128 bytes internal buffer for each channel
+ * 12 channels: SCSI, Sound in, Sound out, Optical disk, Printer, SCC, DSP,
+ * Ethernet transmit, Ethernet receive, Video, Memory to register, Register to memory
  */
 
 #include "ioMem.h"

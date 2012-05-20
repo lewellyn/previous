@@ -7,6 +7,9 @@
  
  Based on MESS source code.
  
+ NeXT Optical Storage Processor uses Reed-Solomon algorithm for error correction.
+ It has 2 128 byte internal buffers and uses double-buffering to perform error correction.
+ 
  Dummy to pass POT.
  
  */
