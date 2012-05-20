@@ -100,12 +100,16 @@ static Uint32 intMask=0x00000000;
 #define SIMM_4MB            0x2
 #define SIMM_1MB            0x3
 #define SIMM_PAGE_MODE      0x4
-/* additional for 68040 */
+/* additional for all 68040 systems */
 #define SIMM_PARITY         0x8
 /* for color systems (page mode bit is ignored) */
 #define SIMM_8MB            0x1 /* Pair of 4 Mbyte SIMMs */
 #define SIMM_2MB            0x2 /* Pair of 1 Mbyte SIMMs */
 #define SIMM_EMPTY2         0x3 /* reserved */
+/* for turbo color systems */
+#define SIMM_32MB_TC        0x1
+#define SIMM_8MB_TC         0x2
+#define SIMM_2MB_TC         0x3
 
 
 /* RTC RAM */
@@ -179,11 +183,16 @@ void nvram_init(void) {
         default: break;
     }
     
+    /* Copy ethernet address from ROM to RTC RAM */
+    int i;
+    for (i = 0; i<6; i++) {
+        rtc_ram[i+4]=NEXTRom[i+8];
+    }
+    
     /* Build SIMM bytes (for now only valid on monochrome systems) */
     Uint16 SIMMconfig = 0x0000;
     Uint8 simm[4];
     Uint8 parity = 0xF0;
-    int i;
     for (i = 0; i<4; i++) {
         switch (MemBank_Size[i]>>20) {
             case 0: simm[i] = SIMM_EMPTY; parity &= ~(0x10<<i); break;

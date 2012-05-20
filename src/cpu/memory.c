@@ -767,25 +767,47 @@ static void init_mem_banks (void)
 const char* memory_init(uae_u32 nNewNEXTMemSize)
 {
 //    NEXTmem_size = (nNewNEXTMemSize + 65535) & 0xFFFF0000;
+    write_log("Memory init: Memory size: %iMB\n", nNewNEXTMemSize);
     
-//    write_log("memory_init: NEXTmem_size=$%x (not used yet)\n",
-//              nNewNEXTMemSize);
+    memset(MemBank_Size, 0, sizeof(MemBank_Size));
+    switch (nNewNEXTMemSize) {
+        case 16:
+            MemBank_Size[2] = MemBank_Size[3] = 4*1024*1024;
+        case 8:
+            MemBank_Size[0] = MemBank_Size[1] = 4*1024*1024;
+            break;
+        case 64:
+            MemBank_Size[2] = MemBank_Size[3] = 16*1024*1024;
+        case 32:
+            MemBank_Size[0] = MemBank_Size[1] = 16*1024*1024;
+            break;
+            
+        default: break;
+    }
     
 	/* fill every 65536 bank with dummy */
     init_mem_banks(); 
     
     
 //    map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
+#define MEM_HARDCODE 0
+#if MEM_HARDCODE
+    /* Memory banks can be hardcoded here */
     MemBank_Size[0] = 0x400000; // 4 MB
     MemBank_Size[1] = 0x1000000; // 16 MB
     MemBank_Size[2] = 0x400000; // 4 MB
     MemBank_Size[3] = 0; // empty
+#endif
     
     map_banks(&NEXTmem_bank, 0x04000000>>16, MemBank_Size[0] >> 16);
     map_banks(&NEXTmem_bank, 0x05000000>>16, MemBank_Size[1] >> 16);
     map_banks(&NEXTmem_bank, 0x06000000>>16, MemBank_Size[2] >> 16);
     map_banks(&NEXTmem_bank, 0x07000000>>16, MemBank_Size[3] >> 16);
         
+    int i;
+    for (i=0; i<4; i++) {
+        write_log("Bank%i at $%08x: %iMB\n", i, (4+i)<<24, MemBank_Size[i]/(1024*1024));
+    }
     // also map here... need to check address for function (weird?)
     /*
     map_banks(&NEXTmem_bank, 0x10000000>>16, NEXT_RAM_SIZE >> 16);
