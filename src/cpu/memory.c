@@ -224,7 +224,7 @@ static uae_u32 BusErrMem_bget(uaecptr addr)
 }
 /*------------------- this part is experimental ---------------------*/
 static void NEXTmem_lput(uaecptr addr, uae_u32 l);
-uae_u32 bankmask = 0x07000000;
+uae_u32 bankmask = 0x07000000; // bankmask is 0x0E000000 on systems that support 32 MB banks
 
 static void BusErrMem_lput(uaecptr addr, uae_u32 l)
 {
@@ -375,7 +375,7 @@ static uae_u8 *NEXTmem2_xlate(uaecptr addr)
 }
 
 
-/* **** NEXT VRAM memory **** */
+/* **** NEXT VRAM memory for monochrome systems **** */
 
 static uae_u32 NEXTvideo_lget(uaecptr addr)
 {
@@ -424,6 +424,58 @@ static uae_u8 *NEXTvideo_xlate(uaecptr addr)
     addr &= NEXTvideo_mask;
     return (uae_u8*)NEXTVideo + addr;
 }
+
+
+/* **** NEXT VRAM memory for color systems **** */
+
+static uae_u32 NEXTcolorvideo_lget(uaecptr addr)
+{
+    addr &= NEXTcolorvideo_mask;
+    return do_get_mem_long(NEXTColorVideo + addr);
+}
+
+static uae_u32 NEXTcolorvideo_wget(uaecptr addr)
+{
+    addr &= NEXTcolorvideo_mask;
+    return do_get_mem_word(NEXTColorVideo + addr);
+}
+
+static uae_u32 NEXTcolorvideo_bget(uaecptr addr)
+{
+    addr &= NEXTcolorvideo_mask;
+    return NEXTColorVideo[addr];
+}
+
+static void NEXTcolorvideo_lput(uaecptr addr, uae_u32 l)
+{
+    addr &= NEXTcolorvideo_mask;
+    do_put_mem_long(NEXTColorVideo + addr, l);
+}
+
+static void NEXTcolorvideo_wput(uaecptr addr, uae_u32 w)
+{
+    addr &= NEXTcolorvideo_mask;
+    do_put_mem_word(NEXTColorVideo + addr, w);
+}
+
+static void NEXTcolorvideo_bput(uaecptr addr, uae_u32 b)
+{
+    addr &= NEXTcolorvideo_mask;
+    NEXTColorVideo[addr] = b;
+}
+
+static int NEXTcolorvideo_check(uaecptr addr, uae_u32 size)
+{
+    addr &= NEXTcolorvideo_mask;
+    return (addr + size) <= NEXTcolorvideo_size;
+}
+
+static uae_u8 *NEXTcolorvideo_xlate(uaecptr addr)
+{
+    addr &= NEXTcolorvideo_mask;
+    return (uae_u8*)NEXTColorVideo + addr;
+}
+
 
 /* **** NEXT BMAP memory **** */
 
@@ -719,6 +771,14 @@ static addrbank Video_bank =
     NEXTvideo_lget, NEXTvideo_wget, ABFLAG_RAM
 };
 
+static addrbank ColorVideo_bank =
+{
+    NEXTcolorvideo_lget, NEXTcolorvideo_wget, NEXTcolorvideo_bget,
+    NEXTcolorvideo_lput, NEXTcolorvideo_wput, NEXTcolorvideo_bput,
+    NEXTcolorvideo_xlate, NEXTcolorvideo_check, NULL, (char*)"Color Video memory",
+    NEXTcolorvideo_lget, NEXTcolorvideo_wget, ABFLAG_RAM
+};
+
 static addrbank bmap_bank =
 {
     NEXTbmap_lget, NEXTbmap_wget, NEXTbmap_bget,
@@ -806,7 +866,7 @@ const char* memory_init(uae_u32 nNewNEXTMemSize)
         
     int i;
     for (i=0; i<4; i++) {
-        write_log("Bank%i at $%08x: %iMB\n", i, (4+i)<<24, MemBank_Size[i]/(1024*1024));
+        write_log("Mapping Bank%i at $%08x: %iMB\n", i, (4+i)<<24, MemBank_Size[i]/(1024*1024));
     }
     // also map here... need to check address for function (weird?)
     /*
@@ -818,12 +878,20 @@ const char* memory_init(uae_u32 nNewNEXTMemSize)
 
     // map_banks(&NEXTmem_bank2, NEXT_RAM_START2>>16, NEXT_RAM_SIZE2 >> 16);
     
-    
-    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
-    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
-    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
-    map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
-    
+    if (ConfigureParams.System.bColor) {
+        map_banks(&ColorVideo_bank, NEXT_COLORSCREEN>>16, NEXT_COLORSCREEN_SIZE >> 16);
+        map_banks(&ColorVideo_bank, NEXT_COLORSCREEN>>16, NEXT_COLORSCREEN_SIZE >> 16);
+        map_banks(&ColorVideo_bank, NEXT_COLORSCREEN>>16, NEXT_COLORSCREEN_SIZE >> 16);
+        map_banks(&ColorVideo_bank, NEXT_COLORSCREEN>>16, NEXT_COLORSCREEN_SIZE >> 16);
+        write_log("Mapping Video Memory at $%08x: %ikB\n", NEXT_COLORSCREEN, NEXT_COLORSCREEN_SIZE/1024);
+    } else {
+        map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
+        map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
+        map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
+        map_banks(&Video_bank, NEXT_SCREEN>>16, NEXT_SCREEN_SIZE >> 16);
+        write_log("Mapping Video Memory at $%08x: %ikB\n", NEXT_SCREEN, NEXT_SCREEN_SIZE/1024);
+    }
+        
     map_banks(&ROMmem_bank, NEXT_EPROM_START >> 16, NEXT_EPROM_SIZE>>16);
     map_banks(&ROMmem_bank, NEXT_EPROM2_START >> 16, NEXT_EPROM_SIZE>>16);
     
