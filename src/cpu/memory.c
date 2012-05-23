@@ -60,22 +60,26 @@ const char Memory_fileid[] = "Hatari memory.c : " __DATE__ " " __TIME__;
 #define NEXT_EPROM_SIZE		0x00020000
 
 // ram is flat?
+/* Main memory */
+/* Main memory constants */
 #define NEXT_RAM_START   	0x04000000
 #define NEXT_RAM_SPACE		0x40000000
-// #define NEXT_RAM_SIZE		0x007FE000
-#define NEXT_RAM_SIZE		0x04000000
+#define N_BANKS             4
 
+/* Main memory variables (machine dependent) */
+uae_u32 NEXT_RAM_SIZE; //		0x04000000
 uae_u32	NEXTmem_size; // unused
-#define NEXTmem_mask		0x03FFFFFF
+uae_u32 NEXTmem_mask; //		0x03FFFFFF
+uae_u8 bankshift;
 
-/* Video RAM for a monochrome systems */
+/* Video memory for monochrome systems */
 #define NEXT_SCREEN			0x0B000000
 #define NEXT_SCREEN_SIZE	0x00040000
 #define NEXTvideo_size NEXT_SCREEN_SIZE
 #define NEXTvideo_mask		0x0003FFFF
 uae_u8  NEXTVideo[256*1024];
 
-/* Video RAM for color systems */
+/* Video memory for color systems */
 #define NEXT_COLORSCREEN    0x2C000000
 #define NEXT_COLORSCREEN_SIZE 0x00200000
 #define NEXTcolorvideo_size NEXT_COLORSCREEN_SIZE
@@ -202,7 +206,7 @@ static uae_u32 BusErrMem_lget(uaecptr addr)
 	write_log ("Bus error lget at %08lx\n", (long)addr);
 
     M68000_BusError(addr, 1);
-    return addr; // experimental
+    return 0;
 }
 
 static uae_u32 BusErrMem_wget(uaecptr addr)
@@ -222,23 +226,14 @@ static uae_u32 BusErrMem_bget(uaecptr addr)
     M68000_BusError(addr, 1);
     return 0;
 }
-/*------------------- this part is experimental ---------------------*/
-static void NEXTmem_lput(uaecptr addr, uae_u32 l);
-uae_u32 bankmask = 0x07000000; // bankmask is 0x0E000000 on systems that support 32 MB banks
 
 static void BusErrMem_lput(uaecptr addr, uae_u32 l)
 {
-    uae_u8 bank = (addr>>24)-4;
-    
-    if (MemBank_Size[bank])
-        NEXTmem_lput((addr%MemBank_Size[bank])|(addr&bankmask), l);
-
     if (illegal_mem)
 	write_log ("Bus error lput at %08lx\n", (long)addr);
 
     M68000_BusError(addr, 0);
 }
-/*-------------------- end of experimental code ----------------------*/
 
 static void BusErrMem_wput(uaecptr addr, uae_u32 w)
 {
@@ -323,6 +318,88 @@ static uae_u8 *NEXTmem_xlate(uaecptr addr)
     addr &= NEXTmem_mask;
     return NEXTRam + addr;
 }
+
+
+/* **** NEXT RAM empty areas **** NEED TO CHECK: really do bus errors ??? **** */
+
+static uae_u32 NEXTempty_lget(uaecptr addr)
+{
+    if (illegal_mem)
+        write_log ("Empty mem area lget at %08lx\n", (long)addr);
+    
+    M68000_BusError(addr, 1);
+    return addr;
+}
+
+static uae_u32 NEXTempty_wget(uaecptr addr)
+{
+    if (illegal_mem)
+        write_log ("Empty mem area wget at %08lx\n", (long)addr);
+    
+    M68000_BusError(addr, 1);
+    return 0;
+}
+
+static uae_u32 NEXTempty_bget(uaecptr addr)
+{
+    if (illegal_mem)
+        write_log ("Empty mem area bget at %08lx\n", (long)addr);
+    
+    M68000_BusError(addr, 1);
+    return 0;
+}
+/*------------------- this part is experimental ---------------------*/
+
+static void NEXTempty_lput(uaecptr addr, uae_u32 l)
+{
+    if (illegal_mem)
+        write_log ("Empty mem area lput at %08lx\n", (long)addr);
+    
+    uae_u8 bank = ((addr-NEXT_RAM_START)>>bankshift)&0x3;
+    
+    if (MemBank_Size[bank]) {
+        addr = (((addr%MemBank_Size[bank])+(bank<<bankshift))+NEXT_RAM_START)&NEXTmem_mask;
+        do_put_mem_long(NEXTRam + addr, l);
+    }
+
+    M68000_BusError(addr, 0);
+}
+/*-------------------- end of experimental code ----------------------*/
+
+static void NEXTempty_wput(uaecptr addr, uae_u32 w)
+{
+    if (illegal_mem)
+        write_log ("Empty mem area wput at %08lx\n", (long)addr);
+    
+    M68000_BusError(addr, 0);
+}
+
+static void NEXTempty_bput(uaecptr addr, uae_u32 b)
+{
+    if (illegal_mem)
+        write_log ("Empty mem area bput at %08lx\n", (long)addr);
+    
+    M68000_BusError(addr, 0);
+}
+
+static int NEXTempty_check(uaecptr addr, uae_u32 size)
+{
+    if (illegal_mem)
+        write_log ("Empty mem area check at %08lx\n", (long)addr);
+    
+    return 0;
+}
+
+static uae_u8 *NEXTempty_xlate (uaecptr addr)
+{
+    write_log("Your NeXT program just did something terribly stupid:"
+              " BusErrMem_xlate($%x)\n", addr);
+    
+    abort();
+    M68000_BusError(addr,0);
+    return NEXTmem_xlate(addr);  /* So we don't crash. */
+}
+
 
 /* bank2 */
 
@@ -747,6 +824,14 @@ static addrbank NEXTmem_bank =
 
 };
 
+static addrbank NEXTempty_bank =
+{
+    NEXTempty_lget, NEXTempty_wget, NEXTempty_bget,
+    NEXTempty_lput, NEXTempty_wput, NEXTempty_bput,
+    NEXTempty_xlate, NEXTempty_check, NULL, (char*)"Empty memory",
+    NEXTempty_lget, NEXTempty_wget, ABFLAG_RAM
+};
+
 static addrbank NEXTmem_bank2 =
 {
     NEXTmem2_lget, NEXTmem2_wget, NEXTmem2_bget,
@@ -826,9 +911,29 @@ static void init_mem_banks (void)
  */
 const char* memory_init(uae_u32 nNewNEXTMemSize)
 {
+    int i;
+    uae_u32 bankstart;
+    uae_u32 bankmaxsize;
+    
+    /* Set machine dependent variables */
+    if (ConfigureParams.System.bTurbo) {
+        NEXT_RAM_SIZE = 0x08000000;
+        NEXTmem_mask = 0x07FFFFFF;
+        bankshift = 25;
+    } else if (ConfigureParams.System.bColor) {
+        NEXT_RAM_SIZE = 0x02000000;
+        NEXTmem_mask = 0x01FFFFFF;
+        bankshift = 23;
+    } else {
+        NEXT_RAM_SIZE = 0x04000000;
+        NEXTmem_mask = 0x03FFFFFF;
+        bankshift = 24;
+    }
+
 //    NEXTmem_size = (nNewNEXTMemSize + 65535) & 0xFFFF0000;
     write_log("Memory init: Memory size: %iMB\n", nNewNEXTMemSize);
     
+    /* Maybe move this function to a different place (configuration.c?) */
     memset(MemBank_Size, 0, sizeof(MemBank_Size));
     switch (nNewNEXTMemSize) {
         case 16:
@@ -844,12 +949,16 @@ const char* memory_init(uae_u32 nNewNEXTMemSize)
             
         default: break;
     }
+    if (ConfigureParams.System.bColor) { // temporary
+        for (i=0; i<4; i++)
+            MemBank_Size[i] >>= 1;
+    }
+    
     
 	/* fill every 65536 bank with dummy */
     init_mem_banks(); 
     
     
-//    map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
 #define MEM_HARDCODE 0
 #if MEM_HARDCODE
     /* Memory banks can be hardcoded here */
@@ -858,16 +967,23 @@ const char* memory_init(uae_u32 nNewNEXTMemSize)
     MemBank_Size[2] = 0x400000; // 4 MB
     MemBank_Size[3] = 0; // empty
 #endif
-    
-    map_banks(&NEXTmem_bank, 0x04000000>>16, MemBank_Size[0] >> 16);
-    map_banks(&NEXTmem_bank, 0x05000000>>16, MemBank_Size[1] >> 16);
-    map_banks(&NEXTmem_bank, 0x06000000>>16, MemBank_Size[2] >> 16);
-    map_banks(&NEXTmem_bank, 0x07000000>>16, MemBank_Size[3] >> 16);
-        
-    int i;
-    for (i=0; i<4; i++) {
-        write_log("Mapping Bank%i at $%08x: %iMB\n", i, (4+i)<<24, MemBank_Size[i]/(1024*1024));
+
+    /* Map memory banks and fill empty area of memory bank with special banks */
+    for (i = 0; i<N_BANKS; i++) {
+        bankstart = NEXT_RAM_START+(i<<bankshift);
+        bankmaxsize = NEXT_RAM_SIZE/N_BANKS;
+        map_banks(&NEXTmem_bank, bankstart>>16, MemBank_Size[i] >> 16);
+        map_banks(&NEXTempty_bank, (bankstart+MemBank_Size[i])>>16, (bankmaxsize-MemBank_Size[i]) >> 16);
+        write_log("Mapping Bank%i at $%08x: %iMB\n", i, bankstart, MemBank_Size[i]/(1024*1024));
     }
+    
+//    map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
+
+//    map_banks(&NEXTmem_bank, 0x04000000>>16, MemBank_Size[0] >> 16);
+//    map_banks(&NEXTmem_bank, 0x04800000>>16, MemBank_Size[1] >> 16);
+//    map_banks(&NEXTmem_bank, 0x05000000>>16, MemBank_Size[2] >> 16);
+//    map_banks(&NEXTmem_bank, 0x05800000>>16, MemBank_Size[3] >> 16);
+        
     // also map here... need to check address for function (weird?)
     /*
     map_banks(&NEXTmem_bank, 0x10000000>>16, NEXT_RAM_SIZE >> 16);
