@@ -102,14 +102,14 @@ static Uint32 intMask=0x00000000;
 #define SIMM_PAGE_MODE      0x4
 /* additional for all 68040 systems */
 #define SIMM_PARITY         0x8
-/* for color systems (page mode bit is ignored) */
-#define SIMM_8MB            0x1 /* Pair of 4 Mbyte SIMMs */
-#define SIMM_2MB            0x2 /* Pair of 1 Mbyte SIMMs */
+/* for color systems */
+#define SIMM_8MB_C          0x1 /* Pair of 4 Mbyte SIMMs */
+#define SIMM_2MB_C          0x2 /* Pair of 1 Mbyte SIMMs */
 #define SIMM_EMPTY2         0x3 /* reserved */
-/* for turbo color systems */
-#define SIMM_32MB_TC        0x1
-#define SIMM_8MB_TC         0x2
-#define SIMM_2MB_TC         0x3
+/* for turbo systems */
+#define SIMM_32MB_T         0x1
+#define SIMM_8MB_T          0x2
+#define SIMM_2MB_T          0x3
 
 
 /* RTC RAM */
@@ -193,15 +193,39 @@ void nvram_init(void) {
     Uint16 SIMMconfig = 0x0000;
     Uint8 simm[4];
     Uint8 parity = 0xF0;
-    for (i = 0; i<4; i++) {
-        switch (MemBank_Size[i]>>20) {
-            case 0: simm[i] = SIMM_EMPTY; parity &= ~(0x10<<i); break;
-            case 1: simm[i] = SIMM_1MB | SIMM_PAGE_MODE; break;
-            case 4: simm[i] = SIMM_4MB | SIMM_PAGE_MODE; break;
-            case 16: simm[i] = SIMM_16MB | SIMM_PAGE_MODE; break;
-            default: simm[i] = SIMM_EMPTY | SIMM_PAGE_MODE; break;
+    if (ConfigureParams.System.bTurbo) {
+        for (i = 0; i<4; i++) {
+            switch (MemBank_Size[i]>>20) {
+                case 0: simm[i] = SIMM_EMPTY; parity &= ~(0x10<<i); break;
+                case 2: simm[i] = SIMM_2MB_T | SIMM_PAGE_MODE; break;
+                case 8: simm[i] = SIMM_8MB_T | SIMM_PAGE_MODE; break;
+                case 32: simm[i] = SIMM_32MB_T | SIMM_PAGE_MODE; break;
+                default: simm[i] = SIMM_EMPTY | SIMM_PAGE_MODE; break;
+            }
+        }
+
+    } else if (ConfigureParams.System.bColor) {
+        for (i = 0; i<4; i++) {
+            switch (MemBank_Size[i]>>20) {
+                case 0: simm[i] = SIMM_EMPTY; parity &= ~(0x10<<i); break;
+                case 2: simm[i] = SIMM_2MB_C; break;
+                case 8: simm[i] = SIMM_8MB_C; break;
+                default: simm[i] = SIMM_EMPTY; break;
+            }
+        }
+
+    } else {
+        for (i = 0; i<4; i++) {
+            switch (MemBank_Size[i]>>20) {
+                case 0: simm[i] = SIMM_EMPTY; parity &= ~(0x10<<i); break;
+                case 1: simm[i] = SIMM_1MB | SIMM_PAGE_MODE; break;
+                case 4: simm[i] = SIMM_4MB | SIMM_PAGE_MODE; break;
+                case 16: simm[i] = SIMM_16MB | SIMM_PAGE_MODE; break;
+                default: simm[i] = SIMM_EMPTY | SIMM_PAGE_MODE; break;
+            }
         }
     }
+    
     SIMMconfig = ((parity&0xF0)<<8) | (simm[3]<<9) | (simm[2]<<6) | (simm[1]<<3) | simm[0];
     rtc_ram[10] = (SIMMconfig>>8)&0xFF;
     rtc_ram[11] = SIMMconfig&0xFF;
@@ -384,25 +408,39 @@ void SID_Read(void) {
 }
 
 /* System Control Register 1
-
- bits 0:1 cpu speed; 0 = 40 MHz, 1 = 20 MHz, 2 = 25MHz, 3 = 33 MHz (meaningless on color Slab)
- bits 2:3 reserved: 0
- bits 4:5 mem speed; 0 = 120ns, 1 = 100ns, 2 = 80ns, 3 = 60ns (meaningless on color Slab)
- bits 6:7 video mem speed; 0 = 120ns, 1 = 100ns, 2 = 80ns, 3 = 60ns (meaningless on color Slab)
- bits 8:11 board revision; for 030 Cube: 0 = DCD input inverted, 1 = DCD polarity fixed, 2 = must disable DSP mem before reset; for all other systems: 0
- bits 12:15 cpu type; 0 = Cube 030, 1 = mono Slab, 2 = Cube 040, 3 = color Slab
- bits 16:23 dma rev: 1
- bits 24:27 reserved: 0
- bits 28:31 slot ID: 0
- 
- 
- for Slab 040:
- 0000 0000 0000 0001 0001 0000 0101 0010
- 00 01 10 52
- 
- for Cube 030:
- 0000 0000 0000 0001 0000 0001 0101 0010
- 00 01 01 52
+ *
+ * These values are valid for all non-Turbo systems:
+ * -------- -------- -------- ------xx  bits 0:1   --> cpu speed
+ * -------- -------- -------- ----xx--  bits 2:3   --> reserved
+ * -------- -------- -------- --xx----  bits 4:5   --> main memory speed
+ * -------- -------- -------- xx------  bits 6:7   --> video memory speed
+ * -------- -------- ----xxxx --------  bits 8:11  --> board revision
+ * -------- -------- xxxx---- --------  bits 12:15 --> cpu type
+ * -------- xxxxxxxx -------- --------  bits 16:23 --> dma revision
+ * ----xxxx -------- -------- --------  bits 24:27 --> reserved
+ * xxxx---- -------- -------- --------  bits 28:31 --> slot id
+ *
+ * cpu speed:       0 = 40MHz, 1 = 20MHz, 2 = 25MHz, 3 = 33MHz
+ * memory speed:    0 = 120ns, 1 = 100ns, 2 = 80ns, 3 = 60ns
+ * board revision:  for 030 Cube:
+ *                  0 = DCD input inverted
+ *                  1 = DCD polarity fixed
+ *                  2 = must disable DSP mem before reset
+ * cpu type:        0 = NeXT Computer (68030)
+ *                  1 = NeXTstation monochrome
+ *                  2 = NeXTcube
+ *                  3 = NeXTstation color
+ * dma revision:    1 on all systems ?
+ * slot id:         we use 0 on all systems
+ *
+ *
+ * for Slab 040:
+ * 0000 0000 0000 0001 0001 0000 0101 0010
+ * 00 01 10 52
+ *
+ * for Cube 030:
+ * 0000 0000 0000 0001 0000 0001 0101 0010
+ * 00 01 01 52
  */
 
 
