@@ -34,7 +34,7 @@ static const char* Reset_ST(bool bCold)
 	if (bCold)
 	{
 		const char* error_str;
-		error_str=memory_init(ConfigureParams.Memory.nMemorySize);
+		error_str=memory_init(ConfigureParams.Memory.nMemoryBankSize);
 		if (error_str!=NULL) {
 			return error_str;
 		}

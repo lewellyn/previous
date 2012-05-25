@@ -909,7 +909,7 @@ static void init_mem_banks (void)
 /*
  * Initialize the memory banks
  */
-const char* memory_init(uae_u32 nNewNEXTMemSize)
+const char* memory_init(int *nNewNEXTMemSize)
 {
     int i;
     uae_u32 bankstart;
@@ -930,30 +930,12 @@ const char* memory_init(uae_u32 nNewNEXTMemSize)
         bankshift = 24;
     }
 
-//    NEXTmem_size = (nNewNEXTMemSize + 65535) & 0xFFFF0000;
-    write_log("Memory init: Memory size: %iMB\n", nNewNEXTMemSize);
+    write_log("Memory init: Memory size: %iMB\n", Configuration_CheckMemory(nNewNEXTMemSize));
     
-    /* Maybe move this function to a different place (configuration.c?) */
-    memset(MemBank_Size, 0, sizeof(MemBank_Size));
-    switch (nNewNEXTMemSize) {
-        case 16:
-            MemBank_Size[2] = MemBank_Size[3] = 4*1024*1024;
-        case 8:
-            MemBank_Size[0] = MemBank_Size[1] = 4*1024*1024;
-            break;
-        case 64:
-            MemBank_Size[2] = MemBank_Size[3] = 16*1024*1024;
-        case 32:
-            MemBank_Size[0] = MemBank_Size[1] = 16*1024*1024;
-            break;
-            
-        default: break;
+    /* Convert values from MB to byte */
+    for (i=0; i<N_BANKS; i++) {
+        MemBank_Size[i] = nNewNEXTMemSize[i]<<20;
     }
-    if (ConfigureParams.System.bColor) { // temporary
-        for (i=0; i<4; i++)
-            MemBank_Size[i] >>= 1;
-    }
-    
     
 	/* fill every 65536 bank with dummy */
     init_mem_banks(); 
