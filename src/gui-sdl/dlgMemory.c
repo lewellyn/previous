@@ -81,7 +81,7 @@ SGOBJ enable_64mb_option = { SGRADIOBUT, 0, 0, 3,9, 7,1, "64 MB" };
 /* Default configuration constants */
 int defsize[9][4] = {
     { 4, 4, 0, 0},  /*  8 MB for monochrome non-turbo */
-    { 2, 2, 2, 2},  /*  8 MB for turbo and non-turbo color */
+    { 8, 0, 0, 0},  /*  8 MB for turbo and non-turbo color */
     { 4, 4, 4, 4},  /* 16 MB for monochrome non-turbo */
     { 8, 8, 0, 0},  /* 16 MB for turbo and non-turbo color */
     {16,16, 0, 0},  /* 32 MB for monochrome non-turbo */

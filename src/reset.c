@@ -41,6 +41,7 @@ static const char* Reset_ST(bool bCold)
 	}
 	CycInt_Reset();               /* Reset interrupts */
 	Video_Reset();                /* Reset video */
+    SCR_Reset();                  /* Reset System Control Registers */
     nvram_init();                 /* Reset NVRAM */
     SCSI_Reset();                 /* Reset SCSI disks */
     SCC_Reset();                  /* Reset SCC */

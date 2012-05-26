@@ -41,10 +41,15 @@ Uint8 read_rtc_ram(Uint8 position);
 
 void SID_Read(void);
 
+void SCR_Reset(void);
 void SCR1_Read0(void);
 void SCR1_Read1(void);
 void SCR1_Read2(void);
 void SCR1_Read3(void);
+
+void TurboSCR1_Reset(void);
+void TurboSCR1_Read0(void);
+void TurboSCR1_Read2(void);
 
 void SCR2_Read0(void);
 void SCR2_Write0(void);

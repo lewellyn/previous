@@ -589,6 +589,12 @@ void Configuration_Apply(bool bReset)
  */
 int Configuration_CheckMemory(int *banksize) {
     int i;
+    
+    /* To boot we need at least 4 MB in bank0
+    if (banksize[0]<4) {
+        banksize[0]=4;
+    } */
+    
     if (ConfigureParams.System.bTurbo) {
         for (i=0; i<4; i++) {
             if (banksize[i]<=0)
