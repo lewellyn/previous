@@ -82,7 +82,7 @@ SGOBJ enable_64mb_option = { SGRADIOBUT, 0, 0, 3,9, 7,1, "64 MB" };
 int defsize[9][4] = {
     { 4, 4, 0, 0},  /*  8 MB for monochrome non-turbo */
     { 8, 0, 0, 0},  /*  8 MB for turbo and non-turbo color */
-    { 4, 4, 4, 4},  /* 16 MB for monochrome non-turbo */
+    {16, 0, 0, 0},  /* 16 MB for monochrome non-turbo */
     { 8, 8, 0, 0},  /* 16 MB for turbo and non-turbo color */
     {16,16, 0, 0},  /* 32 MB for monochrome non-turbo */
     { 8, 8, 8, 8},  /* 32 MB for turbo and non-turbo color */
@@ -113,7 +113,14 @@ bool Dialog_MemDlg(void)
         memorydlg[DLGMEM_64MB] = disable_64mb_option;
         memorydlg[DLGMEM_128MB] = disable_128mb_option;
     } else {
-        memorydlg[DLGMEM_64MB] = enable_64mb_option;
+#define EXTENDED_MEMCHECK 0
+#if EXTENDED_MEMCHECK
+        if (ConfigureParams.System.nMachineType == NEXT_STATION)
+            memorydlg[DLGMEM_64MB] = disable_64mb_option;
+        else
+#endif
+            memorydlg[DLGMEM_64MB] = enable_64mb_option;
+
         memorydlg[DLGMEM_128MB] = disable_128mb_option;
     }
 

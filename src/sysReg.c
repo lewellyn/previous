@@ -109,9 +109,9 @@ static Uint32 intMask=0x00000000;
 #define SIMM_2MB_C          0x2 /* Pair of 1 Mbyte SIMMs */
 #define SIMM_EMPTY2         0x3 /* reserved */
 /* for turbo systems */
-#define SIMM_32MB_T         0x1 /* Pair of 32 MByte SIMMs, one side each */
-#define SIMM_8MB_T          0x2 /* Pair of 8 MByte SIMMs, one side each */
-#define SIMM_2MB_T          0x3 /* Pair of 2 MByte SIMMs, one side each */
+#define SIMM_32MB_T         0x1 /* Pair of 16 or 32 MByte SIMMs (front or back) */
+#define SIMM_8MB_T          0x2 /* Pair of 4 or 8 MByte SIMMs (front or back) */
+#define SIMM_2MB_T          0x3 /* Pair of 1 or 2 MByte SIMMs (front or back) */
 
 
 /* RTC RAM */

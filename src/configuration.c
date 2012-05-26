@@ -590,10 +590,21 @@ void Configuration_Apply(bool bReset)
 int Configuration_CheckMemory(int *banksize) {
     int i;
     
-    /* To boot we need at least 4 MB in bank0
+#define EXTENDED_MEMCHECK 0
+#if EXTENDED_MEMCHECK
+    /* To boot we need at least 4 MB in bank0 */
     if (banksize[0]<4) {
         banksize[0]=4;
-    } */
+    }
+    
+    /* On monochrome non-Turbo NeXTstations only the first
+     * 2 banks are accessible via memory sockets */
+    if (ConfigureParams.System.nMachineType == NEXT_STATION &&
+        !ConfigureParams.System.bTurbo && !ConfigureParams.System.bColor) {
+        banksize[2]=0;
+        banksize[3]=0;
+    }
+#endif
     
     if (ConfigureParams.System.bTurbo) {
         for (i=0; i<4; i++) {
