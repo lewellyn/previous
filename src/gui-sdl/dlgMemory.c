@@ -49,7 +49,7 @@ static SGOBJ memorydlg[] =
 	{ SGRADIOBUT, 0, 0, 3,6, 6,1, "8 MB" },
 	{ SGRADIOBUT, 0, 0, 3,7, 7,1, "16 MB" },
 	{ SGRADIOBUT, 0, 0, 3,8, 7,1, "32 MB" },
-    { SGRADIOBUT, 0, 0, 3,11, 8,1, custom_memsize },
+    { SGRADIOBUT, 0, 0, 3,11, 11,1, custom_memsize },
 	{ SGRADIOBUT, 0, 0, 3,9, 7,1, "64 MB" },
 	{ SGRADIOBUT, 0, 0, 3,10, 8,1, "128 MB" },
     
@@ -90,9 +90,7 @@ int defsize[9][4] = {
     {32,32, 0, 0},  /* 64 MB for turbo */
     {32,32,32,32}   /* 128 MB for turbo */
 };
-
-int memsum, memsize;
-
+int defsizecount=0; /* Compare defsizes up to this value */
 
 /**
  * Show and process the memory dialog.
@@ -104,24 +102,21 @@ bool Dialog_MemDlg(void)
 
 	SDLGui_CenterDlg(memorydlg);
     
-    /* Remove 64 and 128MB option if system is non-Turbo Color Slab,
+    /* Remove 64 and 128MB option if system is non-Turbo Slab,
      * remove 128MB option if system is not Turbo */
     if (ConfigureParams.System.bTurbo) {
         memorydlg[DLGMEM_64MB] = enable_64mb_option;
         memorydlg[DLGMEM_128MB] = enable_128mb_option;
-    } else if (ConfigureParams.System.bColor) {
+        defsizecount = 9;
+    } else if (ConfigureParams.System.bColor ||
+               ConfigureParams.System.nMachineType == NEXT_STATION) {
         memorydlg[DLGMEM_64MB] = disable_64mb_option;
         memorydlg[DLGMEM_128MB] = disable_128mb_option;
+        defsizecount = 6;
     } else {
-#define EXTENDED_MEMCHECK 0
-#if EXTENDED_MEMCHECK
-        if (ConfigureParams.System.nMachineType == NEXT_STATION)
-            memorydlg[DLGMEM_64MB] = disable_64mb_option;
-        else
-#endif
-            memorydlg[DLGMEM_64MB] = enable_64mb_option;
-
+        memorydlg[DLGMEM_64MB] = enable_64mb_option;
         memorydlg[DLGMEM_128MB] = disable_128mb_option;
+        defsizecount = 8;
     }
 
     /* Draw dialog from actual values */
@@ -142,6 +137,7 @@ bool Dialog_MemDlg(void)
                     memcpy(ConfigureParams.Memory.nMemoryBankSize, defsize[0],
                            sizeof(ConfigureParams.Memory.nMemoryBankSize));
                 }
+                sprintf(custom_memsize, "Customize");
                 break;
             case DLGMEM_16MB:
                 if (ConfigureParams.System.bColor || ConfigureParams.System.bTurbo) {
@@ -151,6 +147,7 @@ bool Dialog_MemDlg(void)
                     memcpy(ConfigureParams.Memory.nMemoryBankSize, defsize[2],
                            sizeof(ConfigureParams.Memory.nMemoryBankSize));
                 }
+                sprintf(custom_memsize, "Customize");
                 break;
             case DLGMEM_32MB:
                 if (ConfigureParams.System.bColor || ConfigureParams.System.bTurbo) {
@@ -160,6 +157,7 @@ bool Dialog_MemDlg(void)
                     memcpy(ConfigureParams.Memory.nMemoryBankSize, defsize[4],
                            sizeof(ConfigureParams.Memory.nMemoryBankSize));
                 }
+                sprintf(custom_memsize, "Customize");
                 break;
             case DLGMEM_64MB:
                 if (ConfigureParams.System.bTurbo) {
@@ -169,10 +167,12 @@ bool Dialog_MemDlg(void)
                     memcpy(ConfigureParams.Memory.nMemoryBankSize, defsize[6],
                            sizeof(ConfigureParams.Memory.nMemoryBankSize));
                 }
+                sprintf(custom_memsize, "Customize");
                 break;
             case DLGMEM_128MB:
                 memcpy(ConfigureParams.Memory.nMemoryBankSize, defsize[8],
                        sizeof(ConfigureParams.Memory.nMemoryBankSize));
+                sprintf(custom_memsize, "Customize");
                 break;
             case DLGMEM_CUSTOM:
                 Dialog_MemAdvancedDlg(ConfigureParams.Memory.nMemoryBankSize);
@@ -219,6 +219,7 @@ bool Dialog_MemDlg(void)
 
 void Dialog_MemDlgDraw(void) {
     int i;
+    int memsum, memsize;
     
     sprintf(custom_memsize, "Customize");
     
@@ -235,7 +236,7 @@ void Dialog_MemDlgDraw(void) {
     /* Check memory configuration and find out if it is one of our default configurations */
     memsum = Configuration_CheckMemory(ConfigureParams.Memory.nMemoryBankSize);
     
-    for (i=0; i<(int)sizeof(defsize); i++) {
+    for (i=0; i<defsizecount; i++) {
         if (memcmp(ConfigureParams.Memory.nMemoryBankSize, defsize[i],
                    sizeof(ConfigureParams.Memory.nMemoryBankSize))) {
             memsize = 0;
@@ -244,7 +245,7 @@ void Dialog_MemDlgDraw(void) {
             break;
         }
     }
-    
+
     switch (memsize)
     {
         case 8:
@@ -257,22 +258,10 @@ void Dialog_MemDlgDraw(void) {
             memorydlg[DLGMEM_32MB].state |= SG_SELECTED;
             break;
         case 64:
-            if (ConfigureParams.System.bColor && !ConfigureParams.System.bTurbo) {
-                memorydlg[DLGMEM_32MB].state |= SG_SELECTED;
-            } else {
-                memorydlg[DLGMEM_64MB].state |= SG_SELECTED;
-            }
+            memorydlg[DLGMEM_64MB].state |= SG_SELECTED;
             break;
         case 128:
-            if (!ConfigureParams.System.bTurbo) {
-                if (ConfigureParams.System.bColor) {
-                    memorydlg[DLGMEM_32MB].state |= SG_SELECTED;
-                } else {
-                    memorydlg[DLGMEM_64MB].state |= SG_SELECTED;
-                }
-            } else {
-                memorydlg[DLGMEM_128MB].state |= SG_SELECTED;
-            }
+            memorydlg[DLGMEM_128MB].state |= SG_SELECTED;
             break;
         default:
             memorydlg[DLGMEM_CUSTOM].state |= SG_SELECTED;

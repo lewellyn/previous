@@ -590,8 +590,8 @@ void Configuration_Apply(bool bReset)
 int Configuration_CheckMemory(int *banksize) {
     int i;
     
-#define EXTENDED_MEMCHECK 0
-#if EXTENDED_MEMCHECK
+#define RESTRICTIVE_MEMCHECK 0
+#if RESTRICTIVE_MEMCHECK
     /* To boot we need at least 4 MB in bank0 */
     if (banksize[0]<4) {
         banksize[0]=4;
