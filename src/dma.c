@@ -360,10 +360,11 @@ void dma_memory_read(Uint8 *buf, Uint32 *size, int channel) {
 
 
 void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
-    Uint32 base_addr;
+    Uint32 base_addr, tail_addr;
     Uint8 align = 16;
     Uint32 size_count = 0;
     Uint32 write_addr;
+    Uint32 dma_tail = 0;
     int interrupt = get_interrupt_type(channel);
     
     if(channel == CHANNEL_EN_RX || channel == CHANNEL_EN_TX)
@@ -375,16 +376,39 @@ void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
 //    }
 
     
-    if(dma[channel].init == 0)
+    if(dma[channel].init == 0) {
         base_addr = dma[channel].next;
-    else
+        dma_tail = 0;
+    } else {
         base_addr = dma[channel].init;
+        
+        /* If the transfer size is greater than (limit - init):
+         * Copy residual bytes to physical addresses at start. */
+        if (size > (dma[channel].limit - dma[channel].init)) {
+            tail_addr = dma[channel].start;
+            dma_tail = size - (dma[channel].limit - dma[channel].init);
+            size = (dma[channel].limit - dma[channel].init);
+            Log_Printf(LOG_WARN, "[DMA] Residual bytes: %i", dma_tail);
+        }
+    }
 
     Log_Printf(LOG_WARN, "[DMA] Write to mem: at $%08x, %i bytes",base_addr,size);
     for (size_count = 0; size_count < size; size_count++) {
         write_addr = base_addr + size_count;
         NEXTMemory_WriteByte(write_addr, buf[size_count]);
     }
+    
+    /* If there are residual bytes, copy them to physical addresses starting
+     * at "start". */
+    
+    if (dma_tail) {
+        Log_Printf(LOG_WARN, "[DMA] Write residual bytes at $%08x, %i bytes",tail_addr,dma_tail);
+        for (size_count = 0; size_count < dma_tail; size_count++) {
+            write_addr = tail_addr + size_count;
+            NEXTMemory_WriteByte(write_addr, buf[size+size_count]);
+        }
+    }
+
     
     /* Test read/write */
     Log_Printf(LOG_DMA_LEVEL, "DMA Write Test: $%02x,$%02x,$%02x,$%02x\n", NEXTMemory_ReadByte(base_addr),NEXTMemory_ReadByte(base_addr+16),NEXTMemory_ReadByte(base_addr+32),NEXTMemory_ReadByte(base_addr+384));
