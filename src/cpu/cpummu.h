@@ -23,6 +23,13 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+
+#define ENABLE_MMU030 1
+
+#if ENABLE_MMU030
+#include "cpummu030.h"
+#endif
+
 #ifndef CPUMMU_H
 #define CPUMMU_H
 
@@ -413,6 +420,12 @@ static ALWAYS_INLINE uae_u32 phys_get_byte(uaecptr addr)
 
 static ALWAYS_INLINE uae_u32 mmu_get_long(uaecptr addr, bool data, int size)
 {
+#if ENABLE_MMU030
+    if (currprefs.cpu_model == 68030) {
+        return mmu030_get_long(addr, data, size);
+    }
+#endif
+
 	struct mmu_atc_line *cl;
 
 	//                                       addr,super,data
@@ -425,6 +438,12 @@ static ALWAYS_INLINE uae_u32 mmu_get_long(uaecptr addr, bool data, int size)
 
 static ALWAYS_INLINE uae_u16 mmu_get_word(uaecptr addr, bool data, int size)
 {
+#if ENABLE_MMU030
+    if (currprefs.cpu_model == 68030) {
+        return mmu030_get_word(addr, data, size);
+    }
+#endif
+
 	struct mmu_atc_line *cl;
 
 	//                                       addr,super,data
@@ -437,6 +456,12 @@ static ALWAYS_INLINE uae_u16 mmu_get_word(uaecptr addr, bool data, int size)
 
 static ALWAYS_INLINE uae_u8 mmu_get_byte(uaecptr addr, bool data, int size)
 {
+#if ENABLE_MMU030
+    if (currprefs.cpu_model == 68030) {
+        return mmu030_get_byte(addr, data, size);
+    }
+#endif
+
 	struct mmu_atc_line *cl;
 
 	//                                       addr,super,data
@@ -447,9 +472,15 @@ static ALWAYS_INLINE uae_u8 mmu_get_byte(uaecptr addr, bool data, int size)
 	return mmu_get_byte_slow(addr, regs.s != 0, data, size, cl);
 }
 
-
 static ALWAYS_INLINE void mmu_put_long(uaecptr addr, uae_u32 val, bool data, int size)
 {
+#if ENABLE_MMU030
+    if (currprefs.cpu_model == 68030) {
+        mmu030_put_long(addr, val, data, size);
+        return;
+    }
+#endif
+    
 	struct mmu_atc_line *cl;
 
 	//                                        addr,super,data
@@ -465,6 +496,13 @@ static ALWAYS_INLINE void mmu_put_long(uaecptr addr, uae_u32 val, bool data, int
 
 static ALWAYS_INLINE void mmu_put_word(uaecptr addr, uae_u16 val, bool data, int size)
 {
+#if ENABLE_MMU030
+    if (currprefs.cpu_model == 68030) {
+        mmu030_put_word(addr, val, data, size);
+        return;
+    }
+#endif
+
 	struct mmu_atc_line *cl;
 
 	//                                        addr,super,data
@@ -480,6 +518,13 @@ static ALWAYS_INLINE void mmu_put_word(uaecptr addr, uae_u16 val, bool data, int
 
 static ALWAYS_INLINE void mmu_put_byte(uaecptr addr, uae_u8 val, bool data, int size)
 {
+#if ENABLE_MMU030
+    if (currprefs.cpu_model == 68030) {
+        mmu030_put_byte(addr, val, data, size);
+        return;
+    }
+#endif
+
 	struct mmu_atc_line *cl;
 
 	//                                        addr,super,data

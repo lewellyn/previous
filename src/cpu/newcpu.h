@@ -147,6 +147,9 @@ struct cache040
 	uae_u32 tag[CACHELINES040];
 };
 
+uae_u64 srp_030, crp_030;
+uae_u32 tt0_030, tt1_030, tc_030;
+uae_u16 mmusr_030;
 
 struct regstruct
 {

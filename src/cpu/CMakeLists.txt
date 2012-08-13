@@ -57,4 +57,5 @@ endif(CMAKE_COMPILER_IS_GNUCC)
 add_library(UaeCpu
 	cpudefs.c cpuemu_0.c cpuemu_11.c cpuemu_12.c cpuemu_20.c cpuemu_21.c cpuemu_31.c 
 	cpummu.c cpustbl.c custom.c	hatari-glue.c memory.c newcpu.c readcpu.c fpp.c
+	cpummu030.c
 	)
