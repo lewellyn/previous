@@ -183,6 +183,7 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 
   
     /* Magneto-Optical Drive */
+#if 0 /* temporary disabled */
     { 0x02012000, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 	{ 0x02012001, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 	{ 0x02012002, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
@@ -206,6 +207,7 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 	{ 0x02012014, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 	{ 0x02012015, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
 	{ 0x02012016, SIZE_BYTE, MOdrive_Read, MOdrive_Write },
+#endif
 
     
     /*------------------ DMA ------------------*/
