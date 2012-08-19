@@ -15,9 +15,9 @@ void mmu030_decode_tc(uae_u32 TC);
 void mmu030_decode_rp(uae_u64 RP);
 
 uaecptr mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write);
-uaecptr mmu030_get_physical_atc(uaecptr addr, bool super, bool data, bool write);
+uaecptr mmu030_get_physical_atc(uaecptr addr, int l, bool super, bool data, bool write);
 
-bool mmu030_logical_is_in_atc(uaecptr addr, bool write);
+int mmu030_logical_is_in_atc(uaecptr addr, bool write);
 void mmu030_put_atc(uaecptr logical_addr, uaecptr phyical_addr, bool buserror, bool super, bool data);
 
 void mmu030_flush_atc_fc(uae_u8 function_code);
