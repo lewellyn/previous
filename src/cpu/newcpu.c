@@ -2403,8 +2403,10 @@ void mmu_op30 (uaecptr pc, uae_u32 opcode, uae_u16 extra, uaecptr extraa)
 	}
 	if (extra & 0x8000)
 		mmu_op30_ptest (pc, opcode, extra, extraa);
-	else if (extra & 0x2000)
+	else if ((extra & 0x2000) && (extra & 0x1C00))
 		mmu_op30_pflush (pc, opcode, extra, extraa);
+    else if ((extra & 0x2000) && !(extra & 0x1C00))
+        mmu_op30_pload (pc, opcode, extra, extraa);
 	else
 		mmu_op30_pmove (pc, opcode, extra, extraa);
 }
