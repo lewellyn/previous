@@ -2,11 +2,10 @@
 
 /* TODO:
  * - Implement proper function code handling
- * - Handle more descritor bits (limit, cache inhibit, write protect, etc)
  * - Handle MMUSR
- * - Implement ATC
- * - Implement PFLUSH
+ * - Improve ATC handling
  * - Implement PTEST
+ * - Implement PLOAD
  */
 
 #include "compat.h"
@@ -221,8 +220,9 @@ void mmu_op30_pmove (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
 		return;
 	}
     
-    if (!fd) {
+    if (!fd && !rw && !(preg==0x18)) {
         mmu030_flush_atc_all();
+        write_log("PMOVE: Flush ATC\n");
     }
     
 #if MMUOP_DEBUG > 0
@@ -402,10 +402,10 @@ void mmu030_flush_atc_all(void) {
 #define TT_ADDR_BASE    0xFF000000
 
 /* TT comparision results */
-#define TT_NO_MATCH	0
-#define TT_OK_MATCH	1
-#define TT_NO_READ  2
-#define TT_NO_WRITE	3
+#define TT_NO_MATCH	0x1
+#define TT_OK_MATCH	0x2
+#define TT_NO_READ  0x4
+#define TT_NO_WRITE	0x8
 
 TT_info mmu030_decode_tt(uae_u32 TT) {
     
@@ -448,19 +448,32 @@ TT_info mmu030_decode_tt(uae_u32 TT) {
 
 int mmu030_match_ttr(uaecptr addr, bool super, bool data, bool write)
 {
-	int res;
+    int tt0, tt1;
+
+    mmu030.status = 0; /* Reset MMU status */
+    bool cache_inhibit = false; /* TODO: pass to memory access function */
     
-    res = mmu030_do_match_ttr(tt0_030, mmu030.transparent.tt0, addr, super, data, write);
-    if (res == TT_NO_MATCH) {
-        res = mmu030_do_match_ttr(tt1_030, mmu030.transparent.tt1, addr, super, data, write);
-        if (res == TT_NO_MATCH) {
-            return TT_NO_MATCH;
-        } else {
-            return res;
-        }
-    } else {
-        return res;
+    tt0 = mmu030_do_match_ttr(tt0_030, mmu030.transparent.tt0, addr, super, data, write);
+    if (tt0&TT_OK_MATCH) {
+        cache_inhibit |= (tt0_030&TT_CI) ? true : false;
     }
+    tt1 = mmu030_do_match_ttr(tt1_030, mmu030.transparent.tt1, addr, super, data, write);
+    if (tt1&TT_OK_MATCH) {
+        cache_inhibit |= (tt1_030&TT_CI) ? true : false;
+    }
+    
+    return (tt0|tt1);
+    
+//    if (res == TT_NO_MATCH) {
+//        res = mmu030_do_match_ttr(tt1_030, mmu030.transparent.tt1, addr, super, data, write);
+//        if (res == TT_NO_MATCH) {
+//            return TT_NO_MATCH;
+//        } else {
+//            return res;
+//        }
+//    } else {
+//        return res;
+//    }
 }
 
 /* Check if an address matches a transparent translation register */
@@ -470,6 +483,10 @@ uae_u8 mmu030_get_fc(bool super, bool data);
 uae_u8 mmu030_get_fc(bool super, bool data) {
     return (super ? 4 : 0) | (data ? 1 : 2);
 }
+
+/* FIXME:
+ * If !(tt&TT_RMW) neither the read nor the write portion
+ * of a read-modify-write cycle is transparently translated! */
 
 int mmu030_do_match_ttr(uae_u32 tt, TT_info masks, uaecptr addr, bool super, bool data, bool write)
 {
@@ -490,7 +507,7 @@ int mmu030_do_match_ttr(uae_u32 tt, TT_info masks, uaecptr addr, bool super, boo
                     if (tt&TT_RW) { /* read access transparent */
                         return write ? TT_NO_WRITE : TT_OK_MATCH;
                     } else {        /* write access transparent */
-                        return write ? TT_OK_MATCH : TT_NO_READ;
+                        return write ? TT_OK_MATCH : TT_NO_READ; /* TODO: check this! */
                     }
                 }
             }
@@ -881,6 +898,8 @@ uaecptr mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
     bool early_termination = false;
     bool invalid = false;
     bool cache_inhibit;
+    
+    mmu030.status = 0; /* Reset status */
     int num_tables_accessed = 0;
     
     char table_letter[4] = {'A','B','C','D'};
@@ -977,6 +996,8 @@ uaecptr mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
                 mmu030.status |= table_index<limit ? MMUSR_LIMIT_VIOLATION : 0;
             else
                 mmu030.status |= table_index>limit ? MMUSR_LIMIT_VIOLATION : 0;
+            /* If a limit violation occurs, end table search by setting invalid flag */
+            invalid = (mmu030.status&MMUSR_LIMIT_VIOLATION) ? true : false;
         }
         /* set write protection bit in status */
         mmu030.status |= descr[0]&DESCR_WP ? MMUSR_WRITE_PROTECTED : 0;
@@ -1049,6 +1070,11 @@ uaecptr mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
                 indirect_addr = descr[addr_position]&DESCR_ID_ADDR_MASK;
                 descr[0] = phys_get_long(indirect_addr);
                 write_log("Page indirect descriptor at %08X: descr = %08X\n",indirect_addr, descr[0]);
+                /* Check if descriptor is page descriptor */
+                if ((descr[0]&DESCR_TYPE_MASK)!=DESCR_TYPE_PAGE) {
+                    invalid = true;
+                    break;
+                }
                 long_descr = false;
                 page_addr = descr[0]&DESCR_PD_ADDR_MASK;
                 physical_addr = page_addr + page_index;
@@ -1059,6 +1085,11 @@ uaecptr mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
                 descr[0] = phys_get_long(indirect_addr);
                 descr[1] = phys_get_long(indirect_addr+4);
                 write_log("Page indirect descriptor at %08X: descr = %08X%08X\n",indirect_addr, descr[0], descr[1]);
+                /* Check if descriptor is page descriptor */
+                if ((descr[0]&DESCR_TYPE_MASK)!=DESCR_TYPE_PAGE) {
+                    invalid = true;
+                    break;
+                }
                 long_descr = true;
                 page_addr = descr[1]&DESCR_PD_ADDR_MASK;
                 physical_addr = page_addr + page_index;
@@ -1076,6 +1107,8 @@ uaecptr mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
                         mmu030.status |= table_index<limit ? MMUSR_LIMIT_VIOLATION : 0;
                     else
                         mmu030.status |= table_index>limit ? MMUSR_LIMIT_VIOLATION : 0;
+                    /* If a limit violation occurs, set invalid flag */
+                    invalid = (mmu030.status&MMUSR_LIMIT_VIOLATION) ? true : false;
                 }
             }
             /* set write protection bit in status */
@@ -1086,7 +1119,8 @@ uaecptr mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
             
             /* set modified bit */
             bool descr_modified = false;
-            if (!(descr[0]&DESCR_M) && write) {
+            if (!(descr[0]&DESCR_M) && write &&
+                !(mmu030.status&MMUSR_SUPER_VIOLATION) && !(mmu030.status&MMUSR_WRITE_PROTECTED)) {
                 descr[0] |= DESCR_M;
                 descr_modified = true;
             }
@@ -1342,7 +1376,7 @@ void mmu030_put_long(uaecptr addr, uae_u32 val, bool data, int size) {
     
 //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
-	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)==TT_OK_MATCH)
+	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)&TT_OK_MATCH)
 //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
         ) {
 		phys_put_long(addr,val);
@@ -1423,7 +1457,7 @@ void mmu030_put_word(uaecptr addr, uae_u16 val, bool data, int size) {
     
     //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
-	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)==TT_OK_MATCH)
+	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)&TT_OK_MATCH)
         //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
         ) {
 		phys_put_word(addr,val);
@@ -1442,7 +1476,7 @@ void mmu030_put_byte(uaecptr addr, uae_u8 val, bool data, int size) {
     
     //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
-	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)==TT_OK_MATCH)
+	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)&TT_OK_MATCH)
         //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
         ) {
 		phys_put_byte(addr,val);
@@ -1461,7 +1495,7 @@ uae_u32 mmu030_get_long(uaecptr addr, bool data, int size) {
     
     //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
-	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)==TT_OK_MATCH)
+	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,false)&TT_OK_MATCH)
         //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
         ) {
 		return phys_get_long(addr);
@@ -1479,7 +1513,7 @@ uae_u16 mmu030_get_word(uaecptr addr, bool data, int size) {
     
     //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
-	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)==TT_OK_MATCH)
+	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,false)&TT_OK_MATCH)
         //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
         ) {
 		return phys_get_word(addr);
@@ -1497,7 +1531,7 @@ uae_u8 mmu030_get_byte(uaecptr addr, bool data, int size) {
     
     //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
-	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)==TT_OK_MATCH)
+	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,false)&TT_OK_MATCH)
         //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
         ) {
 		return phys_get_byte(addr);
