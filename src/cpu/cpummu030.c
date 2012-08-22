@@ -38,6 +38,10 @@
 
 #define MMUOP_DEBUG 1
 
+/* for debugging messages */
+char table_letter[4] = {'A','B','C','D'};
+
+
 /* ATC struct */
 #define ATC030_NUM_ENTRIES  22
 
@@ -333,7 +337,8 @@ void mmu_op30_pflush (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
 void mmu030_flush_atc_fc(uae_u8 function_code) {
     int i;
     for (i=0; i<ATC030_NUM_ENTRIES; i++) {
-        if ((mmu030.atc[i].logical.fc&function_code)==function_code) {
+        if (((mmu030.atc[i].logical.fc&function_code)==function_code) &&
+            mmu030.atc[i].logical.valid) {
             mmu030.atc[i].logical.valid = false;
             write_log("ATC: Flushing %08X\n", mmu030.atc[i].physical.addr);
         }
@@ -344,7 +349,8 @@ void mmu030_flush_atc_page(uaecptr logical_addr, uae_u8 function_code) {
     int i;
     for (i=0; i<ATC030_NUM_ENTRIES; i++) {
         if (((mmu030.atc[i].logical.fc&function_code)==function_code) &&
-            (mmu030.atc[i].logical.addr == logical_addr)) {
+            (mmu030.atc[i].logical.addr == logical_addr) &&
+            mmu030.atc[i].logical.valid) {
             mmu030.atc[i].logical.valid = false;
             write_log("ATC: Flushing %08X\n", mmu030.atc[i].physical.addr);
         }
@@ -575,7 +581,6 @@ int mmu030_do_match_ttr(uae_u32 tt, TT_info masks, uaecptr addr, bool super, boo
 void mmu030_decode_tc(uae_u32 TC) {
     
     int i;
-    char table_letter[4] = {'A','B','C','D'};
     
     /* Set MMU condition */
     mmu030.enabled = (TC & TC_ENABLE_TRANSLATION) ? true : false;
@@ -884,9 +889,7 @@ uae_u16 mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
     
     mmu030.status = 0; /* Reset status */
     int num_tables_accessed = 0;
-    
-    char table_letter[4] = {'A','B','C','D'};
-    
+        
     
     /* Use super user root pointer if enabled in TC register and access is in
      * super user mode, else use cpu root pointer. */
@@ -925,7 +928,6 @@ uae_u16 mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
                 write_log("Descriptor for Table FCL: Invalid\n");
                 /* stop table walk */
                 invalid = true;
-                mmu030.status |= MMUSR_INVALID;
                 break;
             case DESCR_TYPE_EARLY_TERM:
                 write_log("Descriptor for Table FCL: Early termination\n");
@@ -992,7 +994,6 @@ uae_u16 mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
                 write_log("Descriptor for Table %c: Invalid\n",table_letter[t]);
                 /* stop table walk */
                 invalid = true;
-                mmu030.status |= MMUSR_INVALID;
                 break;
             case DESCR_TYPE_EARLY_TERM:
                 write_log("Descriptor for Table %c: Early termination\n",table_letter[t]);
@@ -1042,7 +1043,6 @@ uae_u16 mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
             case DESCR_TYPE_INVALID:
                 write_log("MMU coding error: this point should not be reached\n");
                 invalid = true;
-                mmu030.status |= MMUSR_INVALID;
                 break;
             case DESCR_TYPE_PAGE:
                 page_addr = descr[addr_position]&DESCR_PD_ADDR_MASK;
@@ -1122,9 +1122,8 @@ uae_u16 mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
             }
         }
     }
-    
+        
     mmu030.status |= (num_tables_accessed&MMUSR_NUM_LEVELS_MASK);
-    write_log("MMU status: %04X\n", mmu030.status);
     
     
     /* Create an ATC entry */
@@ -1139,13 +1138,14 @@ uae_u16 mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
         i = 10; /* TODO: replace this dummy code with logic *
                  * that finds least recently accessed entry */
     }
-    mmu030.atc[i].logical.addr = addr;
+    mmu030.atc[i].logical.addr = addr&0xFFFFFF00; /* field is only 24 bit */
     mmu030.atc[i].logical.fc = fc;
     mmu030.atc[i].logical.valid = true;
-    mmu030.atc[i].physical.addr = page_addr;
+    mmu030.atc[i].physical.addr = page_addr; /* already masked to 24 bit */
     if (invalid || (mmu030.status&MMUSR_SUPER_VIOLATION) || (mmu030.status&MMUSR_LIMIT_VIOLATION)) {
         /* TODO: also set B bit, if bus error occurs */
         mmu030.atc[i].physical.bus_error = true;
+        mmu030.status |= MMUSR_INVALID; /* TODO: check this */
     }
     mmu030.atc[i].physical.cache_inhibit = cache_inhibit;
     mmu030.atc[i].physical.modified = write ? true : false; /* TODO: check! */
@@ -1160,6 +1160,8 @@ uae_u16 mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
               mmu030.atc[i].physical.write_protect?1:0,
               mmu030.atc[i].physical.modified?1:0);
     
+    write_log("MMU status: %04X\n", mmu030.status);
+
     return mmu030.status;
 }
 
