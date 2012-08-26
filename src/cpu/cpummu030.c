@@ -2,10 +2,10 @@
 
 /* TODO:
  * - Implement proper function code handling
+ * - Correctly handle bus errors during table search
  * - Handle MMUSR
- * - Improve ATC handling
  * - Implement PTEST
- * - Implement PLOAD
+ * - Do MMU configuration exceptions
  */
 
 #include "compat.h"
@@ -276,6 +276,37 @@ void mmu_op30_pload (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
 #if MMUOP_DEBUG > 0
     write_log ("PLOAD%c PC=%08X\n", ((next >> 9) & 1) ? 'W' : 'R', pc);
 #endif
+    
+    int rw = (next >> 9) & 1;
+    uae_u32 fc;
+    
+    switch (next&0x0018) {
+        case 0x0010:
+            fc = next&0x7;
+            break;
+        case 0x0008:
+            fc = m68k_dreg(regs, next&0x7);
+            fc &= 0x7;
+            break;
+        case 0x0000:
+            if (next&1) {
+                fc = regs.dfc;
+            } else {
+                fc = regs.sfc;
+            }
+        default:
+            write_log("PLOAD ERROR: bad fc source! (%04X)\n",next&0x0018);
+            break;
+    }
+
+    bool write = rw ? false : true;
+    bool super = (fc&0x4) ? true : false;
+    bool data = (fc&0x1) ? true : false;
+
+    write_log ("PLOAD%c: Create ATC entry for %08X, FC = %i\n", write?'W':'R', extra, fc);
+
+    mmu030_flush_atc_page(extra);
+    mmu030_create_atc_entry(extra, super, data, write);
 }
 
 void mmu_op30_pflush (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
@@ -318,7 +349,7 @@ void mmu_op30_pflush (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
         case 0x6:
             write_log("PFLUSH: Flush by function code and effective address\n");
             write_log("PFLUSH: function code = %02X, mask = %02X, addr = %08X\n", fc, fc_mask, extra);
-            mmu030_flush_atc_page(extra, fc&fc_mask);
+            mmu030_flush_atc_page_fc(extra, fc&fc_mask);
             break;
             
         default:
@@ -339,11 +370,22 @@ void mmu030_flush_atc_fc(uae_u8 function_code) {
     }
 }
 
-void mmu030_flush_atc_page(uaecptr logical_addr, uae_u8 function_code) {
+void mmu030_flush_atc_page_fc(uaecptr logical_addr, uae_u8 function_code) {
     int i;
     for (i=0; i<ATC030_NUM_ENTRIES; i++) {
         if (((mmu030.atc[i].logical.fc&function_code)==function_code) &&
             (mmu030.atc[i].logical.addr == logical_addr) &&
+            mmu030.atc[i].logical.valid) {
+            mmu030.atc[i].logical.valid = false;
+            write_log("ATC: Flushing %08X\n", mmu030.atc[i].physical.addr);
+        }
+    }
+}
+
+void mmu030_flush_atc_page(uaecptr logical_addr) {
+    int i;
+    for (i=0; i<ATC030_NUM_ENTRIES; i++) {
+        if ((mmu030.atc[i].logical.addr == logical_addr) &&
             mmu030.atc[i].logical.valid) {
             mmu030.atc[i].logical.valid = false;
             write_log("ATC: Flushing %08X\n", mmu030.atc[i].physical.addr);

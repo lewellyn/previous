@@ -27,7 +27,8 @@ uae_u16 mmu030_get_word_atc(uaecptr addr, int l, bool super, bool data);
 uae_u8 mmu030_get_byte_atc(uaecptr addr, int l, bool super, bool data);
 
 void mmu030_flush_atc_fc(uae_u8 function_code);
-void mmu030_flush_atc_page(uaecptr logical_addr, uae_u8 function_code);
+void mmu030_flush_atc_page(uaecptr logical_addr);
+void mmu030_flush_atc_page_fc(uaecptr logical_addr, uae_u8 function_code);
 void mmu030_flush_atc_all(void);
 
 int mmu030_match_ttr(uaecptr addr, bool super, bool data, bool write);
