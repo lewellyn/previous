@@ -1,11 +1,27 @@
-/* Emulation of MC68030 MMU */
-
-/* TODO:
- * - Implement proper function code handling
- * - Correctly handle bus errors during table search
- * - Handle MMUSR
- * - Implement PTEST
- * - Do MMU configuration exceptions
+/* Emulation of MC68030 MMU
+ * This code has been written for Previous - a NeXT Computer emulator 
+ * 
+ * Release notes:
+ * 01-09-2012: First release (Andreas Grabher)
+ *
+ *
+ * Known Problems:
+ * - The MMU code is not properly connected to the CPU code
+ * - PTEST returns wrong status in certain conditions (invalid descriptor)
+ * - MMU configuration exceptions are missing
+ *
+ *
+ * TODO list:
+ * - Once MMU is properly connected to CPU, fix function code handling:
+ *   In PFLUSH functions (mmu030_flush_atc_page_fc, mmu030_flush_atc_fc)
+ *   1. How to apply fc_mask?
+ *   2. How to compare fc in ATC entry with fc to flush (==, &)?
+ *   Check all other function code handling!
+ * - Check if read-modify-write operations are correctly detected for
+ *   handling transparent access (see TT matching functions)
+ * - Do MMU configuration exceptions and F-line unimplemented instruction
+ *   exceptions (see decode_tc, decode_rp, etc)
+ * - Improve and test mmu030_ptest_table_search
  */
 
 #include "compat.h"
@@ -61,6 +77,8 @@ typedef struct {
         uae_u32 fc;
         bool valid;
     } logical;
+    /* history bit */
+    int mru;
 } MMU030_ATC_LINE;
 
 
@@ -140,8 +158,15 @@ struct {
 #define MMUSR_NUM_LEVELS_MASK   0x0007
 
 
+/* This function builds the function code from
+ * the parameters super and data */
+/* TODO: check function code handling! */
+uae_u8 mmu030_get_fc(bool super, bool data) {
+    return (super ? 4 : 0) | (data ? 1 : 2);
+}
 
-/* MMU Ops */
+
+/* -- MMU instructions -- */
 static const TCHAR *mmu30regs[] = { "TCR", "", "SRP", "CRP", "", "", "", "" };
 
 
@@ -257,9 +282,6 @@ void mmu_op30_pmove (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
     
 }
 
-
-void mmu030_ptest_atc_search(uaecptr logical_addr, uae_u32 function_code, bool write);
-uae_u32 mmu030_ptest_table_search(uaecptr addr, bool super, bool data, bool write, int level);
 void mmu_op30_ptest (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
 {
 #if MMUOP_DEBUG > 0
@@ -277,33 +299,13 @@ void mmu_op30_ptest (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
     int rw = (next >> 9) & 1;
     int a = (next >> 8) & 1;
     int areg = (next&0xE0)>>4;
-    uae_u32 ret = 0;
-    
-    uae_u32 fc;
-    
-    switch (next&0x0018) {
-        case 0x0010:
-            fc = next&0x7;
-            break;
-        case 0x0008:
-            fc = m68k_dreg(regs, next&0x7);
-            fc &= 0x7;
-            break;
-        case 0x0000:
-            if (next&1) {
-                fc = regs.dfc;
-            } else {
-                fc = regs.sfc;
-            }
-        default:
-            write_log("PTEST ERROR: bad fc source! (%04X)\n",next&0x0018);
-            break;
-    }
-    
+    uae_u32 fc = mmu_op30_helper_get_fc(next);
+        
     bool write = rw ? false : true;
     bool super = (fc&0x4) ? true : false;
     bool data = (fc&0x1) ? true : false;
 
+    uae_u32 ret = 0;
     
     /* TODO: implement this - datasheet says:
      * "When the instruction specifies an address translation cache search
@@ -346,27 +348,8 @@ void mmu_op30_pload (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
 #endif
     
     int rw = (next >> 9) & 1;
-    uae_u32 fc;
+    uae_u32 fc = mmu_op30_helper_get_fc(next);
     
-    switch (next&0x0018) {
-        case 0x0010:
-            fc = next&0x7;
-            break;
-        case 0x0008:
-            fc = m68k_dreg(regs, next&0x7);
-            fc &= 0x7;
-            break;
-        case 0x0000:
-            if (next&1) {
-                fc = regs.dfc;
-            } else {
-                fc = regs.sfc;
-            }
-        default:
-            write_log("PLOAD ERROR: bad fc source! (%04X)\n",next&0x0018);
-            break;
-    }
-
     bool write = rw ? false : true;
     bool super = (fc&0x4) ? true : false;
     bool data = (fc&0x1) ? true : false;
@@ -383,27 +366,8 @@ void mmu_op30_pflush (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
 
     uae_u16 mode = (next&0x1C00)>>10;
     uae_u32 fc_mask = (uae_u32)(next&0x00E0)>>5;
-    uae_u32 fc;
-    
-    switch (next&0x0018) {
-        case 0x0010:
-            fc = next&0x7;
-            break;
-        case 0x0008:
-            fc = m68k_dreg(regs, next&0x7);
-            fc &= 0x7;
-            break;
-        case 0x0000:
-            if (next&1) {
-                fc = regs.dfc;
-            } else {
-                fc = regs.sfc;
-            }
-        default:
-            write_log("PFLUSH ERROR: bad fc source! (%04X)\n",next&0x0018);
-            break;
-    }
-    
+    uae_u32 fc = mmu_op30_helper_get_fc(next);
+        
     switch (mode) {
         case 0x1:
             write_log("PFLUSH: Flush all entries\n");
@@ -426,11 +390,33 @@ void mmu_op30_pflush (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
     }
 }
 
+/* -- Helper function for MMU instructions -- */
+uae_u32 mmu_op30_helper_get_fc(uae_u16 next) {
+    switch (next&0x0018) {
+        case 0x0010:
+            return (next&0x7);
+        case 0x0008:
+            return (m68k_dreg(regs, next&0x7)&0x7);
+        case 0x0000:
+            if (next&1) {
+                return regs.dfc;
+            } else {
+                return regs.sfc;
+            }
+        default:
+            write_log("MMU_OP30 ERROR: bad fc source! (%04X)\n",next&0x0018);
+            return 0;
+    }
+}
 
+
+/* -- ATC flushing functions -- */
+
+/* This function flushes ATC entries depending on their function code */
 void mmu030_flush_atc_fc(uae_u8 function_code) {
     int i;
     for (i=0; i<ATC030_NUM_ENTRIES; i++) {
-        if (((mmu030.atc[i].logical.fc&function_code)==function_code) &&
+        if (((mmu030.atc[i].logical.fc&function_code)==function_code) && /* TODO: check this */
             mmu030.atc[i].logical.valid) {
             mmu030.atc[i].logical.valid = false;
             write_log("ATC: Flushing %08X\n", mmu030.atc[i].physical.addr);
@@ -438,10 +424,12 @@ void mmu030_flush_atc_fc(uae_u8 function_code) {
     }
 }
 
+/* This function flushes ATC entries depending on their logical address
+ * and their function code */
 void mmu030_flush_atc_page_fc(uaecptr logical_addr, uae_u8 function_code) {
     int i;
     for (i=0; i<ATC030_NUM_ENTRIES; i++) {
-        if (((mmu030.atc[i].logical.fc&function_code)==function_code) &&
+        if (((mmu030.atc[i].logical.fc&function_code)==function_code) && /* TODO: check this */
             (mmu030.atc[i].logical.addr == logical_addr) &&
             mmu030.atc[i].logical.valid) {
             mmu030.atc[i].logical.valid = false;
@@ -450,6 +438,7 @@ void mmu030_flush_atc_page_fc(uaecptr logical_addr, uae_u8 function_code) {
     }
 }
 
+/* This function flushes ATC entries depending on their logical address */
 void mmu030_flush_atc_page(uaecptr logical_addr) {
     int i;
     for (i=0; i<ATC030_NUM_ENTRIES; i++) {
@@ -461,6 +450,7 @@ void mmu030_flush_atc_page(uaecptr logical_addr) {
     }
 }
 
+/* This function flushes all ATC entries */
 void mmu030_flush_atc_all(void) {
     write_log("ATC: Flushing all entries\n");
     int i;
@@ -563,12 +553,12 @@ TT_info mmu030_decode_tt(uae_u32 TT) {
     return ret;
 }
 
-
+/* This function compares the address with both transparent
+ * translation registers and returns the result */
 int mmu030_match_ttr(uaecptr addr, bool super, bool data, bool write)
 {
     int tt0, tt1;
 
-    mmu030.status = 0; /* Reset MMU status */
     bool cache_inhibit = false; /* TODO: pass to memory access function */
     
     tt0 = mmu030_do_match_ttr(tt0_030, mmu030.transparent.tt0, addr, super, data, write);
@@ -585,12 +575,8 @@ int mmu030_match_ttr(uaecptr addr, bool super, bool data, bool write)
     return (tt0|tt1);
 }
 
-/* Check if an address matches a transparent translation register */
-
-/* TODO: check function code handling! */
-uae_u8 mmu030_get_fc(bool super, bool data) {
-    return (super ? 4 : 0) | (data ? 1 : 2);
-}
+/* This function checks if an address matches a transparent
+ * translation register */
 
 /* FIXME:
  * If !(tt&TT_RMW) neither the read nor the write portion
@@ -1009,7 +995,9 @@ void mmu030_decode_rp(uae_u64 RP) {
 #define DESCR_LOWER_MASK   0x80000000
 
 
-uae_u16 mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write) {
+/* This function searches through the translation tables to
+ * find the physical page address and builds an ATC entry */
+void mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write) {
     
     uae_u32 descr[2];
     uae_u32 descr_type;
@@ -1265,18 +1253,40 @@ uae_u16 mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
     mmu030.status |= (num_tables_accessed&MMUSR_NUM_LEVELS_MASK);
     
     
-    /* Create an ATC entry */
-    int i;
+    /* Find an ATC entry to replace */
+    int i,j;
+    /* Search for invalid entry */
     for (i=0; i<ATC030_NUM_ENTRIES; i++) {
         if (!mmu030.atc[i].logical.valid) {
             break;
         }
     }
-    if (((i+1)==ATC030_NUM_ENTRIES) && mmu030.atc[i].logical.valid) {
-        i = 10; /* TODO: replace this dummy code with logic *
-                 * that finds least recently accessed entry */
+    /* If there are no invalid entries, replace first entry
+     * with history bit not set */
+    if (i == ATC030_NUM_ENTRIES) {
+        for (i=0; i<ATC030_NUM_ENTRIES; i++) {
+            if (!mmu030.atc[i].mru) {
+                break;
+            }
+        }
         write_log("ATC is full. Replacing entry %i\n", i);
     }
+    mmu030.atc[i].mru = 1;
+    /* Search for history zero-bits */
+    for (j=0; j<ATC030_NUM_ENTRIES; j++) {
+        if (!mmu030.atc[j].mru)
+            break;
+    }
+    /* If there are no more zero-bits, reset all */
+    if (j==ATC030_NUM_ENTRIES) {
+        for (j=0; j<ATC030_NUM_ENTRIES; j++) {
+            mmu030.atc[j].mru = 0;
+        }
+        mmu030.atc[i].mru = 1;
+        write_log("ATC: No more history zero-bits. Reset all.\n");
+    }
+
+    /* Create ATC entry */
     mmu030.atc[i].logical.addr = addr&0xFFFFFF00; /* field is only 24 bit */
     mmu030.atc[i].logical.fc = fc;
     mmu030.atc[i].logical.valid = true;
@@ -1305,17 +1315,13 @@ uae_u16 mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write)
               mmu030.atc[i].physical.cache_inhibit?1:0,
               mmu030.atc[i].physical.write_protect?1:0,
               mmu030.atc[i].physical.modified?1:0);
-    
-    write_log("MMU status: %04X\n", mmu030.status);
-
-    return mmu030.status;
 }
 
 
 /* This function is very simmilar to "mmu030_create_atc_entry". It contains
  * several changes and additions to make it work with the PTEST instruction.
  * This function is slower than the above one and it is not considered safe.
- * Therefore for now we only use it for PTEST. */
+ * Therefore for now we only use it for PTEST (levels 1 to 7). */
 
 uae_u32 mmu030_ptest_table_search(uaecptr addr, bool super, bool data, bool write, int level) {
 
@@ -1625,18 +1631,40 @@ uae_u32 mmu030_ptest_table_search(uaecptr addr, bool super, bool data, bool writ
         write_log("Page at %08X\n",page_addr);
     }
     
-    /* Create an ATC entry */
-    int i;
+    /* Find an ATC entry to replace */
+    int i,j;
+    /* Search for invalid entry */
     for (i=0; i<ATC030_NUM_ENTRIES; i++) {
         if (!mmu030.atc[i].logical.valid) {
             break;
         }
     }
-    if (((i+1)==ATC030_NUM_ENTRIES) && mmu030.atc[i].logical.valid) {
-        i = 10; /* TODO: replace this dummy code with logic *
-                 * that finds least recently accessed entry */
+    /* If there are no invalid entries, replace first entry
+     * with history bit not set */
+    if (i == ATC030_NUM_ENTRIES) {
+        for (i=0; i<ATC030_NUM_ENTRIES; i++) {
+            if (!mmu030.atc[i].mru) {
+                break;
+            }
+        }
         write_log("ATC is full. Replacing entry %i\n", i);
     }
+    mmu030.atc[i].mru = 1;
+    /* Search for history zero-bits */
+    for (j=0; j<ATC030_NUM_ENTRIES; j++) {
+        if (!mmu030.atc[j].mru)
+            break;
+    }
+    /* If there are no more zero-bits, reset all */
+    if (j==ATC030_NUM_ENTRIES) {
+        for (j=0; j<ATC030_NUM_ENTRIES; j++) {
+            mmu030.atc[j].mru = 0;
+        }
+        mmu030.atc[i].mru = 1;
+        write_log("ATC: No more history zero-bits. Reset all.\n");
+    }
+    
+    /* Create ATC entry */    
     mmu030.atc[i].logical.addr = addr&0xFFFFFF00; /* field is only 24 bit */
     mmu030.atc[i].logical.fc = fc;
     mmu030.atc[i].logical.valid = true;
@@ -1666,7 +1694,7 @@ uae_u32 mmu030_ptest_table_search(uaecptr addr, bool super, bool data, bool writ
     return 0;
 }
 
-
+/* This function is used for PTEST level 0. */
 void mmu030_ptest_atc_search(uaecptr logical_addr, uae_u32 function_code, bool write) {
     int i;
     mmu030.status = 0;
@@ -1703,6 +1731,15 @@ void mmu030_ptest_atc_search(uaecptr logical_addr, uae_u32 function_code, bool w
 
 
 /* Address Translation Cache
+ *
+ * The ATC uses a pseudo-least-recently-used algorithm to keep track of
+ * least recently used entries. They are replaced if the cache is full.
+ * An internal history-bit (MRU-bit) is used to identify these entries.
+ * If an entry is accessed, its history-bit is set to 1. If after that
+ * there are no more entries with zero-bits, all other history-bits are
+ * set to 0. When no more invalid entries are in the ATC, the first entry
+ * with a zero-bit is replaced.
+ *
  *
  * Logical Portion (28 bit):
  * oooo ---- xxxx xxxx xxxx xxxx xxxx xxxx
@@ -1861,21 +1898,41 @@ uae_u8 mmu030_get_byte_atc(uaecptr addr, int l, bool super, bool data) {
 }
 
 
-
-int mmu030_logical_is_in_atc(uaecptr addr, bool write) {
+/* This function checks if a certain logical address is in the ATC 
+ * by comparing the logical address and function code to the values
+ * stored in the ATC entries. If a matching entry is found it sets
+ * the history bit and returns the cache index of the entry. */
+int mmu030_logical_is_in_atc(uaecptr addr, bool super, bool data, bool write) {
     uaecptr physical_addr = 0;
     uaecptr logical_addr = 0;
     uae_u32 addr_mask = ~mmu030.translation.page.mask;
     uae_u32 page_index = addr & mmu030.translation.page.mask;
-    int i;
+    uae_u32 fc = mmu030_get_fc(super, data);
+    
+    int i, j;
     for (i=0; i<ATC030_NUM_ENTRIES; i++) {
         logical_addr = mmu030.atc[i].logical.addr;
-        /* If recent address matches address in ATC */
+        /* If actual address matches address in ATC */
         if ((addr&addr_mask)==(logical_addr&addr_mask) &&
+            ((mmu030.atc[i].logical.fc&fc)==fc) && /* TODO: check this! */
             mmu030.atc[i].logical.valid) {
             /* If M bit is set or access is read, return true
              * else invalidate entry */
             if (mmu030.atc[i].physical.modified || !write) {
+                /* Maintain history bit */
+                mmu030.atc[i].mru = 1;
+                for (j=0; j<ATC030_NUM_ENTRIES; j++) {
+                    if (!mmu030.atc[j].mru)
+                        break;
+                }
+                /* If there are no more zero-bits, reset all */
+                if (j==ATC030_NUM_ENTRIES) {
+                    for (j=0; j<ATC030_NUM_ENTRIES; j++) {
+                        mmu030.atc[j].mru = 0;
+                    }
+                    mmu030.atc[i].mru = 1;
+                    write_log("ATC: No more history zero-bits. Reset all.\n");
+                }
                 return i;
             } else {
                 mmu030.atc[i].logical.valid = false;
@@ -1897,7 +1954,6 @@ int mmu030_logical_is_in_atc(uaecptr addr, bool write) {
 
 void mmu030_put_long(uaecptr addr, uae_u32 val, bool data, int size) {
     
-//	struct mmu_atc_line *cl;
 	//                                        addr,super,write
 	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)&TT_OK_MATCH)
 //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
@@ -1906,13 +1962,13 @@ void mmu030_put_long(uaecptr addr, uae_u32 val, bool data, int size) {
 		return;
     }
 
-    int atc_line_num = mmu030_logical_is_in_atc(addr, true);
+    int atc_line_num = mmu030_logical_is_in_atc(addr, regs.s != 0, data, true);
 
     if (atc_line_num<ATC030_NUM_ENTRIES) {
         mmu030_put_long_atc(addr, val, atc_line_num, regs.s != 0, data);
     } else {
         mmu030_create_atc_entry(addr, regs.s != 0, data, true);
-        mmu030_put_long_atc(addr, val, mmu030_logical_is_in_atc(addr, true), regs.s != 0, data);
+        mmu030_put_long_atc(addr, val, mmu030_logical_is_in_atc(addr,regs.s!=0,data,true), regs.s != 0, data);
     }
 //	if (likely(mmu_lookup(addr, data, true, &cl)))
 //		phys_put_long(mmu_get_real_address(addr, cl), val);
@@ -1922,7 +1978,6 @@ void mmu030_put_long(uaecptr addr, uae_u32 val, bool data, int size) {
 
 void mmu030_put_word(uaecptr addr, uae_u16 val, bool data, int size) {
     
-    //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
 	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)&TT_OK_MATCH)
         //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
@@ -1931,19 +1986,18 @@ void mmu030_put_word(uaecptr addr, uae_u16 val, bool data, int size) {
 		return;
     }
     
-    int atc_line_num = mmu030_logical_is_in_atc(addr, true);
+    int atc_line_num = mmu030_logical_is_in_atc(addr, regs.s != 0, data, true);
     
     if (atc_line_num<ATC030_NUM_ENTRIES) {
         mmu030_put_word_atc(addr, val, atc_line_num, regs.s != 0, data);
     } else {
         mmu030_create_atc_entry(addr, regs.s != 0, data, true);
-        mmu030_put_word_atc(addr, val, mmu030_logical_is_in_atc(addr, true), regs.s != 0, data);
+        mmu030_put_word_atc(addr, val, mmu030_logical_is_in_atc(addr,regs.s!=0,data,true), regs.s != 0, data);
     }
 }
 
 void mmu030_put_byte(uaecptr addr, uae_u8 val, bool data, int size) {
     
-    //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
 	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,true)&TT_OK_MATCH)
         //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
@@ -1952,19 +2006,18 @@ void mmu030_put_byte(uaecptr addr, uae_u8 val, bool data, int size) {
 		return;
     }
     
-    int atc_line_num = mmu030_logical_is_in_atc(addr, true);
+    int atc_line_num = mmu030_logical_is_in_atc(addr, regs.s != 0, data, true);
 
     if (atc_line_num<ATC030_NUM_ENTRIES) {
         mmu030_put_byte_atc(addr, val, atc_line_num, regs.s != 0, data);
     } else {
         mmu030_create_atc_entry(addr, regs.s != 0, data, true);
-        mmu030_put_byte_atc(addr, val, mmu030_logical_is_in_atc(addr, true), regs.s != 0, data);
+        mmu030_put_byte_atc(addr, val, mmu030_logical_is_in_atc(addr,regs.s!=0,data,true), regs.s != 0, data);
     }
 }
 
 uae_u32 mmu030_get_long(uaecptr addr, bool data, int size) {
     
-    //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
 	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,false)&TT_OK_MATCH)
         //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
@@ -1972,19 +2025,18 @@ uae_u32 mmu030_get_long(uaecptr addr, bool data, int size) {
 		return phys_get_long(addr);
     }
     
-    int atc_line_num = mmu030_logical_is_in_atc(addr, false);
+    int atc_line_num = mmu030_logical_is_in_atc(addr, regs.s != 0, data, false);
 
     if (atc_line_num<ATC030_NUM_ENTRIES) {
         return mmu030_get_long_atc(addr, atc_line_num, regs.s != 0, data);
     } else {
         mmu030_create_atc_entry(addr, regs.s != 0, data, false);
-        return mmu030_get_long_atc(addr, mmu030_logical_is_in_atc(addr, false), regs.s != 0, data);
+        return mmu030_get_long_atc(addr, mmu030_logical_is_in_atc(addr,regs.s!=0,data,false), regs.s != 0, data);
     }
 }
 
 uae_u16 mmu030_get_word(uaecptr addr, bool data, int size) {
     
-    //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
 	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,false)&TT_OK_MATCH)
         //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
@@ -1992,19 +2044,18 @@ uae_u16 mmu030_get_word(uaecptr addr, bool data, int size) {
 		return phys_get_word(addr);
     }
     
-    int atc_line_num = mmu030_logical_is_in_atc(addr, false);
+    int atc_line_num = mmu030_logical_is_in_atc(addr, regs.s != 0, data, false);
 
     if (atc_line_num<ATC030_NUM_ENTRIES) {
         return mmu030_get_word_atc(addr, atc_line_num, regs.s != 0, data);
     } else {
         mmu030_create_atc_entry(addr, regs.s != 0, data, false);
-        return mmu030_get_word_atc(addr, mmu030_logical_is_in_atc(addr, false), regs.s != 0, data);
+        return mmu030_get_word_atc(addr, mmu030_logical_is_in_atc(addr,regs.s!=0,data,false), regs.s != 0, data);
     }
 }
 
 uae_u8 mmu030_get_byte(uaecptr addr, bool data, int size) {
     
-    //	struct mmu_atc_line *cl;
 	//                                        addr,super,write
 	if ((!mmu030.enabled) || (mmu030_match_ttr(addr,regs.s != 0,data,false)&TT_OK_MATCH)
         //        || ((regs.dfc&7)==7) /* not sure about this, TODO: check! */
@@ -2012,12 +2063,12 @@ uae_u8 mmu030_get_byte(uaecptr addr, bool data, int size) {
 		return phys_get_byte(addr);
     }
     
-    int atc_line_num = mmu030_logical_is_in_atc(addr, false);
+    int atc_line_num = mmu030_logical_is_in_atc(addr, regs.s != 0, data, false);
 
     if (atc_line_num<ATC030_NUM_ENTRIES) {
         return mmu030_get_byte_atc(addr, atc_line_num, regs.s != 0, data);
     } else {
         mmu030_create_atc_entry(addr, regs.s != 0, data, false);
-        return mmu030_get_byte_atc(addr, mmu030_logical_is_in_atc(addr, false), regs.s != 0, data);
+        return mmu030_get_byte_atc(addr, mmu030_logical_is_in_atc(addr,regs.s!=0,data,false), regs.s != 0, data);
     }
 }
