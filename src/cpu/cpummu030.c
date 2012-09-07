@@ -10,7 +10,6 @@
  *
  * Known Problems:
  * - The MMU code is not properly connected to the CPU code
- * - PTEST returns wrong status in certain conditions (invalid descriptor)
  * - MMU configuration exceptions are missing
  *
  *
@@ -24,7 +23,10 @@
  *   handling transparent access (see TT matching functions)
  * - Do MMU configuration exceptions and F-line unimplemented instruction
  *   exceptions (see decode_tc, decode_rp, etc)
- * - Improve and test mmu030_ptest_table_search
+ * - Test mmu030_ptest_table_search. If it works correctly in all cases,
+ *   replace mmu030_create_atc_entry, so we use the same function for ptest
+ *   and normal table search.
+ * - Handle cache inhibit bit when accessing ATC entries
  */
 
 #include "compat.h"
@@ -859,6 +861,9 @@ void mmu030_decode_rp(uae_u64 RP) {
 #define DESCR_TYPE_VALID8       3 /* all but lowest level table */
 #define DESCR_TYPE_INDIRECT8    3 /* only lowest level table */
 
+#define DESCR_TYPE_VALID_MASK       0x2 /* all but lowest level table */
+#define DESCR_TYPE_INDIRECT_MASK    0x2 /* only lowest level table */
+
 
 /* Short format (4 byte):
  *
@@ -1274,21 +1279,8 @@ void mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write) {
         }
         write_log("ATC is full. Replacing entry %i\n", i);
     }
-    mmu030.atc[i].mru = 1;
-    /* Search for history zero-bits */
-    for (j=0; j<ATC030_NUM_ENTRIES; j++) {
-        if (!mmu030.atc[j].mru)
-            break;
-    }
-    /* If there are no more zero-bits, reset all */
-    if (j==ATC030_NUM_ENTRIES) {
-        for (j=0; j<ATC030_NUM_ENTRIES; j++) {
-            mmu030.atc[j].mru = 0;
-        }
-        mmu030.atc[i].mru = 1;
-        write_log("ATC: No more history zero-bits. Reset all.\n");
-    }
-
+    mmu030_atc_handle_history_bit(i);
+    
     /* Create ATC entry */
     mmu030.atc[i].logical.addr = addr&0xFFFFFF00; /* field is only 24 bit */
     mmu030.atc[i].logical.fc = fc;
@@ -1324,30 +1316,35 @@ void mmu030_create_atc_entry(uaecptr addr, bool super, bool data, bool write) {
 /* This function is very simmilar to "mmu030_create_atc_entry". It contains
  * several changes and additions to make it work with the PTEST instruction.
  * This function is slower than the above one and it is not considered safe.
- * Therefore for now we only use it for PTEST (levels 1 to 7). */
+ * Therefore for now we only use it for PTEST (levels 1 to 7). Using level 0
+ * creates an ATC entry. */
 
 uae_u32 mmu030_ptest_table_search(uaecptr addr, bool super, bool data, bool write, int level) {
-
-    uae_u32 descr[6][2];
+    /* During table walk up to 7 different descriptors are used:
+     * root pointer, descriptors fetched from function code lookup table,
+     * tables A, B, C and D and one indirect descriptor */
+    uae_u32 descr[7][2];
     uae_u32 descr_type;
-    int addr_position;
     uaecptr table_addr = 0;
     uaecptr page_addr = 0;
     uaecptr indirect_addr = 0;
     uae_u32 fc = mmu030_get_fc(super, data);
     uae_u32 table_index = 0;
-    uae_u32 page_index = 0;
     uae_u32 limit = 0;
-    bool long_descr = true; /* root pointer is long descriptor */
-    bool early_termination = false;
     bool write_protect = false;
     bool cache_inhibit = false;
     bool descr_modified = false;
     
     mmu030.status = 0; /* Reset status */
+    
+    /* Initial values for condition variables.
+     * Note: Root pointer is long descriptor. */
+    int addr_position = 1;
+    int next_size = 0;
+    int descr_size = 8;
     int descr_num = 0;
-    bool rp_is_pd = false;
-
+    int t = 0;
+    
     /* Clear bus error flag, so we only detect our own bus errors.
      * Restore bus error flag, before returning from this function!
      */
@@ -1373,272 +1370,283 @@ uae_u32 mmu030_ptest_table_search(uaecptr addr, bool super, bool data, bool writ
         descr[descr_num][0] &= (~RP_ZERO_BITS);
     }
     
-    rp_is_pd = ((descr[descr_num][0]&DESCR_TYPE_MASK)==DESCR_TYPE_PAGE) ? true : false;
-    
+    /* Check descriptor type of root pointer */
+    descr_type = descr[descr_num][0]&DESCR_TYPE_MASK;
+    switch (descr_type) {
+        case DESCR_TYPE_INVALID:
+            write_log("Fatal error: Root pointer is invalid descriptor!\n");
+            goto stop_search;
+        case DESCR_TYPE_PAGE:
+            write_log("Root pointer is early termination page descriptor.\n");
+            goto early_termination;
+        case DESCR_TYPE_VALID4:
+            next_size = 4;
+            break;
+        case DESCR_TYPE_VALID8:
+            next_size = 8;
+            break;
+    }
     
     /* If function code lookup is enabled in TC register use function code as
      * index for top level table, limit check not required */
     
     if (tc_030&TC_ENABLE_FCL) {
-        table_index = fc; /* function code is table index */
-        addr_position = long_descr ? 1 : 0; /* if long descriptor, address is in second long word */
-        
+        addr_position = (descr_size==4) ? 0 : 1;
+        table_addr = descr[descr_num][addr_position]&DESCR_TD_ADDR_MASK;
+        table_index = fc; /* table index is function code */
         write_log("Function code lookup enabled, FC = %i\n", table_index);
+        write_log("Table FCL at %08X: index = %i, ",table_addr,table_index);
         
-        descr_type = descr[descr_num][0]&DESCR_TYPE_MASK;
+        /* Fetch next descriptor */
+        descr_num++;
+        if (next_size==4) {
+            descr[descr_num][0] = phys_get_long(table_addr+(table_index*next_size));
+            write_log("Next descriptor: %08X\n",descr[descr_num][0]);
+        } else {
+            descr[descr_num][0] = phys_get_long(table_addr+(table_index*next_size));
+            descr[descr_num][1] = phys_get_long(table_addr+(table_index*next_size)+4);
+            write_log("Next descriptor: %08X%08X\n",descr[descr_num][0],descr[descr_num][1]);
+        }
+        descr_size = next_size;
+        
+        /* Check if a bus error occured */
+        if (regs.spcflags&SPCFLAG_BUSERROR) {
+            goto bus_error_read;
+        }
         
         switch (descr_type) {
             case DESCR_TYPE_INVALID:
-                write_log("Descriptor for Table FCL: Invalid\n");
+                write_log("Table FCL: invalid descriptor!\n");
                 /* stop table walk */
                 mmu030.status |= MMUSR_INVALID;
-                break;
+                goto stop_search;
             case DESCR_TYPE_EARLY_TERM:
-                write_log("Descriptor for Table FCL: Early termination\n");
+                write_log("Table FCL: early termination page descriptor!\n");
                 /* go to last level table handling code */
-                early_termination = true;
-                break;
+                goto early_termination;
             case DESCR_TYPE_VALID4:
-                table_addr = descr[descr_num][addr_position]&DESCR_TD_ADDR_MASK;
-                write_log("Table FCL at %08X: index = %i, ",table_addr,table_index);
-                /* get descriptor for next table */
-                descr_num++;
-                descr[descr_num][0] = phys_get_long(table_addr+(table_index*4));
-                write_log("Next descriptor: %08X\n",descr[descr_num][0]);
-                long_descr = false;
-                /* set the updated bit */
-                if (!level && !(descr[descr_num][0]&DESCR_U) && !(mmu030.status&MMUSR_SUPER_VIOLATION)) {
-                    descr[descr_num][0] |= DESCR_U;
-                    phys_put_long(table_addr+(table_index*4), descr[descr_num][0]);
-                }
+                next_size = 4;
                 break;
             case DESCR_TYPE_VALID8:
-                table_addr = descr[descr_num][addr_position]&DESCR_TD_ADDR_MASK;
-                write_log("Table FCL at %08X: index = %i, ",table_addr,table_index);
-                /* get descriptor for next table */
-                descr_num++;
-                descr[descr_num][0] = phys_get_long(table_addr+(table_index*8));
-                descr[descr_num][1] = phys_get_long(table_addr+(table_index*8)+4);
-                write_log("Next descriptor: %08X%08X\n",descr[descr_num][0],descr[descr_num][1]);
-                long_descr = true;
-                /* set the updated bit */
-                if (!level && !(descr[descr_num][0]&DESCR_U) && !(mmu030.status&MMUSR_SUPER_VIOLATION)) {
-                    descr[descr_num][0] |= DESCR_U;
-                    phys_put_long(table_addr+(table_index*8), descr[descr_num][0]);
-                }
+                next_size = 8;
                 break;
         }
-
-        if (regs.spcflags&SPCFLAG_BUSERROR) {
-            mmu030.status |= (MMUSR_BUS_ERROR|MMUSR_INVALID);
-            write_log("Table search bus error while fetching descriptor from Table FCL.\n");
-            descr_num--;
-        }
-        
-        /* Handle PTEST */
-        if (level && !early_termination) {
-            if ((level==descr_num) || (mmu030.status&MMUSR_INVALID)) {
-                mmu030.status = (mmu030.status&~MMUSR_NUM_LEVELS_MASK) | descr_num;
-                regs.spcflags |= restore_be ? SPCFLAG_BUSERROR : 0;
-                return rp_is_pd ? 0 : descr[descr_num][0];
-            }
-        }
-        /* End of PTEST code */
     }
     
     
     /* Upper level tables */
-    int t;
-    for (t = 0; t <= mmu030.translation.last_table && !early_termination && !(mmu030.status&MMUSR_INVALID); t++) {
-        addr_position = long_descr ? 1 : 0; /* if long descriptor, address is in second long word */
-        table_index = (addr&mmu030.translation.table[t].mask)>>mmu030.translation.table[t].shift;
-        descr_type = descr[descr_num][0]&DESCR_TYPE_MASK;
-        
-        /* If descriptor is not invalid descriptor,
-         * analyse it and set status bits */
-        if (descr_type) {
-            /* Check table descriptor and set status bits */
-            if (long_descr) { /* if long descriptor, check limits and super user */
+    for (t = 0; t <= mmu030.translation.last_table; t++) {
+        if (descr_num) { /* if not root pointer */
+            /* Set the updated bit */
+            if (!level && !(descr[descr_num][0]&DESCR_U) && !(mmu030.status&MMUSR_SUPER_VIOLATION)) {
+                descr[descr_num][0] |= DESCR_U;
+                phys_put_long(table_addr+(table_index*next_size), descr[descr_num][0]);
+                /* check if a bus error occured */
+                if (regs.spcflags&SPCFLAG_BUSERROR) {
+                    goto bus_error_write;
+                }
+            }
+            /* Update status bits */
+            if (descr_size==8) {
                 if (descr[descr_num][0]&DESCR_S)
                     mmu030.status |= super ? 0 : MMUSR_SUPER_VIOLATION;
-                
-                limit = (descr[descr_num][0]&DESCR_LIMIT_MASK)>>16;
-                if (descr[descr_num][0]&DESCR_LOWER_MASK)
-                    mmu030.status |= table_index<limit ? (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID) : 0;
-                else
-                    mmu030.status |= table_index>limit ? (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID) : 0;
             }
             if (descr[descr_num][0]&DESCR_WP) {
                 mmu030.status |= descr[descr_num][0]&DESCR_WP;
                 write_protect = true;
             }
-        }
-        
-        switch (descr_type) {
-            case DESCR_TYPE_INVALID:
-                write_log("Descriptor for Table %c: Invalid\n",table_letter[t]);
-                /* stop table walk */
-                mmu030.status |= MMUSR_INVALID;
-                break;
-            case DESCR_TYPE_EARLY_TERM:
-                write_log("Descriptor for Table %c: Early termination\n",table_letter[t]);
-                /* go to last level table handling code */
-                early_termination = true;
-                break;
-            case DESCR_TYPE_VALID4:
-                table_addr = descr[descr_num][addr_position]&DESCR_TD_ADDR_MASK;
-                write_log("Table %c at %08X: index = %i, ",table_letter[t],table_addr,table_index);
-                /* get descriptor for next table or page */
-                descr_num++;
-                descr[descr_num][0] = phys_get_long(table_addr+(table_index*4));
-                write_log("Next descriptor: %08X\n",descr[descr_num][0]);
-                long_descr = false;
-                /* set the updated bit */
-                if (!level && !(descr[descr_num][0]&DESCR_U) && !(mmu030.status&MMUSR_SUPER_VIOLATION)) {
-                    descr[descr_num][0] |= DESCR_U;
-                    phys_put_long(table_addr+(table_index*4), descr[descr_num][0]);
-                }
-                break;
-            case DESCR_TYPE_VALID8:
-                table_addr = descr[descr_num][addr_position]&DESCR_TD_ADDR_MASK;
-                write_log("Table %c at %08X: index = %i, ",table_letter[t],table_addr,table_index);
-                /* get descriptor for next table or page */
-                descr_num++;
-                descr[descr_num][0] = phys_get_long(table_addr+(table_index*8));
-                descr[descr_num][1] = phys_get_long(table_addr+(table_index*8)+4);
-                write_log("Next descriptor: %08X%08X\n",descr[descr_num][0],descr[descr_num][1]);
-                long_descr = true;
-                /* set the updated bit */
-                if (!level && !(descr[descr_num][0]&DESCR_U) && !(mmu030.status&MMUSR_SUPER_VIOLATION)) {
-                    descr[descr_num][0] |= DESCR_U;
-                    phys_put_long(table_addr+(table_index*8), descr[descr_num][0]);
-                }
-                break;
-        }
-
-        if (regs.spcflags&SPCFLAG_BUSERROR) {
-            mmu030.status |= (MMUSR_BUS_ERROR|MMUSR_INVALID);
-            descr_num--;
-            write_log("Table search bus error while fetching descriptor from Table %c.\n",
-                      table_letter[t]);
-        }
-                
-        if (mmu030.status&MMUSR_INVALID) {
-            /* these bits are undefined, if the I bit is set: */
-            mmu030.status &= ~(MMUSR_WRITE_PROTECTED|MMUSR_MODIFIED|MMUSR_SUPER_VIOLATION);
-        }
-
-        /* Handle PTEST */
-        if (level && !early_termination && !(t==mmu030.translation.last_table)) {
-            if ((level==descr_num) || (mmu030.status&MMUSR_INVALID)) {
-                mmu030.status = (mmu030.status&~MMUSR_NUM_LEVELS_MASK) | descr_num;
-                regs.spcflags |= restore_be ? SPCFLAG_BUSERROR : 0;
-                return rp_is_pd ? 0 : descr[descr_num][0];
+            
+            /* Check if ptest level is reached */
+            if (level && (level==descr_num)) {
+                goto stop_search;
             }
         }
-        /* End of PTEST code */
-    }
-    
-    
-    /* Lowest level table */
-    addr_position = long_descr ? 1 : 0; /* if long descriptor, address is in second long word */
-    page_index = addr&mmu030.translation.page.mask;
-    
-    descr_type = descr[descr_num][0]&DESCR_TYPE_MASK;
-    
-    /* Check if we have an indirect descriptor */
-    if (descr_type&0x2) { /* DESCR_TYPE_INDIRECT4 and DESCR_TYPE_INDIRECT8 */
-        indirect_addr = descr[descr_num][addr_position]&DESCR_ID_ADDR_MASK;
-        descr_num++;
-        descr[descr_num][0] = phys_get_long(indirect_addr);
-        write_log("Page indirect descriptor at %08X: descr = %08X",indirect_addr, descr[descr_num][0]);
         
-        if (descr_type == DESCR_TYPE_INDIRECT8) {
-            descr[descr_num][1] = phys_get_long(indirect_addr+4);
-            write_log("%08X\n", descr[descr_num][1]);
-            long_descr = true;
-            addr_position = 1;
-        } else {
-            write_log("\n");
-            long_descr = false;
-            addr_position = 0;
+        addr_position = (descr_size==4) ? 0 : 1;
+        table_addr = descr[descr_num][addr_position]&DESCR_TD_ADDR_MASK;
+        table_index = (addr&mmu030.translation.table[t].mask)>>mmu030.translation.table[t].shift;
+        write_log("Table %c at %08X: index = %i, ",table_letter[t],table_addr,table_index);
+        
+        /* Perform limit check */
+        if (descr_size==8) {
+            limit = (descr[descr_num][0]&DESCR_LIMIT_MASK)>>16;
+            if ((descr[descr_num][0]&DESCR_LOWER_MASK) && (table_index<limit)) {
+                mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
+                write_log("limit violation (lower limit %i)\n",limit);
+                goto stop_search;
+            } else if (table_index>limit) {
+                mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
+                write_log("limit violation (upper limit %i)\n",limit);
+                goto stop_search;
+            }
         }
         
-        descr_type = descr[descr_num][0]&DESCR_TYPE_MASK;
+        /* Fetch next descriptor */
+        descr_num++;
+        if (next_size==4) {
+            descr[descr_num][0] = phys_get_long(table_addr+(table_index*next_size));
+            write_log("Next descriptor: %08X\n",descr[descr_num][0]);
+        } else {
+            descr[descr_num][0] = phys_get_long(table_addr+(table_index*next_size));
+            descr[descr_num][1] = phys_get_long(table_addr+(table_index*next_size)+4);
+            write_log("Next descriptor: %08X%08X\n",descr[descr_num][0],descr[descr_num][1]);
+        }
+        descr_size = next_size;
         
         /* Check if a bus error occured */
         if (regs.spcflags&SPCFLAG_BUSERROR) {
-            mmu030.status |= (MMUSR_BUS_ERROR|MMUSR_INVALID);
-            descr_num--;
-            write_log("Table search bus error while fetching indirect descriptor.\n");
+            goto bus_error_read;
         }
         
-        /* Check if descriptor is page descriptor,
-         * only page descriptor is valid */
-        if (descr_type!=DESCR_TYPE_PAGE) {
-            mmu030.status |= MMUSR_INVALID;
+        /* Check descriptor type */
+        descr_type = descr[descr_num][0]&DESCR_TYPE_MASK;
+        switch (descr_type) {
+            case DESCR_TYPE_INVALID:
+                write_log("Table %c: invalid descriptor!\n",table_letter[t]);
+                /* stop table walk */
+                mmu030.status |= MMUSR_INVALID;
+                goto stop_search;
+            case DESCR_TYPE_EARLY_TERM:
+                /* go to last level table handling code */
+                if (t==mmu030.translation.last_table) {
+                    goto normal_termination;
+                } else {
+                    write_log("Table %c: early termination page descriptor!\n",table_letter[t]);
+                    goto early_termination;
+                }
+            case DESCR_TYPE_VALID4:
+                next_size = 4;
+                break;
+            case DESCR_TYPE_VALID8:
+                next_size = 8;
+                break;
         }
     }
     
-    if (!(mmu030.status&MMUSR_INVALID)) {
-        
-        /* Check long page descriptor and set status bits,
-         * limits are only checked, if early termination,
-         * that is handled in the above loop */
-        if (long_descr && (descr[descr_num][0]&DESCR_S)) {
-            mmu030.status |= super ? 0 : MMUSR_SUPER_VIOLATION;
+    
+    /* Handle indirect descriptor */
+    
+    /* Check if ptest level is reached */
+    if (level && (level==descr_num)) {
+        goto stop_search;
+    }
+    
+    addr_position = (descr_size==4) ? 0 : 1;
+    indirect_addr = descr[descr_num][addr_position]&DESCR_ID_ADDR_MASK;
+    write_log("Page indirect descriptor at %08X: ",indirect_addr);
+    
+    /* Fetch indirect descriptor */
+    descr_num++;
+    if (next_size==4) {
+        descr[descr_num][0] = phys_get_long(indirect_addr);
+        write_log("descr = %08X\n",descr[descr_num][0]);
+    } else {
+        descr[descr_num][0] = phys_get_long(indirect_addr);
+        descr[descr_num][1] = phys_get_long(indirect_addr+4);
+        write_log("descr = %08X%08X",descr[descr_num][0],descr[descr_num][1]);
+    }
+    descr_size = next_size;
+    
+    /* Check if a bus error occured */
+    if (regs.spcflags&SPCFLAG_BUSERROR) {
+        goto bus_error_read;
+    }
+    
+    /* Check descriptor type, only page descriptor is valid */
+    descr_type = descr[descr_num][0]&DESCR_TYPE_MASK;
+    if (descr_type!=DESCR_TYPE_PAGE) {
+        mmu030.status |= MMUSR_INVALID;
+        goto stop_search;
+    }
+    
+    goto normal_termination;
+    
+early_termination:
+    /* TODO: check this */
+    /* Check limit using next index field of logical address,
+     * limit is only checked on early termination */
+    if (descr_size==8) {
+        uae_u32 et_index = (addr&mmu030.translation.table[t+1].mask)>>mmu030.translation.table[t+1].shift;
+        limit = (descr[descr_num][0]&DESCR_LIMIT_MASK)>>16;
+        if ((descr[descr_num][0]&DESCR_LOWER_MASK) && (et_index<limit)) {
+            mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
+            goto stop_search;
+        } else if (et_index>limit) {
+            mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
+            goto stop_search;
         }
-
-        /* check if caching is inhibited */
-        cache_inhibit = descr[descr_num][0]&DESCR_CI ? true : false; /* TODO: handle this correctly */
-
-        /* check write protection */
-        if (descr[descr_num][0]&DESCR_WP) {
-            mmu030.status |= descr[descr_num][0]&DESCR_WP;
-            write_protect = true;
-        }
-        
+    }
+    
+normal_termination:
+    if (!level) {
         /* set modified bit */
-        if (!level && !(descr[descr_num][0]&DESCR_M) && write &&
+        if (!(descr[descr_num][0]&DESCR_M) && write &&
             !(mmu030.status&MMUSR_SUPER_VIOLATION) && !(mmu030.status&MMUSR_WRITE_PROTECTED)) {
             descr[descr_num][0] |= DESCR_M;
             descr_modified = true;
         }
-        /* set the updated bit */
-        if (!level && !(descr[descr_num][0]&DESCR_U) && !(mmu030.status&MMUSR_SUPER_VIOLATION)) {
+        /* set updated bit */
+        if (!(descr[descr_num][0]&DESCR_U) && !(mmu030.status&MMUSR_SUPER_VIOLATION)) {
             descr[descr_num][0] |= DESCR_U;
             descr_modified = true;
         }
         /* write modified descriptor if neccessary */
-        if (!level && descr_modified) {
-            if ((descr_type==DESCR_TYPE_INDIRECT4) || (descr_type==DESCR_TYPE_INDIRECT8)) {
+        if (descr_modified) {
+            if (descr_type&DESCR_TYPE_INDIRECT_MASK) {
                 phys_put_long(indirect_addr, descr[descr_num][0]);
             } else {
-                phys_put_long(table_addr+(table_index*(long_descr?8:4)), descr[descr_num][0]);
+                phys_put_long(table_addr+(table_index*descr_size), descr[descr_num][0]);
+            }
+            if (regs.spcflags&SPCFLAG_BUSERROR) {
+                goto bus_error_write;
             }
         }
-        
-        mmu030.status |= (descr[descr_num][0]&DESCR_M) ? MMUSR_MODIFIED : 0;
     }
     
+    if ((descr_size==8) && (descr[descr_num][0]&DESCR_S)) {
+        mmu030.status |= super ? 0 : MMUSR_SUPER_VIOLATION;
+    }
+    
+    /* check if caching is inhibited */
+    cache_inhibit = descr[descr_num][0]&DESCR_CI ? true : false;
+    
+    /* check write protection */
+    if (descr[descr_num][0]&DESCR_WP) {
+        mmu030.status |= descr[descr_num][0]&DESCR_WP;
+        write_protect = true;
+    }
+    /* TODO: check if this is handled at correct point (maybe before updating descr?) */
+    mmu030.status |= (descr[descr_num][0]&DESCR_M) ? MMUSR_MODIFIED : 0;
+    
+    /* Handle page descriptor */
+    addr_position = (descr_size==4) ? 0 : 1;
+    page_addr = descr[descr_num][addr_position]&DESCR_PD_ADDR_MASK;
+    write_log("Page at %08X\n",page_addr);
+    
+    goto stop_search;
+    
+bus_error_write:
+    mmu030.status |= (MMUSR_BUS_ERROR|MMUSR_INVALID);
+    write_log("Bus error while writing updated descriptor!\n");
+    goto stop_search;
+    
+bus_error_read:
+    mmu030.status |= (MMUSR_BUS_ERROR|MMUSR_INVALID);
+    write_log("Bus error while fetching descriptor!\n");
+    descr_num--;
+    
+stop_search:
     if (mmu030.status&MMUSR_INVALID) {
         /* these bits are undefined, if the I bit is set: */
         mmu030.status &= ~(MMUSR_WRITE_PROTECTED|MMUSR_MODIFIED|MMUSR_SUPER_VIOLATION);
     }
     
-    /* Handle PTEST */
+    /* check if we have to handle ptest */
     if (level) {
         mmu030.status = (mmu030.status&~MMUSR_NUM_LEVELS_MASK) | descr_num;
         regs.spcflags |= restore_be ? SPCFLAG_BUSERROR : 0;
-        return rp_is_pd ? 0 : descr[descr_num][0];
-    }
-    /* End of PTEST code */
-    
-    
-    /* Handle page descriptor */
-    if (!(mmu030.status&MMUSR_INVALID)) {
-        page_addr = descr[descr_num][addr_position]&DESCR_PD_ADDR_MASK;
-        write_log("Page at %08X\n",page_addr);
+        /* If root pointer is page descriptor (descr_num 0), return 0 */
+        return descr_num ? descr[descr_num][0] : 0;
     }
     
     /* Find an ATC entry to replace */
@@ -1659,22 +1667,9 @@ uae_u32 mmu030_ptest_table_search(uaecptr addr, bool super, bool data, bool writ
         }
         write_log("ATC is full. Replacing entry %i\n", i);
     }
-    mmu030.atc[i].mru = 1;
-    /* Search for history zero-bits */
-    for (j=0; j<ATC030_NUM_ENTRIES; j++) {
-        if (!mmu030.atc[j].mru)
-            break;
-    }
-    /* If there are no more zero-bits, reset all */
-    if (j==ATC030_NUM_ENTRIES) {
-        for (j=0; j<ATC030_NUM_ENTRIES; j++) {
-            mmu030.atc[j].mru = 0;
-        }
-        mmu030.atc[i].mru = 1;
-        write_log("ATC: No more history zero-bits. Reset all.\n");
-    }
+    mmu030_atc_handle_history_bit(i);
     
-    /* Create ATC entry */    
+    /* Create ATC entry */
     mmu030.atc[i].logical.addr = addr&0xFFFFFF00; /* field is only 24 bit */
     mmu030.atc[i].logical.fc = fc;
     mmu030.atc[i].logical.valid = true;
@@ -1701,6 +1696,7 @@ uae_u32 mmu030_ptest_table_search(uaecptr addr, bool super, bool data, bool writ
               mmu030.atc[i].physical.write_protect?1:0,
               mmu030.atc[i].physical.modified?1:0);
     
+    regs.spcflags |= restore_be ? SPCFLAG_BUSERROR : 0;
     return 0;
 }
 
@@ -1930,19 +1926,7 @@ int mmu030_logical_is_in_atc(uaecptr addr, bool super, bool data, bool write) {
              * else invalidate entry */
             if (mmu030.atc[i].physical.modified || !write) {
                 /* Maintain history bit */
-                mmu030.atc[i].mru = 1;
-                for (j=0; j<ATC030_NUM_ENTRIES; j++) {
-                    if (!mmu030.atc[j].mru)
-                        break;
-                }
-                /* If there are no more zero-bits, reset all */
-                if (j==ATC030_NUM_ENTRIES) {
-                    for (j=0; j<ATC030_NUM_ENTRIES; j++) {
-                        mmu030.atc[j].mru = 0;
-                    }
-                    mmu030.atc[i].mru = 1;
-                    write_log("ATC: No more history zero-bits. Reset all.\n");
-                }
+                mmu030_atc_handle_history_bit(i);
                 return i;
             } else {
                 mmu030.atc[i].logical.valid = false;
@@ -1952,12 +1936,27 @@ int mmu030_logical_is_in_atc(uaecptr addr, bool super, bool data, bool write) {
     return ATC030_NUM_ENTRIES;
 }
 
-
+void mmu030_atc_handle_history_bit(int entry_num) {
+    int j;
+    mmu030.atc[entry_num].mru = 1;
+    for (j=0; j<ATC030_NUM_ENTRIES; j++) {
+        if (!mmu030.atc[j].mru)
+            break;
+    }
+    /* If there are no more zero-bits, reset all */
+    if (j==ATC030_NUM_ENTRIES) {
+        for (j=0; j<ATC030_NUM_ENTRIES; j++) {
+            mmu030.atc[j].mru = 0;
+        }
+        mmu030.atc[entry_num].mru = 1;
+        write_log("ATC: No more history zero-bits. Reset all.\n");
+    }
+}
 
 
 /* Memory access functions:
- * If the address matches one of the transparent translation registers 
- * use it directly as physical address, else check ATC for the 
+ * If the address matches one of the transparent translation registers
+ * use it directly as physical address, else check ATC for the
  * logical address. If the logical address is not resident in the ATC
  * create a new ATC entry and then look up the physical address. 
  */
