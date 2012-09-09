@@ -1021,6 +1021,7 @@ uae_u32 mmu030_table_search(uaecptr addr, bool super, bool data, bool write, int
     uae_u32 fc = mmu030_get_fc(super, data);
     uae_u32 table_index = 0;
     uae_u32 limit = 0;
+    uae_u32 unused_fields_mask = 0;
     bool write_protect = false;
     bool cache_inhibit = false;
     bool descr_modified = false;
@@ -1029,12 +1030,14 @@ uae_u32 mmu030_table_search(uaecptr addr, bool super, bool data, bool write, int
     
     /* Initial values for condition variables.
      * Note: Root pointer is long descriptor. */
+    int t = 0;
     int addr_position = 1;
     int next_size = 0;
     int descr_size = 8;
     int descr_num = 0;
     bool early_termination = false;
-    int t,i;
+    
+    int i;
     
     /* Clear bus error flag, so we only detect our own bus errors.
      * Restore bus error flag, before returning from this function!
@@ -1070,7 +1073,6 @@ uae_u32 mmu030_table_search(uaecptr addr, bool super, bool data, bool write, int
         case DESCR_TYPE_EARLY_TERM:
             write_log("Root pointer is early termination page descriptor.\n");
             early_termination = true;
-            t = 0; /* Use index of table A for limit check */
             goto handle_page_descriptor;
         case DESCR_TYPE_VALID4:
             next_size = 4;
@@ -1118,7 +1120,6 @@ uae_u32 mmu030_table_search(uaecptr addr, bool super, bool data, bool write, int
             case DESCR_TYPE_EARLY_TERM:
                 write_log("Early termination page descriptor!\n");
                 early_termination = true;
-                t = 0; /* Use index of table A for limit check */
                 goto handle_page_descriptor;
             case DESCR_TYPE_VALID4:
                 next_size = 4;
@@ -1131,7 +1132,7 @@ uae_u32 mmu030_table_search(uaecptr addr, bool super, bool data, bool write, int
     
     
     /* Upper level tables */
-    for (t = 0; t <= mmu030.translation.last_table; t++) {
+    do {
         if (descr_num) { /* if not root pointer */
             /* Set the updated bit */
             if (!level && !(descr[descr_num][0]&DESCR_U) && !(mmu030.status&MMUSR_SUPER_VIOLATION)) {
@@ -1162,6 +1163,7 @@ uae_u32 mmu030_table_search(uaecptr addr, bool super, bool data, bool write, int
         table_addr = descr[descr_num][addr_position]&DESCR_TD_ADDR_MASK;
         table_index = (addr&mmu030.translation.table[t].mask)>>mmu030.translation.table[t].shift;
         write_log("Table %c at %08X: index = %i, ",table_letter[t],table_addr,table_index);
+        t++; /* Proceed to the next table */
         
         /* Perform limit check */
         if (descr_size==8) {
@@ -1192,7 +1194,7 @@ uae_u32 mmu030_table_search(uaecptr addr, bool super, bool data, bool write, int
             goto bus_error_read;
         }
         descr_size = next_size;
-                
+        
         /* Check descriptor type */
         descr_type = descr[descr_num][0]&DESCR_TYPE_MASK;
         switch (descr_type) {
@@ -1203,10 +1205,9 @@ uae_u32 mmu030_table_search(uaecptr addr, bool super, bool data, bool write, int
                 goto stop_search;
             case DESCR_TYPE_EARLY_TERM:
                 /* go to last level table handling code */
-                if (t<mmu030.translation.last_table) {
+                if (t<=mmu030.translation.last_table) {
                     write_log("Early termination page descriptor!\n");
                     early_termination = true;
-                    t++; /* Use index of next table for limit check */
                 }
                 goto handle_page_descriptor;
             case DESCR_TYPE_VALID4:
@@ -1216,7 +1217,7 @@ uae_u32 mmu030_table_search(uaecptr addr, bool super, bool data, bool write, int
                 next_size = 8;
                 break;
         }
-    }
+    } while (t<=mmu030.translation.last_table);
     
     
     /* Handle indirect descriptor */
@@ -1300,23 +1301,36 @@ handle_page_descriptor:
      * Limit is only checked on early termination. If we are
      * still at root pointer level, only check limit, if FCL
      * is disabled. */
-    if (early_termination && (descr_size==8)) {
+    if (early_termination) {
         if (descr_num || !(tc_030&TC_ENABLE_FCL)) {
-            table_index = (addr&mmu030.translation.table[t].mask)>>mmu030.translation.table[t].shift;
-            limit = (descr[descr_num][0]&DESCR_LIMIT_MASK)>>16;
-            if ((descr[descr_num][0]&DESCR_LOWER_MASK) && (table_index<limit)) {
-                mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
-                goto stop_search;
-            } else if (table_index>limit) {
-                mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
-                goto stop_search;
+            if (descr_size==8) {
+                table_index = (addr&mmu030.translation.table[t].mask)>>mmu030.translation.table[t].shift;
+                limit = (descr[descr_num][0]&DESCR_LIMIT_MASK)>>16;
+                if ((descr[descr_num][0]&DESCR_LOWER_MASK) && (table_index<limit)) {
+                    mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
+                    write_log("Limit violation (lower limit %i)\n",limit);
+                    goto stop_search;
+                } else if (table_index>limit) {
+                    mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
+                    write_log("Limit violation (upper limit %i)\n",limit);
+                    goto stop_search;
+                }
             }
         }
+        /* Get all unused bits of the logical address table index field.
+         * they are added to the page address */
+        /* TODO: They should be added via "unsigned addition". How to? */
+        for (i = t; i<=mmu030.translation.last_table; i++) {
+            unused_fields_mask |= mmu030.translation.table[i].mask;
+        }
+        page_addr = addr&unused_fields_mask;
+        write_log("Logical address unused bits: %08X (mask = %08X)",
+                  page_addr,unused_fields_mask);
     }
     
     /* Get page address */
     addr_position = (descr_size==4) ? 0 : 1;
-    page_addr = descr[descr_num][addr_position]&DESCR_PD_ADDR_MASK;
+    page_addr += (descr[descr_num][addr_position]&DESCR_PD_ADDR_MASK);
     write_log("Page at %08X\n",page_addr);
 
     goto stop_search;
