@@ -10,32 +10,7 @@
 #define MMUOP_DEBUG 2
 #define DEBUG_CD32CDTVIO 0
 
-/*
- * #include "compat.h"
-#include "sysconfig.h"
-#include "sysdeps.h"
-
-#include "options_cpu.h"
-#include "events.h"
-//#include "uae.h"
-#include "memory.h"
-#include "custom.h"
-#include "newcpu.h"
-#include "cpummu.h"
-#include "cpu_prefetch.h"
-//#include "autoconf.h"
-//#include "traps.h"
-//#include "ersatz.h"
-//#include "debug.h"
-//#include "gui.h"
-#include "savestate.h"
-#include "blitter.h"
-#include "ar.h"
-//#include "gayle.h"
-//#include "cia.h"
-//#include "inputdevice.h"
-*/
-
+#include "main.h"
 #include "compat.h"
 #include "sysconfig.h"
 #include "sysdeps.h"
@@ -46,8 +21,8 @@
 #include "maccess.h"
 #include "memory.h"
 #include "newcpu.h"
-#include "main.h"
 #include "cpummu.h"
+#include "cpummu030.h"
 #include "cpu_prefetch.h"
 #include "main.h"
 #include "m68000.h"
@@ -189,7 +164,17 @@ void (*x_put_byte)(uaecptr,uae_u32);
 // shared memory access functions
 static void set_x_funcs (void)
 {
-	if (currprefs.mmu_model) {
+	if (currprefs.mmu_model && currprefs.cpu_model == 68030) {
+        x_prefetch = get_iword_mmu030;
+		x_next_iword = next_iword_mmu030;
+		x_next_ilong = next_ilong_mmu030;
+		x_put_long = put_long_mmu030;
+		x_put_word = put_word_mmu030;
+		x_put_byte = put_byte_mmu030;
+		x_get_long = get_long_mmu030;
+		x_get_word = get_word_mmu030;
+		x_get_byte = get_byte_mmu030;
+    } else if (currprefs.mmu_model) {
 		x_prefetch = get_iword_mmu;
 		x_next_iword = next_iword_mmu;
 		x_next_ilong = next_ilong_mmu;
@@ -347,7 +332,7 @@ void build_cpufunctbl (void)
 		break;
 	case 68030:
 		lvl = 3;
-		tbl = op_smalltbl_31_ff;
+		tbl = op_smalltbl_32_ff;
 		break;
 	case 68020:
 		lvl = 2;
@@ -1471,6 +1456,7 @@ kludge_me_do:
 }
 #endif
 
+/* TODO: fix this for 68030! */
 static void Exception_mmu (int nr, uaecptr oldpc)
 {
 	uae_u32 currpc = m68k_getpc (), newpc;
@@ -3242,7 +3228,7 @@ void m68k_go (int may_quit)
 #ifdef JIT
 				currprefs.cpu_model >= 68020 && currprefs.cachesize ? m68k_run_jit :
 #endif
-				(currprefs.cpu_model == 68040 || currprefs.cpu_model == 68060) && currprefs.mmu_model ? m68k_run_mmu040 :
+				currprefs.cpu_model >= 68030 && currprefs.mmu_model ? m68k_run_mmu040 :
 				currprefs.cpu_model >= 68020 && currprefs.cpu_cycle_exact ? m68k_run_2ce :
 				currprefs.cpu_compatible ? m68k_run_2p : m68k_run_2;
 				*/
