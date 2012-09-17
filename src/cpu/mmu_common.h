@@ -37,6 +37,8 @@ typedef  int m68k_exception;
 #endif
 
 /* special status word (access error stack frame) */
+/* this is only valid for 68040 */
+/* TODO: correctly handle SSW on 68030 */
 #define MMU_SSW_TM		0x0007
 #define MMU_SSW_TT		0x0018
 #define MMU_SSW_SIZE	0x0060
@@ -51,6 +53,19 @@ typedef  int m68k_exception;
 #define MMU_SSW_CT	0x2000
 #define MMU_SSW_CU	0x4000
 #define MMU_SSW_CP	0x8000
+
+#define MMU030_SSW_FC       0x8000
+#define MMU030_SSW_FB       0x4000
+#define MMU030_SSW_RC       0x2000
+#define MMU030_SSW_RB       0x1000
+#define MMU030_SSW_DF       0x0100
+#define MMU030_SSW_RM       0x0080
+#define MMU030_SSW_RW       0x0040
+#define MMU030_SSW_SIZE_MASK    0x0030
+#define MMU030_SSW_SIZE_B       0x0010 /* correct ? */
+#define MMU030_SSW_SIZE_W       0x0020 /* correct ? */
+#define MMU030_SSW_SIZE_L       0x0000 /* correct ? */
+#define MMU030_SSW_FC_MASK      0x0007
 
 
 #define ALWAYS_INLINE __inline

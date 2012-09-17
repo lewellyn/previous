@@ -9,12 +9,15 @@
  *
  *
  * Known Problems:
- * - The MMU code is not properly connected to the CPU code
  * - MMU configuration exceptions are missing
+ * - Exception handling is not correct for 68030
+ *   (see Exception_mmu in newcpu.c)
  *
  *
  * TODO list:
- * - Once MMU is properly connected to CPU, fix function code handling:
+ * - Correctly handle MMU special status word. Now we use 68040 values.
+ * - Fix function code handling:
+ *   Add sfc and dfc memory access functions
  *   In PFLUSH functions (mmu030_flush_atc_page_fc, mmu030_flush_atc_fc)
  *   1. How to apply fc_mask?
  *   2. How to compare fc in ATC entry with fc to flush (==, &)?
