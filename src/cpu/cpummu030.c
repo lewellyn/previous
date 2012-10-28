@@ -1848,6 +1848,21 @@ void REGPARAM2 mmu030_put_word_unaligned(uaecptr addr, uae_u16 val, uae_u32 fc)
 }
 
 
+/* MMU Reset */
+void mmu030_reset(int hardreset)
+{
+    /* A CPU reset causes the E-bits of TC and TT registers to be zeroed. */
+    mmu030.enabled = false;
+	tc_030 &= ~TC_ENABLE_TRANSLATION;
+	tt0_030 &= ~TT_ENABLE;
+	tt1_030 &= ~TT_ENABLE;
+	if (hardreset) {
+		srp_030 = crp_030 = 0;
+		tt0_030 = tt1_030 = tc_030 = 0;
+        mmusr_030 = 0;
+	}
+}
+
 
 void m68k_do_rte_mmu030 (uaecptr a7)
 {

@@ -980,7 +980,7 @@ void Hardclock_InterruptHandler ( void )
 void HardclockRead0(void){
 	IoMem[IoAccessCurrentAddress & 0x1FFFF]=(pseudo_counter>>8);
 ;
-//	if (pseudo_counter>0) pseudo_counter--;
+	if (pseudo_counter>0) pseudo_counter--;
 
 	Log_Printf(LOG_WARN,"[hardclock] read at $%08x val=%02x PC=$%08x", IoAccessCurrentAddress,IoMem[IoAccessCurrentAddress & 0x1FFFF],m68k_getpc());
 }
@@ -1007,8 +1007,8 @@ void HardclockWriteCSR(void) {
 		pseudo_counter=latch_hardclock;
 	}
 	if ((hardclock_csr&HARDCLOCK_ENABLE) && (latch_hardclock>0)) {
-	        //CycInt_AddRelativeInterrupt(latch_hardclock*33, INT_CPU_CYCLE, INTERRUPT_HARDCLOCK);
-        set_interrupt(INT_TIMER, SET_INT);
+	        CycInt_AddRelativeInterrupt(latch_hardclock*33, INT_CPU_CYCLE, INTERRUPT_HARDCLOCK);
+//        set_interrupt(INT_TIMER, SET_INT);
 	}
 }
 void HardclockReadCSR(void) {

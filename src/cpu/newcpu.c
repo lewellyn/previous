@@ -2331,24 +2331,19 @@ void m68k_reset (int hardreset)
 	mmufixup[0].reg = -1;
 	mmufixup[1].reg = -1;
 	if (currprefs.mmu_model) {
-		mmu_reset ();
-		mmu_set_tc (regs.tcr);
-		mmu_set_super (regs.s != 0);
-	}
-
-	/* only (E)nable bit is zeroed when CPU is reset, A3000 SuperKickstart expects this */
-	tc_030 &= ~0x80000000;
-	tt0_030 &= ~0x80000000;
-	tt1_030 &= ~0x80000000;
-	if (hardreset) {
-		srp_030 = crp_030 = 0;
-		tt0_030 = tt1_030 = tc_030 = 0;
-	}
-	mmusr_030 = 0;
+        if (currprefs.cpu_model >= 68040) {
+            mmu_reset ();
+            mmu_set_tc (regs.tcr);
+            mmu_set_super (regs.s != 0);
+        }
+        else {
+            mmu030_reset(hardreset);
+        }
+    }
 
 	/* 68060 FPU is not compatible with 68040,
-	* 68060 accelerators' boot ROM disables the FPU
-	*/
+     * 68060 accelerators' boot ROM disables the FPU
+     */
 	regs.pcr = 0;
 	if (currprefs.cpu_model == 68060) {
 		regs.pcr = currprefs.fpu_model == 68060 ? MC68060_PCR : MC68EC060_PCR;
@@ -2389,9 +2384,9 @@ void mmu_op30 (uaecptr pc, uae_u32 opcode, uae_u16 extra, uaecptr extraa)
 	}
 	if (extra & 0x8000)
 		mmu_op30_ptest (pc, opcode, extra, extraa);
-	else if ((extra & 0x2000) && (extra & 0x1C00))
+	else if ((extra&0xE000)==0x2000 && (extra & 0x1C00))
 		mmu_op30_pflush (pc, opcode, extra, extraa);
-    else if ((extra & 0x2000) && !(extra & 0x1C00))
+    else if ((extra&0xE000)==0x2000 && !(extra & 0x1C00))
         mmu_op30_pload (pc, opcode, extra, extraa);
 	else
 		mmu_op30_pmove (pc, opcode, extra, extraa);
