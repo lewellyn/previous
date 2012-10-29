@@ -406,10 +406,14 @@ void build_cpufunctbl (void)
 #endif
 	set_cpu_caches ();
 	if (currprefs.mmu_model) {
-		mmu_reset ();
-		mmu_set_tc (regs.tcr);
-		mmu_set_super (regs.s != 0);
-	}
+        if (currprefs.cpu_model >= 68040) {
+            mmu_reset ();
+            mmu_set_tc (regs.tcr);
+            mmu_set_super (regs.s != 0);
+        } else {
+            mmu030_reset(1);
+        }
+    }
 }
 
 void fill_prefetch_slow (void)
