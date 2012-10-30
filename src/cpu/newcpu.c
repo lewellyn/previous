@@ -1460,7 +1460,153 @@ kludge_me_do:
 }
 #endif
 
-/* FIXME: Address and bus errors differ between 68030 and 68040 ! */
+
+static void Exception_build_stack_frame (uae_u32 oldpc, uae_u32 currpc, uae_u16 ssw, int nr, int format) {
+    int i;
+    
+    if (nr < 24 || nr > 31) { // do not print debugging for interrupts
+        write_log("Building exception stack frame (format %X)\n", format);
+    }
+    
+    switch (format) {
+        case 0x0: // four word stack frame
+        case 0x1: // throwaway four word stack frame
+            break;
+        case 0x2: // six word stack frame
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), oldpc);
+            break;
+        case 0x7: // access error stack frame (68040)
+            for (i = 0 ; i < 7 ; i++) {
+                m68k_areg (regs, 7) -= 4;
+                x_put_long (m68k_areg (regs, 7), 0);
+            }
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), regs.wb3_data);
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), regs.mmu_fault_addr);
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), regs.mmu_fault_addr);
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), 0);
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), 0);
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), regs.wb3_status);
+            regs.wb3_status = 0;
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), ssw);
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), regs.mmu_fault_addr);
+            break;
+        case 0x9: // coprocessor mid-instruction stack frame (68020, 68030)
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), 0);
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), 0);
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), oldpc);
+            break;
+        case 0xA: // short bus cycle fault stack frame (68020, 68030)
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), 0);  // Internal register
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), regs.wb3_data);  // Data output buffer
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), 0);  // Internal register
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), regs.mmu_fault_addr);
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), 0);  // Instr. pipe stage B
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), 0);  // Instr. pipe stage C
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), ssw);
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), 0);  // Internal register
+            break;
+        case 0xB: // long bus cycle fault stack frame (68020, 68030)
+            for (i = 0 ; i < 36; i++) {
+                m68k_areg (regs, 7) -= 2;
+                x_put_word (m68k_areg (regs, 7), 0);
+            }
+            m68k_areg (regs, 7) -= 4;
+            x_put_long (m68k_areg (regs, 7), last_fault_for_exception_3);
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), 0);
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), 0);
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), ssw);
+            m68k_areg (regs, 7) -= 2;
+            x_put_word (m68k_areg (regs, 7), 0);
+            break;
+        case 0x3: // floating point post-instruction stack frame (68040)
+        case 0x4: // floating point unimplemented stack frame (68LC040, 68EC040)
+        case 0x8: // bus and address error stack frame (68010)
+            write_log("Exception stack frame format %X not implemented\n", format);
+            return;
+        default:
+            write_log("Unknown exception stack frame format: %X\n", format);
+            return;
+    }
+    m68k_areg (regs, 7) -= 2;
+    x_put_word (m68k_areg (regs, 7), (format<<12) | (nr * 4));
+    m68k_areg (regs, 7) -= 4;
+    x_put_long (m68k_areg (regs, 7), currpc);
+    m68k_areg (regs, 7) -= 2;
+    x_put_word (m68k_areg (regs, 7), regs.sr);
+}
+
+/* Called from Exception() function if we are emulating 68030 */
+static void Exception_mmu030 (int nr, uaecptr oldpc) {
+    uae_u32 currpc = m68k_getpc(), newpc;
+    int sv = regs.s;
+    int i;
+    
+    exception_debug(nr);
+    MakeSR();
+    
+    if (!regs.s) {
+        regs.usp = m68k_areg(regs, 7);
+        m68k_areg(regs, 7) = regs.m ? regs.msp : regs.isp;
+        regs.s = 1;
+        mmu_set_super(1);
+    }
+    
+    if (nr < 24 || nr > 31) { // do not print debugging for interrupts
+        write_log ("Exception_mmu030: Exception %i: %08x %08x %08x\n",
+                   nr, currpc, oldpc, regs.mmu_fault_addr);
+    }
+    
+    if (regs.m && nr >= 24 && nr < 32) { /* M + Interrupt */
+        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x1);
+    } else if (nr ==5 || nr == 6 || nr == 7 || nr == 9 || nr == 56) {
+        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x2);
+    } else if (nr == 2 || nr == 3) {
+        Exception_build_stack_frame(oldpc, currpc, 0x0145, nr, 0xA); // ssw hacked for NeXT
+    } else {
+        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x0);
+    }
+    
+    newpc = x_get_long (regs.vbr + 4 * nr);
+	if (newpc & 1) {
+		if (nr == 2 || nr == 3)
+			Reset_Cold();  /* there is nothing else we can do.. */
+		else
+			exception3 (regs.ir, m68k_getpc (), newpc);
+		return;
+	}
+	m68k_setpc (newpc);
+#ifdef JIT
+	set_special (SPCFLAG_END_COMPILE);
+#endif
+	fill_prefetch_slow ();
+	exception_trace (nr);
+}
+
+
+/* Called from Exception() function if we are emulating 68040 */
 static void Exception_mmu (int nr, uaecptr oldpc)
 {
 	uae_u32 currpc = m68k_getpc (), newpc;
@@ -1479,95 +1625,24 @@ static void Exception_mmu (int nr, uaecptr oldpc)
 		regs.s = 1;
 		mmu_set_super (1);
 	}
-	if (nr == 2) {
-		write_log ("Exception_mmu %08x %08x %08x\n", currpc, oldpc, regs.mmu_fault_addr);
-		// bus error
-		for (i = 0 ; i < 7 ; i++) {
-			m68k_areg (regs, 7) -= 4;
-			x_put_long (m68k_areg (regs, 7), 0);
-		}
-		m68k_areg (regs, 7) -= 4;
-		x_put_long (m68k_areg (regs, 7), regs.wb3_data);
-		m68k_areg (regs, 7) -= 4;
-		x_put_long (m68k_areg (regs, 7), regs.mmu_fault_addr);
-		m68k_areg (regs, 7) -= 4;
-		x_put_long (m68k_areg (regs, 7), regs.mmu_fault_addr);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), 0);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), 0);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), regs.wb3_status);
-		regs.wb3_status = 0;
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), regs.mmu_ssw);
-		m68k_areg (regs, 7) -= 4;
-		x_put_long (m68k_areg (regs, 7), regs.mmu_fault_addr);
-
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), 0x7000 + nr * 4);
-		m68k_areg (regs, 7) -= 4;
-		x_put_long (m68k_areg (regs, 7), oldpc);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), regs.sr);
-		goto kludge_me_do;
-
-	} else if (nr == 3) {
-
-		// address error
+    
+    if (nr == 2) { // bus error
+        write_log ("Exception_mmu %08x %08x %08x\n", currpc, oldpc, regs.mmu_fault_addr);
+        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x7);
+	} else if (nr == 3) { // address error
 		uae_u16 ssw = (sv ? 4 : 0) | (last_instructionaccess_for_exception_3 ? 2 : 1);
 		ssw |= last_writeaccess_for_exception_3 ? 0 : 0x40;
 		ssw |= 0x20;
-		for (i = 0 ; i < 36; i++) {
-			m68k_areg (regs, 7) -= 2;
-			x_put_word (m68k_areg (regs, 7), 0);
-		}
-		m68k_areg (regs, 7) -= 4;
-		x_put_long (m68k_areg (regs, 7), last_fault_for_exception_3);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), 0);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), 0);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), 0);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), ssw);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), 0xb000 + nr * 4);
+        Exception_build_stack_frame(oldpc, currpc, ssw, nr, 0xB);
 		write_log ("Exception %d (%x) at %x -> %x! %s at %d\n", nr, oldpc, currpc, get_long (regs.vbr + 4*nr),__FILE__,__LINE__);
-
 	} else if (nr ==5 || nr == 6 || nr == 7 || nr == 9) {
-
-		m68k_areg (regs, 7) -= 4;
-		x_put_long (m68k_areg (regs, 7), oldpc);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), 0x2000 + nr * 4);
-
+        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x2);
 	} else if (regs.m && nr >= 24 && nr < 32) { /* M + Interrupt */
-
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), nr * 4);
-		m68k_areg (regs, 7) -= 4;
-		x_put_long (m68k_areg (regs, 7), currpc);
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), regs.sr);
-		regs.sr |= (1 << 13);
-		regs.msp = m68k_areg (regs, 7);
-		m68k_areg (regs, 7) = regs.isp;
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), 0x1000 + nr * 4);
-
+        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x1);
 	} else {
-
-		m68k_areg (regs, 7) -= 2;
-		x_put_word (m68k_areg (regs, 7), nr * 4);
-
+        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x0);
 	}
-	m68k_areg (regs, 7) -= 4;
-	x_put_long (m68k_areg (regs, 7), currpc);
-	m68k_areg (regs, 7) -= 2;
-	x_put_word (m68k_areg (regs, 7), regs.sr);
-kludge_me_do:
+    
 	newpc = x_get_long (regs.vbr + 4 * nr);
 	if (newpc & 1) {
 		if (nr == 2 || nr == 3)
@@ -1826,11 +1901,12 @@ kludge_me_do:
 /* and get a conflict with 'normal' cpu exceptions. */
 void REGPARAM2 Exception (int nr, uaecptr oldpc, int ExceptionSource)
 {
-		if (currprefs.mmu_model)
-			Exception_mmu (nr, oldpc); // Todo: add ExceptionSource
-		else
-			Exception_normal (nr, oldpc, ExceptionSource);
-
+    if (currprefs.mmu_model && currprefs.cpu_model == 68030)
+        Exception_mmu030(nr, oldpc);
+    else if (currprefs.mmu_model)
+        Exception_mmu (nr, oldpc); // Todo: add ExceptionSource
+    else
+        Exception_normal (nr, oldpc, ExceptionSource);
 }
 
 STATIC_INLINE void do_interrupt (int nr, int Pending)
@@ -2968,7 +3044,7 @@ static void m68k_run_mmu040 (void)
 		}
 
 		TRY (prb) {
-			Exception_mmu (save_except, oldpc);
+			Exception (save_except, oldpc, 0); // TODO: Add exception source
 		} CATCH (prb) {
     			Log_Printf(LOG_WARN, "[FATAL] double fault");	
 			abort();		

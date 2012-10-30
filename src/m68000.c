@@ -344,18 +344,21 @@ void M68000_MemorySnapShot_Capture(bool bSave)
  * BUSERROR - Access outside valid memory range.
  * Use bRead = 0 for write errors and bRead = 1 for read errors!
  */
+#include "mmu_common.h"
+
 void M68000_BusError(Uint32 addr, bool bRead)
 {
 	/* FIXME: In prefetch mode, m68k_getpc() seems already to point to the next instruction */
 	// BusErrorPC = M68000_GetPC();		/* [NP] We set BusErrorPC in m68k_run_1 */
 
 	
-	if ((regs.spcflags & SPCFLAG_BUSERROR) == 0)	/* [NP] Check that the opcode has not already generated a read bus error */
+//	if ((regs.spcflags & SPCFLAG_BUSERROR) == 0)	/* [NP] Check that the opcode has not already generated a read bus error */
 	{
         regs.mmu_fault_addr = addr;
 		BusErrorAddress = addr;				/* Store for exception frame */
 		bBusErrorReadWrite = bRead;
 		M68000_SetSpecial(SPCFLAG_BUSERROR);		/* The exception will be done in newcpu.c */
+        THROW(2);
 	}
 }
 

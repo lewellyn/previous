@@ -95,6 +95,7 @@ uae_u8 NEXTColorVideo[2*1024*1024];
 #define NEXT_IO_SIZE		0x00020000
 
 #define NEXT_BMAP_START		0x020C0000
+#define NEXT_BMAP2_START    0x820C0000
 #define NEXT_BMAP_SIZE		0x10000
 #define	NEXTbmap_size		NEXT_BMAP_SIZE
 #define	NEXTbmap_mask		0x0000FFFF
@@ -327,7 +328,7 @@ static uae_u32 NEXTempty_lget(uaecptr addr)
     if (illegal_mem)
         write_log ("Empty mem area lget at %08lx\n", (long)addr);
     
-    M68000_BusError(addr, 1);
+//    M68000_BusError(addr, 1);
     return addr;
 }
 
@@ -354,7 +355,7 @@ static void NEXTempty_lput(uaecptr addr, uae_u32 l)
 {
     if (illegal_mem)
         write_log ("Empty mem area lput at %08lx\n", (long)addr);
-    
+        
     uae_u8 bank = ((addr-NEXT_RAM_START)>>bankshift)&0x3;
     
     if (MemBank_Size[bank]) {
@@ -362,7 +363,7 @@ static void NEXTempty_lput(uaecptr addr, uae_u32 l)
         do_put_mem_long(NEXTRam + addr, l);
     }
 
-    M68000_BusError(addr, 0);
+//    M68000_BusError(oldaddr, 0);
 }
 /*-------------------- end of experimental code ----------------------*/
 
@@ -751,19 +752,19 @@ static uae_u32 ROMmem_bget(uaecptr addr)
 static void ROMmem_lput(uaecptr addr, uae_u32 b)
 {
     illegal_trace(write_log ("Illegal ROMmem lput at %08lx\n", (long)addr));
-    M68000_BusError(addr, 0);
+//    M68000_BusError(addr, 0);
 }
 
 static void ROMmem_wput(uaecptr addr, uae_u32 b)
 {
     illegal_trace(write_log ("Illegal ROMmem wput at %08lx\n", (long)addr));
-    M68000_BusError(addr, 0);
+//    M68000_BusError(addr, 0);
 }
 
 static void ROMmem_bput(uaecptr addr, uae_u32 b)
 {
     illegal_trace(write_log ("Illegal ROMmem bput at %08lx\n", (long)addr));
-    M68000_BusError(addr, 0);
+//    M68000_BusError(addr, 0);
 }
 
 static int ROMmem_check(uaecptr addr, uae_u32 size)
@@ -1002,6 +1003,7 @@ const char* memory_init(int *nNewNEXTMemSize)
         map_banks(&IOmem_bank, NEXT_IO3_START >> 16, NEXT_IO_SIZE>>16);
     
     map_banks(&bmap_bank, NEXT_BMAP_START >> 16, NEXT_BMAP_SIZE>>16);
+    map_banks(&bmap_bank, NEXT_BMAP2_START >> 16, NEXT_BMAP_SIZE>>16);
 
     
 	ROMmemory=NEXTRom;

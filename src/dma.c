@@ -157,6 +157,12 @@ void DMA_CSR_Write(void) {
         if ((channel == CHANNEL_EN_TX) && !(writecsr&DMA_DEV2M)) {
             Ethernet_Transmit(); // Ethernet Transmit
         }
+#if 1 /* hack for nextstep 0.8 */
+        if ((channel == CHANNEL_R2M) || (channel == CHANNEL_M2R)) {
+            dma[channel].csr = DMA_COMPLETE;
+            set_interrupt(interrupt, SET_INT);
+        }
+#endif
     }
     if(writecsr & DMA_SETSUPDATE) {
         dma[channel].csr |= DMA_SUPDATE;
@@ -231,6 +237,9 @@ void DMA_Next_Read(void) { // 0x02004010
     int channel = get_channel(IoAccessCurrentAddress-0x4000);
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].next);
  	Log_Printf(LOG_DMA_LEVEL,"DMA Next read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].next, m68k_getpc());
+    /* Experimental! Release interrupt here */
+    int interrupt = get_interrupt_type(channel);
+    set_interrupt(interrupt, RELEASE_INT); // also somewhat experimental...
 }
 
 void DMA_Next_Write(void) {
