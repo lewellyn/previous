@@ -19,6 +19,9 @@ const char M68000_fileid[] = "Hatari m68000.c : " __DATE__ " " __TIME__;
 #include "savestate.h"
 #include "nextMemory.h"
 
+#if ENABLE_WINUAE_CPU
+#include "mmu_common.h"
+#endif
 
 Uint32 BusErrorAddress;         /* Stores the offending address for bus-/address errors */
 Uint32 BusErrorPC;              /* Value of the PC when bus error occurs */
@@ -344,21 +347,24 @@ void M68000_MemorySnapShot_Capture(bool bSave)
  * BUSERROR - Access outside valid memory range.
  * Use bRead = 0 for write errors and bRead = 1 for read errors!
  */
-#include "mmu_common.h"
-
 void M68000_BusError(Uint32 addr, bool bRead)
 {
 	/* FIXME: In prefetch mode, m68k_getpc() seems already to point to the next instruction */
 	// BusErrorPC = M68000_GetPC();		/* [NP] We set BusErrorPC in m68k_run_1 */
 
 	
-//	if ((regs.spcflags & SPCFLAG_BUSERROR) == 0)	/* [NP] Check that the opcode has not already generated a read bus error */
+	if ((regs.spcflags & SPCFLAG_BUSERROR) == 0)	/* [NP] Check that the opcode has not already generated a read bus error */
 	{
         regs.mmu_fault_addr = addr;
 		BusErrorAddress = addr;				/* Store for exception frame */
 		bBusErrorReadWrite = bRead;
+#if ENABLE_WINUAE_CPU
+        if (currprefs.mmu_model) {
+            THROW(2);
+            return;
+        }
+#endif
 		M68000_SetSpecial(SPCFLAG_BUSERROR);		/* The exception will be done in newcpu.c */
-        THROW(2);
 	}
 }
 
