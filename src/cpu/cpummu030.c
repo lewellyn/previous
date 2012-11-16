@@ -4,23 +4,28 @@
  * This file is distributed under the GNU General Public License, version 2
  * or at your option any later version. Read the file gpl.txt for details.
  *
+ *
+ * Written by Andreas Grabher
+ *
+ * Many thanks go to Thomas Huth and the Hatari community for helping
+ * to test and debug this code!
+ *
+ *
  * Release notes:
- * 01-09-2012: First release (Andreas Grabher)
+ * 01-09-2012: First release
  * 29-09-2012: Improved function code handling
+ * 16-11-2012: Improved exception handling
  *
  *
  * Known Problems:
- * - MMU configuration exceptions are missing
- * - Exception handling is not correct for 68030
- *   (see Exception_mmu in newcpu.c)
+ * - Special Status Word (SSW) is not handled correctly
  *
  *
  * TODO list:
- * - Correctly handle MMU special status word. Now we use 68040 values.
+ * - Correctly handle Special Status Word. Now we use 68040 values.
+ *   This also needs to be done in m68000.c, M68000_BusError!
  * - Check if read-modify-write operations are correctly detected for
  *   handling transparent access (see TT matching functions)
- * - Do MMU configuration exceptions and F-line unimplemented instruction
- *   exceptions (see decode_tc, decode_rp, etc)
  * - If possible, test mmu030_table_search with all kinds of translations
  *   (early termination, invalid descriptors, bus errors, indirect
  *   descriptors, PTEST in different levels, etc).
@@ -270,13 +275,15 @@ void mmu_op30_ptest (uaecptr pc, uae_u32 opcode, uae_u16 next, uaecptr extra)
 
     uae_u32 ret = 0;
     
-    /* TODO: implement this - datasheet says:
+    /* Check this - datasheet says:
      * "When the instruction specifies an address translation cache search
      *  with an address register operand, the MC68030 takes an F-line
      *  unimplemented instruction exception."
      */
     if (!level && a) { /* correct ? */
-        /* TODO: F-line unimplemented instruction exception */
+        write_log("PTEST: Bad instruction causing F-line unimplemented instruction exception!\n");
+        Exception(11, m68k_getpc(), M68000_EXC_SRC_CPU); /* F-line unimplemented instruction exception */
+        return;
     }
         
 #if MMU030_OP_DBG_MSG
@@ -666,9 +673,10 @@ void mmu030_decode_tc(uae_u32 TC) {
     mmu030.translation.init_shift = (TC & TC_IS_MASK) >> 16;
     
     if (mmu030.translation.page.size<8) {
-        write_log("MMU Error: Bad value in TC register! (bad page size: %i byte)\n",
+        write_log("MMU Configuration Exception: Bad value in TC register! (bad page size: %i byte)\n",
                   1<<mmu030.translation.page.size);
-        /* TODO: perform MMU configuration exception */
+        Exception(56, m68k_getpc(), M68000_EXC_SRC_CPU); /* MMU Configuration Exception */
+        return;
     }
     /* Build the page mask */
     for (i = 0; i < mmu030.translation.page.size; i++) {
@@ -707,10 +715,10 @@ void mmu030_decode_tc(uae_u32 TC) {
      * not met, it will automatically lead to a sum <32
      * and cause an exception (see below). */
     if (!TI_bits[0]) {
-        write_log("MMU Error: Bad value in TC register! (no first table index defined)\n");
+        write_log("MMU Configuration Exception: Bad value in TC register! (no first table index defined)\n");
     } else if ((TI_bits[0]<2) && !TI_bits[1]) {
-        write_log("MMU Error: Bad value in TC register! (no second table index defined and)\n");
-        write_log("MMU Error: Bad value in TC register! (only 1 bit for first table index)\n");
+        write_log("MMU Configuration Exception: Bad value in TC register! (no second table index defined and)\n");
+        write_log("MMU Configuration Exception: Bad value in TC register! (only 1 bit for first table index)\n");
     }
 #endif
     
@@ -718,8 +726,9 @@ void mmu030_decode_tc(uae_u32 TC) {
      * loop). The sum of all TI field values plus page size and initial
      * shift has to be 32: IS + PS + TIA + TIB + TIC + TID = 32 */
     if ((shift-mmu030.translation.page.size)!=0) {
-        write_log("MMU Error: Bad value in TC register! (bad sum)\n");
-        /* TODO: perform MMU configuration exception */
+        write_log("MMU Configuration Exception: Bad value in TC register! (bad sum)\n");
+        Exception(56, m68k_getpc(), M68000_EXC_SRC_CPU); /* MMU Configuration Exception */
+        return;
     }
     
 #if MMU030_REG_DBG_MSG /* enable or disable debugging output */
@@ -780,7 +789,8 @@ void mmu030_decode_rp(uae_u64 RP) {
     
     uae_u8 descriptor_type = (RP & RP_DESCR_MASK) >> 32;
     if (!descriptor_type) { /* If descriptor type is invalid */
-        /* TODO: perform an MMU configuration exception */
+        write_log("MMU Configuration Exception: Root Pointer is invalid!\n");
+        Exception(56, m68k_getpc(), M68000_EXC_SRC_CPU); /* MMU Configuration Exception */
     }
 
 #if MMU030_REG_DBG_MSG /* enable or disable debugging output */
@@ -1284,7 +1294,7 @@ uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int level) {
         write_log("Page at %08X\n",page_addr);
         
     stop_search:
-        i = 0; /* Make compiler happy */
+        ; /* Make compiler happy */
     } CATCH(prb) {
         /* We jump to this place, if a bus error occured during table search.
          * bBusErrorReadWrite is set in m68000.c, M68000_BusError: read = 1 */
@@ -1747,7 +1757,7 @@ uae_u16 REGPARAM2 mmu030_get_word_unaligned(uaecptr addr, uae_u32 fc)
 	}
 	CATCH(prb) {
 		RESTORE_EXCEPTION;
-		regs.mmu_fault_addr = addr;
+//		regs.mmu_fault_addr = addr;
 		regs.mmu_ssw |= MMU_SSW_MA;
 		THROW_AGAIN(prb);
 	} ENDTRY
@@ -1767,7 +1777,7 @@ uae_u32 REGPARAM2 mmu030_get_long_unaligned(uaecptr addr, uae_u32 fc)
 		}
 		CATCH(prb) {
 			RESTORE_EXCEPTION;
-			regs.mmu_fault_addr = addr;
+//			regs.mmu_fault_addr = addr;
 			regs.mmu_ssw |= MMU_SSW_MA;
 			THROW_AGAIN(prb);
 		} ENDTRY
@@ -1782,7 +1792,7 @@ uae_u32 REGPARAM2 mmu030_get_long_unaligned(uaecptr addr, uae_u32 fc)
 		}
 		CATCH(prb) {
 			RESTORE_EXCEPTION;
-			regs.mmu_fault_addr = addr;
+//			regs.mmu_fault_addr = addr;
 			regs.mmu_ssw |= MMU_SSW_MA;
 			THROW_AGAIN(prb);
 		} ENDTRY
@@ -1810,7 +1820,7 @@ void REGPARAM2 mmu030_put_long_unaligned(uaecptr addr, uae_u32 val, uae_u32 fc)
 		RESTORE_EXCEPTION;
 		regs.wb3_data = val;
 		if (regs.mmu_fault_addr != addr) {
-			regs.mmu_fault_addr = addr;
+//			regs.mmu_fault_addr = addr;
 			regs.mmu_ssw |= MMU_SSW_MA;
 		}
 		THROW_AGAIN(prb);
@@ -1829,7 +1839,7 @@ void REGPARAM2 mmu030_put_word_unaligned(uaecptr addr, uae_u16 val, uae_u32 fc)
 		RESTORE_EXCEPTION;
 		regs.wb3_data = val;
 		if (regs.mmu_fault_addr != addr) {
-			regs.mmu_fault_addr = addr;
+//			regs.mmu_fault_addr = addr;
 			regs.mmu_ssw |= MMU_SSW_MA;
 		}
 		THROW_AGAIN(prb);

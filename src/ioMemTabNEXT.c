@@ -246,6 +246,7 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02000080, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     { 0x02000090, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     { 0x020000c0, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
+    { 0x020000d0, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     { 0x02000110, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     { 0x02000150, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     

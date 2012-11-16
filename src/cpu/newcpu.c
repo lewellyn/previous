@@ -2602,8 +2602,16 @@ static bool do_specialties_interrupt (int Pending)
 
 STATIC_INLINE int do_specialties (int cycles)
 {
-
-
+#if 0
+    if (regs.spcflags & SPCFLAG_BUSERROR) {
+        /* We can not execute bus errors directly in the memory handler
+         * functions since the PC should point to the address of the next
+         * instruction, so we're executing the bus errors here: */
+        unset_special(SPCFLAG_BUSERROR);
+        Exception(2, 0, M68000_EXC_SRC_CPU);
+    }
+#endif
+    
 	if(regs.spcflags & SPCFLAG_EXTRA_CYCLES) {
 		/* Add some extra cycles to simulate a wait state */
 		unset_special(SPCFLAG_EXTRA_CYCLES);
