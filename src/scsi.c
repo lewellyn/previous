@@ -175,8 +175,8 @@ void SCSI_Emulate_Command(void)
         case HD_WRITE_SECTOR:
         case HD_WRITE_SECTOR1:
             Log_Printf(LOG_WARN, "SCSI command: Write sector\n");
-//            HDC_Cmd_WriteSector();
-            abort();
+            SCSI_WriteSector();
+//            abort();
             break;
             
         case HD_INQUIRY:
@@ -391,6 +391,28 @@ void SCSI_ReadCapacity(void)
 	bSetLastBlockAddr = false;
 }
 
+void SCSI_WriteSector(void) {
+	int n=0;
+    
+	nLastBlockAddr = SCSI_GetOffset() * BLOCKSIZE;
+    SCSIcommand.transfer_data_len = SCSI_GetCount() * BLOCKSIZE;
+    
+    
+	/* seek to the position */
+	if ((scsidisk==NULL) || (fseek(scsidisk, nLastBlockAddr, SEEK_SET) != 0))
+	{
+        SCSIcommand.returnCode = HD_STATUS_ERROR;
+        nLastError = HD_REQSENS_INVADDR;
+	}
+	else
+	{
+    if (1 == 1) {
+// fixme : for now writes are error
+			SCSIcommand.returnCode = HD_STATUS_OK;
+			nLastError = HD_REQSENS_OK;
+		}
+	}
+ }
 
 void SCSI_ReadSector(void)
 {

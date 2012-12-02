@@ -46,10 +46,11 @@
 #include "hatari-glue.h"
 #include "cpummu030.h"
 
-
-#define MMU030_OP_DBG_MSG 1
-#define MMU030_ATC_DBG_MSG 1
-#define MMU030_REG_DBG_MSG 1
+/*
+#define MMU030_OP_DBG_MSG
+#define MMU030_ATC_DBG_MSG
+#define MMU030_REG_DBG_MSG
+*/
 
 /* for debugging messages */
 char table_letter[4] = {'A','B','C','D'};
@@ -1022,7 +1023,9 @@ uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int level) {
         if ((tc_030&TC_ENABLE_SUPERVISOR) && super) {
             descr[0] = (srp_030>>32)&0xFFFFFFFF;
             descr[1] = srp_030&0xFFFFFFFF;
+#if MMU030_REG_DBG_MSG
             write_log("Supervisor Root Pointer: %08X%08X\n",descr[0],descr[1]);
+#endif // MMU030_REG_DBG_MSG
         } else {
             descr[0] = (crp_030>>32)&0xFFFFFFFF;
             descr[1] = crp_030&0xFFFFFFFF;
@@ -1070,11 +1073,15 @@ uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int level) {
             
             if (next_size==4) {
                 descr[0] = phys_get_long(descr_addr[descr_num]);
+#if MMU030_REG_DBG_MSG
                 write_log("Next descriptor: %08X\n",descr[0]);
+#endif
             } else {
                 descr[0] = phys_get_long(descr_addr[descr_num]);
                 descr[1] = phys_get_long(descr_addr[descr_num]+4);
+#if MMU030_REG_DBG_MSG
                 write_log("Next descriptor: %08X%08X\n",descr[0],descr[1]);
+#endif
             }
             
             descr_size = next_size;
@@ -1128,7 +1135,9 @@ uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int level) {
             addr_position = (descr_size==4) ? 0 : 1;
             table_addr = descr[addr_position]&DESCR_TD_ADDR_MASK;
             table_index = (addr&mmu030.translation.table[t].mask)>>mmu030.translation.table[t].shift;
+#if MMU030_REG_DBG_MSG
             write_log("Table %c at %08X: index = %i, ",table_letter[t],table_addr,table_index);
+#endif // MMU030_REG_DBG_MSG
             t++; /* Proceed to the next table */
             
             /* Perform limit check */
@@ -1152,11 +1161,15 @@ uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int level) {
             
             if (next_size==4) {
                 descr[0] = phys_get_long(descr_addr[descr_num]);
+#if MMU030_REG_DBG_MSG
                 write_log("Next descriptor: %08X\n",descr[0]);
+#endif
             } else {
                 descr[0] = phys_get_long(descr_addr[descr_num]);
                 descr[1] = phys_get_long(descr_addr[descr_num]+4);
+#if MMU030_REG_DBG_MSG
                 write_log("Next descriptor: %08X%08X\n",descr[0],descr[1]);
+#endif
             }
             
             descr_size = next_size;
@@ -1291,7 +1304,9 @@ uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int level) {
         /* Get page address */
         addr_position = (descr_size==4) ? 0 : 1;
         page_addr += (descr[addr_position]&DESCR_PD_ADDR_MASK);
+#ifdef MMU030_REG_DBG_MSG
         write_log("Page at %08X\n",page_addr);
+#endif // MMU030_REG_DBG_MSG
         
     stop_search:
         ; /* Make compiler happy */
@@ -1354,7 +1369,8 @@ uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int level) {
     }
     mmu030.atc[i].physical.cache_inhibit = cache_inhibit;
     mmu030.atc[i].physical.write_protect = write_protect;
-    
+
+#ifdef MMU030_ATC_DBG_MSG    
     write_log("ATC create entry(%i): logical = %08X, physical = %08X, FC = %i\n", i,
               mmu030.atc[i].logical.addr, mmu030.atc[i].physical.addr,
               mmu030.atc[i].logical.fc);
@@ -1363,6 +1379,7 @@ uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int level) {
               mmu030.atc[i].physical.cache_inhibit?1:0,
               mmu030.atc[i].physical.write_protect?1:0,
               mmu030.atc[i].physical.modified?1:0);
+#endif // MMU030_ATC_DBG_MSG
     
     return 0;
 }
