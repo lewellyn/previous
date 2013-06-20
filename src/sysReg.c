@@ -528,17 +528,24 @@ void SCR1_Read3(void)
  * -------- -------- -------- -----?xx  bits 0:2   --> cpu speed
  * -------- -------- -------- --xx----  bits 4:5   --> main memory speed
  * -------- -------- -------- xx------  bits 6:7   --> video memory speed
- * -------- -------- xxxx---- --------  bits 8:11  --> cpu type
- * xxxxxxxx xxxxxxxx ----xxxx ----?---  all other bits: 1
+ * -------- -------- ----xxxx --------  bits 8:11  --> cpu revision
+ * -------- -------- xxxx---- --------  bits 12:15 --> cpu type
+ * xxxx---- -------- -------- --------  bits 28:31 --> slot id
+ * ----xxxx xxxxxxxx -------- ----x?--  all other bits: 1
  *
  * cpu speed:       7 = 33MHz?
  * main mem speed:  0 = 120ns?, 1 = 100ns?, 2 = 70ns, 3 = 60ns
  * video mem speed: 3 on all Turbo systems (60ns)?
+ * cpu revision:    0xF = rev 0
+ *                  0xE = rev 1
+ *                  0xD = rev 2
+ *                  0xC - 0x0: rev 3 - 15
  * cpu type:        4 = NeXTstation turbo monochrome
  *                  5 = NeXTstation turbo color
+ *                  8 = NeXTcube turbo
  */
 
-#define TURBOSCR_FMASK   0xFFFF0F08
+#define TURBOSCR_FMASK   0x0FFF0F08
 
 void TurboSCR1_Reset(void) {
     Uint8 memory_speed;
@@ -551,7 +558,9 @@ void TurboSCR1_Reset(void) {
         default: Log_Printf(LOG_WARN, "Turbo SCR1 error: unknown memory speed\n"); break;
     }
     turboscr1 = ((memory_speed&0xF0)|(cpu_speed&0x07));
-    if (ConfigureParams.System.bColor) {
+    if (ConfigureParams.System.nMachineType == NEXT_CUBE040)
+        turboscr1 |= 0x8000;
+    else if (ConfigureParams.System.bColor) {
         turboscr1 |= 0x5000;
     } else {
         turboscr1 |= 0x4000;
