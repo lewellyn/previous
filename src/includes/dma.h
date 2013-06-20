@@ -44,6 +44,8 @@ void DMA_Init_Write(void);
 void DMA_Size_Read(void);
 void DMA_Size_Write(void);
 
+void dma_esp_write_memory(void);
+void dma_esp_flush_buffer(Uint32 buffersize);
 
 void dma_memory_write(Uint8 *buf, Uint32 size, int channel);
 void dma_memory_read(Uint8 *buf, Uint32 *size, int channel);
@@ -52,8 +54,38 @@ void dma_clear_memory(Uint32 datalength);
 /* Buffers */
 #define DMA_BUFFER_SIZE 65536
 
+
+/* DMA registers */
+
+typedef struct {
+    Uint32 csr;
+    Uint32 saved_next;
+    Uint32 saved_limit;
+    Uint32 saved_start;
+    Uint32 saved_stop;
+    Uint32 next;
+    Uint32 limit;
+    Uint32 start;
+    Uint32 stop;
+    Uint32 init;
+    Uint32 size;
+    
+    /* Not in real hardware, but useful for emulation */
+    struct {
+        Uint8 data[DMA_BUFFER_SIZE];
+        Uint32 size;
+        Uint32 residual;
+    } buf;
+} DMA_CONTROL;
+
+DMA_CONTROL dma[16];
+
+/* DMA interfaces */
+
+struct {
+    
+} dma_esp;
+
+
 /* dma read buffer */
 Uint8 dma_read_buffer[DMA_BUFFER_SIZE];
-
-/* dma write buffer */
-Uint8 dma_write_buffer[DMA_BUFFER_SIZE];

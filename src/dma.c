@@ -13,12 +13,17 @@
 #include "dma.h"
 #include "configuration.h"
 #include "ethernet.h"
+#include "mmu_common.h"
+
 
 
 #define LOG_DMA_LEVEL LOG_WARN
 
 #define IO_SEG_MASK	0x1FFFF
 
+/* read/write CSR bits */
+#define DMA_M2DEV       0x00000000 /* dma from mem to dev */
+#define DMA_DEV2M       0x00040000 /* dma from dev to mem */
 /* read CSR bits */
 #define DMA_ENABLE      0x01000000 /* enable dma transfer */
 #define DMA_SUPDATE     0x02000000 /* single update */
@@ -27,11 +32,12 @@
 /* write CSR bits */
 #define DMA_SETENABLE   0x00010000 /* set enable */
 #define DMA_SETSUPDATE  0x00020000 /* set single update */
-#define DMA_M2DEV       0x00000000 /* dma from mem to dev */
-#define DMA_DEV2M       0x00040000 /* dma from dev to mem */
 #define DMA_CLRCOMPLETE 0x00080000 /* clear complete conditional */
 #define DMA_RESET       0x00100000 /* clr cmplt, sup, enable */
 #define DMA_INITBUF     0x00200000 /* initialize DMA buffers */
+/* CSR masks */
+#define DMA_CMD_MASK    (DMA_SETENABLE|DMA_SETSUPDATE|DMA_CLRCOMPLETE|DMA_RESET|DMA_INITBUF)
+#define DMA_STAT_MASK   (DMA_ENABLE|DMA_SUPDATE|DMA_COMPLETE|DMA_BUSEXC)
 
 
 /* Read and write CSR bits for 68030 based NeXT Computer.
@@ -52,29 +58,13 @@
  */
 
 
-
-/* DMA registers */
-
-typedef struct {
-    Uint32 csr;
-    Uint32 saved_next;
-    Uint32 saved_limit;
-    Uint32 saved_start;
-    Uint32 saved_stop;
-    Uint32 next;
-    Uint32 limit;
-    Uint32 start;
-    Uint32 stop;
-    Uint32 init;
-    Uint32 size;
-} DMA_CONTROL;
-
-DMA_CONTROL dma[16];
-
+/* Variables for experiments */
+Uint32 dma_buffer_resid;
 
 
 int get_channel(Uint32 address) {
     int channel = address&IO_SEG_MASK;
+
     switch (channel) {
         case 0x010: printf("channel SCSI:\n"); return CHANNEL_SCSI; break;
         case 0x040: printf("channel Sound Out:\n"); return CHANNEL_SOUNDOUT; break;
@@ -121,7 +111,7 @@ int get_interrupt_type(int channel) {
 void DMA_CSR_Read(void) { // 0x02000010, length of register is byte on 68030 based NeXT Computer
     int channel = get_channel(IoAccessCurrentAddress);
     if(ConfigureParams.System.nMachineType == NEXT_CUBE030) { // for 68030 based NeXT Computer
-        IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = dma[channel].csr >> 24;
+        IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = ((dma[channel].csr&DMA_STAT_MASK) >> 24) | ((dma[channel].csr&DMA_DEV2M) >> 16); /* status bits | direction bit */
         Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].csr >> 24, m68k_getpc());
     } else {
         IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].csr);
@@ -142,49 +132,60 @@ void DMA_CSR_Write(void) {
     }
      
     if(writecsr & DMA_DEV2M) {
-        if(ConfigureParams.System.nMachineType == NEXT_CUBE030) {
-            dma[channel].csr |= (0x04 << 24); // use 8 bit DMA_DEV2M value for 68030 based NeXT Computer
-        } else {
-            dma[channel].csr |= DMA_DEV2M;
-        }
+        dma[channel].csr |= DMA_DEV2M;
         Log_Printf(LOG_DMA_LEVEL,"DMA from dev to mem");
     } else {
+        dma[channel].csr &= ~DMA_DEV2M;
         Log_Printf(LOG_DMA_LEVEL,"DMA from mem to dev");
     }
-    if(writecsr & DMA_SETENABLE) {
-        dma[channel].csr |= DMA_ENABLE;
-        Log_Printf(LOG_DMA_LEVEL,"DMA enable transfer");
-        if ((channel == CHANNEL_EN_TX) && !(writecsr&DMA_DEV2M)) {
-            Ethernet_Transmit(); // Ethernet Transmit
-        }
-#if 1 /* hack for nextstep 0.8 */
-    if(ConfigureParams.System.nMachineType == NEXT_CUBE030) { // for 68030 based NeXT Computer
-        if ((channel == CHANNEL_R2M) || (channel == CHANNEL_M2R)) {
-            dma[channel].csr = DMA_COMPLETE;
-            set_interrupt(interrupt, SET_INT);
-        }
-    }
-#endif
-    }
-    if(writecsr & DMA_SETSUPDATE) {
-        dma[channel].csr |= DMA_SUPDATE;
-        Log_Printf(LOG_DMA_LEVEL,"DMA set single update");
-    }
-    if(writecsr & DMA_CLRCOMPLETE) {
-        dma[channel].csr &= ~DMA_COMPLETE;
-        Log_Printf(LOG_DMA_LEVEL,"DMA clear complete conditional");
+    
+    switch (writecsr&DMA_CMD_MASK) {
+        case DMA_RESET:
+            if (channel==CHANNEL_SCSI && dma[CHANNEL_SCSI].csr&DMA_ENABLE) {
+//                if (dma[CHANNEL_SCSI].csr&DMA_DEV2M) {
+                    Log_Printf(LOG_WARN,"DMA reset flushing buffer: %i bytes",dma_buffer_resid);
+//                    dma_esp_flush_buffer(dma_buffer_resid);
+//                }
+            }
+            dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE | DMA_DEV2M);
+            Log_Printf(LOG_WARN,"DMA reset");
+            break;
+        case DMA_INITBUF:
+            Log_Printf(LOG_DMA_LEVEL,"DMA initialize buffers");
+            break;
+        case DMA_CLRCOMPLETE:
+            dma[channel].csr &= ~DMA_COMPLETE;
+            Log_Printf(LOG_DMA_LEVEL,"DMA end chaining");
+            if (channel==CHANNEL_SCSI) {
+                dma_esp_write_memory();
+//                esp_counter = 72; /* experiment */
+            }
+            break;
+        case (DMA_SETSUPDATE | DMA_CLRCOMPLETE):
+            dma[channel].csr |= DMA_SUPDATE;
+            dma[channel].csr &= ~DMA_COMPLETE;
+            Log_Printf(LOG_DMA_LEVEL,"DMA continue chaining");
+            if (channel==CHANNEL_SCSI) {
+                dma_esp_write_memory();
+            }
+            break;
+        case DMA_SETENABLE:
+            dma[channel].csr |= DMA_ENABLE;
+            Log_Printf(LOG_DMA_LEVEL,"DMA start single transfer");
+            break;
+        case (DMA_SETENABLE | DMA_SETSUPDATE):
+            dma[channel].csr |= DMA_SUPDATE;
+            dma[channel].csr |= DMA_ENABLE;
+            Log_Printf(LOG_DMA_LEVEL,"DMA start chaining");
+            break;
 
-	set_interrupt(interrupt, RELEASE_INT); // also somewhat experimental...
+        default:
+            Log_Printf(LOG_DMA_LEVEL,"DMA: unknown command!");
+            //abort();
+            break;
     }
-    if(writecsr & DMA_RESET) {
-        dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE | DMA_DEV2M);
-        Log_Printf(LOG_WARN,"DMA reset");
-        
-	set_interrupt(interrupt, RELEASE_INT); // also somewhat experimental...
-    }
-    if(writecsr & DMA_INITBUF) { // needs to be filled
-        Log_Printf(LOG_DMA_LEVEL,"DMA initialize buffers");
-    }
+    
+    set_interrupt(interrupt, RELEASE_INT); // experimental
 }
 
 void DMA_Saved_Next_Read(void) { // 0x02004000
@@ -294,7 +295,7 @@ void DMA_Init_Read(void) { // 0x02004210
 
 void DMA_Init_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x4200);
-    dma[channel].init = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
+    dma[channel].next = dma[channel].init = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK); /* hack */
     Log_Printf(LOG_DMA_LEVEL,"DMA Init write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].init, m68k_getpc());
 }
 
@@ -370,6 +371,93 @@ void dma_memory_read(Uint8 *buf, Uint32 *size, int channel) {
 }
 
 
+void dma_esp_write_memory(void) {
+    int i;
+    Uint32 write_position;
+    Uint8 burst_size = 16;
+    int interrupt = get_interrupt_type(CHANNEL_SCSI);
+    
+    /* that could be done better ... */
+    if (dma_buffer_resid==burst_size) {
+        esp_counter+=burst_size;
+    }
+    /* do we need to first save init, limit, start, stop to "saved" regs? */
+        
+    Log_Printf(LOG_WARN, "[DMA] Write to memory at $%08x, %i bytes",dma[CHANNEL_SCSI].next,dma[CHANNEL_SCSI].buf.residual);
+
+    TRY(prb) {
+        while (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit && dma[CHANNEL_SCSI].buf.residual) {
+            //Log_Printf(LOG_WARN, "Burst writing buf bytes %i-%i to %08x",size-residual_bytes,size-residual_bytes+burst_size,dma[CHANNEL_SCSI].next);
+                        
+            /* write to memory in burst mode */
+            for (i=0; i<burst_size && dma[CHANNEL_SCSI].buf.residual>0 && esp_counter!=0; i++) {
+                write_position = dma[CHANNEL_SCSI].buf.size - dma[CHANNEL_SCSI].buf.residual;
+                NEXTMemory_WriteByte(dma[CHANNEL_SCSI].next, dma[CHANNEL_SCSI].buf.data[write_position]);
+                dma[CHANNEL_SCSI].buf.residual--;
+//                if (esp_counter) {
+                    esp_counter--;
+//                }
+                dma[CHANNEL_SCSI].next++;
+            }
+            if (esp_counter==0) {
+                break;
+            }
+        }
+    } CATCH(prb) {
+        dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE;
+        dma[CHANNEL_SCSI].csr |= (DMA_COMPLETE|DMA_BUSEXC);
+    } ENDTRY
+    
+    /* If there are residual bytes in dma chip buffer, keep them but subtract them from esp counter */
+    if (esp_counter>=burst_size) {
+        dma_buffer_resid=burst_size;
+        esp_counter-=burst_size; /* need them during chaining, see above */
+    } else {
+        dma_buffer_resid = esp_counter;
+        esp_counter = 0;
+    }
+    
+    set_interrupt(interrupt, SET_INT);
+
+    if(dma[CHANNEL_SCSI].csr & DMA_SUPDATE) { /* if we are in chaining mode */
+        dma[CHANNEL_SCSI].next = dma[CHANNEL_SCSI].start;
+        dma[CHANNEL_SCSI].limit = dma[CHANNEL_SCSI].stop;
+        /* Set bits in CSR */
+        dma[CHANNEL_SCSI].csr &= ~DMA_SUPDATE; /* 1st done */
+    } else {
+        dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE; /* all done */
+        esp_dma_done(); /* Give control back to ESP */
+    }
+    dma[CHANNEL_SCSI].csr |= DMA_COMPLETE;
+}
+
+void dma_esp_flush_buffer(Uint32 buffersize) {
+    Uint32 write_position;
+
+    Log_Printf(LOG_WARN, "[DMA] Flush buffer to memory at $%08x, %i bytes",dma[CHANNEL_SCSI].next,buffersize);
+    
+    TRY(prb) {
+        while (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit && dma[CHANNEL_SCSI].buf.residual && buffersize) {
+            
+            /* write to memory in burst mode */
+            while (buffersize>0 && dma[CHANNEL_SCSI].buf.residual>0) {
+//            for (i=0; i<buffersize && dma[CHANNEL_SCSI].buf.residual>0; i++) {
+                write_position = dma[CHANNEL_SCSI].buf.size - dma[CHANNEL_SCSI].buf.residual;
+                NEXTMemory_WriteByte(dma[CHANNEL_SCSI].next, dma[CHANNEL_SCSI].buf.data[write_position]);
+                dma[CHANNEL_SCSI].buf.residual--;
+                if (esp_counter) {
+                    esp_counter--;
+                }
+                dma[CHANNEL_SCSI].next++;
+                buffersize--;
+            }
+        }
+    } CATCH(prb) {
+        dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE;
+        dma[CHANNEL_SCSI].csr |= (DMA_COMPLETE|DMA_BUSEXC);
+    } ENDTRY
+}
+
 void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
     Uint32 base_addr, tail_addr;
     Uint8 align = 16;
@@ -389,9 +477,33 @@ void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
     
     if(dma[channel].init == 0) {
         base_addr = dma[channel].next;
-        dma_tail = 0;
+        Log_Printf(LOG_WARN, "DMA USING NEXT REG\n");
+        Log_Printf(LOG_WARN, "CSR    = %08X",dma[channel].csr);
+        Log_Printf(LOG_WARN, "SNEXT  = %08X",dma[channel].saved_next);
+        Log_Printf(LOG_WARN, "SLIMIT = %08X",dma[channel].saved_limit);
+        Log_Printf(LOG_WARN, "SSTART = %08X",dma[channel].saved_start);
+        Log_Printf(LOG_WARN, "SSTOP  = %08X",dma[channel].saved_stop);
+        Log_Printf(LOG_WARN, "NEXT   = %08X",dma[channel].next);
+        Log_Printf(LOG_WARN, "LIMIT  = %08X",dma[channel].limit);
+        Log_Printf(LOG_WARN, "START  = %08X",dma[channel].start);
+        Log_Printf(LOG_WARN, "STOP   = %08X",dma[channel].stop);
+        Log_Printf(LOG_WARN, "INIT   = %08X",dma[channel].init);
+        Log_Printf(LOG_WARN, "SIZE   = %08X",dma[channel].size);
     } else {
         base_addr = dma[channel].init;
+        Log_Printf(LOG_WARN, "DMA USING INIT REG\n");
+        Log_Printf(LOG_WARN, "CSR    = %08X",dma[channel].csr);
+        Log_Printf(LOG_WARN, "SNEXT  = %08X",dma[channel].saved_next);
+        Log_Printf(LOG_WARN, "SLIMIT = %08X",dma[channel].saved_limit);
+        Log_Printf(LOG_WARN, "SSTART = %08X",dma[channel].saved_start);
+        Log_Printf(LOG_WARN, "SSTOP  = %08X",dma[channel].saved_stop);
+        Log_Printf(LOG_WARN, "NEXT   = %08X",dma[channel].next);
+        Log_Printf(LOG_WARN, "LIMIT  = %08X",dma[channel].limit);
+        Log_Printf(LOG_WARN, "START  = %08X",dma[channel].start);
+        Log_Printf(LOG_WARN, "STOP   = %08X",dma[channel].stop);
+        Log_Printf(LOG_WARN, "INIT   = %08X",dma[channel].init);
+        Log_Printf(LOG_WARN, "SIZE   = %08X",dma[channel].size);
+
         
         /* If the transfer size is greater than (limit - init):
          * Copy residual bytes to physical addresses at start. */

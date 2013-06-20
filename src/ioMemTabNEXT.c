@@ -350,24 +350,24 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     /*-------------------- End of DMA -------------------*/
 
         
-    /* SCSI Command/Status Registers */
-    { 0x02014020, SIZE_BYTE, SCSI_CSR0_Read, SCSI_CSR0_Write },
-    { 0x02014021, SIZE_BYTE, SCSI_CSR1_Read, SCSI_CSR1_Write },
+    /* SCSI DMA Control/Status Registers */
+    { 0x02014020, SIZE_BYTE, ESP_DMA_CTRL_Read, ESP_DMA_CTRL_Write },
+    { 0x02014021, SIZE_BYTE, ESP_DMA_FIFO_STAT_Read, ESP_DMA_FIFO_STAT_Write },
 
     /* SCSI Controller (NCR53C90) */
-    { 0x02014000, SIZE_BYTE, SCSI_TransCountL_Read, SCSI_TransCountL_Write },
-    { 0x02014001, SIZE_BYTE, SCSI_TransCountH_Read, SCSI_TransCountH_Write },
-    { 0x02014002, SIZE_BYTE, SCSI_FIFO_Read, SCSI_FIFO_Write },
-    { 0x02014003, SIZE_BYTE, SCSI_Command_Read, SCSI_Command_Write },
-    { 0x02014004, SIZE_BYTE, SCSI_Status_Read, SCSI_SelectBusID_Write },
-    { 0x02014005, SIZE_BYTE, SCSI_IntStatus_Read, SCSI_SelectTimeout_Write },
-    { 0x02014006, SIZE_BYTE, SCSI_SeqStep_Read, SCSI_SyncPeriod_Write },
-    { 0x02014007, SIZE_BYTE, SCSI_FIFOflags_Read, SCSI_SyncOffset_Write },
-    { 0x02014008, SIZE_BYTE, SCSI_Configuration_Read, SCSI_Configuration_Write },
-    { 0x02014009, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, SCSI_ClockConv_Write },
-    { 0x0201400a, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, SCSI_Test_Write },
+    { 0x02014000, SIZE_BYTE, ESP_TransCountL_Read, ESP_TransCountL_Write },
+    { 0x02014001, SIZE_BYTE, ESP_TransCountH_Read, ESP_TransCountH_Write },
+    { 0x02014002, SIZE_BYTE, ESP_FIFO_Read, ESP_FIFO_Write },
+    { 0x02014003, SIZE_BYTE, ESP_Command_Read, ESP_Command_Write },
+    { 0x02014004, SIZE_BYTE, ESP_Status_Read, ESP_SelectBusID_Write },
+    { 0x02014005, SIZE_BYTE, ESP_IntStatus_Read, ESP_SelectTimeout_Write },
+    { 0x02014006, SIZE_BYTE, ESP_SeqStep_Read, ESP_SyncPeriod_Write },
+    { 0x02014007, SIZE_BYTE, ESP_FIFOflags_Read, ESP_SyncOffset_Write },
+    { 0x02014008, SIZE_BYTE, ESP_Configuration_Read, ESP_Configuration_Write },
+    { 0x02014009, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, ESP_ClockConv_Write },
+    { 0x0201400a, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, ESP_Test_Write },
     /* Additional Register for NCR53C90A (68040) */
-    { 0x0201400b, SIZE_BYTE, SCSI_Conf2_Read, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0201400b, SIZE_BYTE, ESP_Conf2_Read, IoMem_WriteWithoutInterceptionButTrace },
 //  { 0x0201400c, SIZE_BYTE, SCSI_CMD_Read, SCSI_CMD_Write },
 //  { 0x0201400d, SIZE_BYTE, SCSI_CMD_Read, SCSI_CMD_Write },
 //  { 0x0201400e, SIZE_BYTE, SCSI_CMD_Read, SCSI_CMD_Write },

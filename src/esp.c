@@ -39,8 +39,6 @@ Uint8 csr_value0;
 Uint8 csr_value1;
 
 /* ESP Registers */
-Uint8 readtranscountl;
-Uint8 readtranscounth;
 Uint8 writetranscountl;
 Uint8 writetranscounth;
 Uint8 fifo;
@@ -56,6 +54,8 @@ Uint8 syncoffset;
 Uint8 configuration;
 Uint8 clockconv;
 Uint8 esptest;
+
+Uint32 esp_counter;
 
 /* ESP Status Variables */
 Uint8 irq_status;
@@ -90,17 +90,21 @@ static bool no_target=false;
 static int bus_id_command=0;
 
 
-void SCSI_CSR0_Read(void) {
+/* ESP DMA control and status registers */
+
+void ESP_DMA_CTRL_Read(void) {
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = csr_value0;
  	Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA control read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
-
-void SCSI_CSR0_Write(void) {
+#undef LOG_SCSI_LEVEL
+#define LOG_SCSI_LEVEL LOG_WARN
+void ESP_DMA_CTRL_Write(void) {
     Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA control write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     csr_value0 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
         
     if ((csr_value0 & 0x04) == 0x04) {
         Log_Printf(LOG_SCSI_LEVEL, "flush FIFO\n");
+        dma_esp_flush_buffer(4);
     }
     if ((csr_value0 & 0x01) == 0x01) {
         Log_Printf(LOG_SCSI_LEVEL, "scsi chip is WD33C92\n");
@@ -144,7 +148,7 @@ void SCSI_CSR0_Write(void) {
     }
 }
 
-void SCSI_CSR1_Read(void) {
+void ESP_DMA_FIFO_STAT_Read(void) {
     
     /*
      * dma fifo status register
@@ -164,35 +168,37 @@ void SCSI_CSR1_Read(void) {
  	Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA FIFO status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_CSR1_Write(void) {
+void ESP_DMA_FIFO_STAT_Write(void) {
  	Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA FIFO status write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     csr_value1 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
 }
+#undef LOG_SCSI_LEVEL
+#define LOG_SCSI_LEVEL LOG_DEBUG
 
 
 /* ESP Registers */
 
-void SCSI_TransCountL_Read(void) { // 0x02014000
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=readtranscountl;
+void ESP_TransCountL_Read(void) { // 0x02014000
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=esp_counter&0xFF;
  	Log_Printf(LOG_SCSI_LEVEL,"ESP TransCountL read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_TransCountL_Write(void) {
+void ESP_TransCountL_Write(void) {
     writetranscountl=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
- 	Log_Printf(LOG_SCSI_LEVEL,"ESP TransCountL write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+ 	Log_Printf(LOG_WARN,"ESP TransCountL write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_TransCountH_Read(void) { // 0x02014001
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=readtranscounth;
+void ESP_TransCountH_Read(void) { // 0x02014001
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=(esp_counter>>8)&0xFF;
  	Log_Printf(LOG_SCSI_LEVEL,"ESP TransCoundH read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_TransCountH_Write(void) {
+void ESP_TransCountH_Write(void) {
     writetranscounth=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
- 	Log_Printf(LOG_SCSI_LEVEL,"ESP TransCountH write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+ 	Log_Printf(LOG_WARN,"ESP TransCountH write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_FIFO_Read(void) { // 0x02014002
+void ESP_FIFO_Read(void) { // 0x02014002
     if ((fifo_write_ptr - fifo_read_ptr) > 0) {
         IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = esp_fifo[fifo_read_ptr];
         Log_Printf(LOG_SCSI_LEVEL,"ESP FIFO read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
@@ -206,7 +212,7 @@ void SCSI_FIFO_Read(void) { // 0x02014002
     } 
 }
 
-void SCSI_FIFO_Write(void) {
+void ESP_FIFO_Write(void) {
     esp_fifo[fifo_write_ptr] = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
     fifo_write_ptr++;
     fifoflags = fifoflags + 1;
@@ -219,18 +225,21 @@ void SCSI_FIFO_Write(void) {
     Log_Printf(LOG_SCSI_LEVEL,"ESP FIFO size = %i", fifo_write_ptr - fifo_read_ptr);
 }
 
-void SCSI_Command_Read(void) { // 0x02014003
+void ESP_Command_Read(void) { // 0x02014003
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=command;
  	Log_Printf(LOG_SCSI_LEVEL,"ESP Command read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_Command_Write(void) {
+void ESP_Command_Write(void) {
     command=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP Command write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     
     if (command & CMD_DMA) {
-        readtranscountl = writetranscountl;
-        readtranscounth = writetranscounth;
+        /* Load the internal counter on every DMA command, do not decrement actual registers! */
+        esp_counter = writetranscountl | (writetranscounth << 8);
+        if (esp_counter == 0) { /* 0 means maximum value */
+            esp_counter = 0x10000;
+        }
         status &= ~STAT_TC;
         mode_dma = 1;
     } else {
@@ -373,18 +382,18 @@ void SCSI_Command_Write(void) {
     }
 }
 
-void SCSI_Status_Read(void) { // 0x02014004
+void ESP_Status_Read(void) { // 0x02014004
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=status;
  	Log_Printf(LOG_SCSI_LEVEL,"ESP Status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_SelectBusID_Write(void) {
+void ESP_SelectBusID_Write(void) {
     selectbusid=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP SelectBusID write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 	no_target=false;
 }
 
-void SCSI_IntStatus_Read(void) { // 0x02014005
+void ESP_IntStatus_Read(void) { // 0x02014005
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=intstatus;
     Log_Printf(LOG_SCSI_LEVEL,"ESP IntStatus read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     
@@ -396,55 +405,55 @@ void SCSI_IntStatus_Read(void) { // 0x02014005
     }
 }
 
-void SCSI_SelectTimeout_Write(void) {
+void ESP_SelectTimeout_Write(void) {
     selecttimeout=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP SelectTimeout write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_SeqStep_Read(void) { // 0x02014006
+void ESP_SeqStep_Read(void) { // 0x02014006
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=seqstep;
  	Log_Printf(LOG_SCSI_LEVEL,"ESP SeqStep read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_SyncPeriod_Write(void) {
+void ESP_SyncPeriod_Write(void) {
     syncperiod=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP SyncPeriod write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_FIFOflags_Read(void) { // 0x02014007
+void ESP_FIFOflags_Read(void) { // 0x02014007
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=fifoflags;
  	Log_Printf(LOG_WARN,"ESP FIFOflags read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_SyncOffset_Write(void) {
+void ESP_SyncOffset_Write(void) {
     syncoffset=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP SyncOffset write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_Configuration_Read(void) { // 0x02014008
+void ESP_Configuration_Read(void) { // 0x02014008
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=configuration;
  	Log_Printf(LOG_SCSI_LEVEL,"ESP Configuration read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     esp_raise_irq(); // experimental!
 }
 
-void SCSI_Configuration_Write(void) {
+void ESP_Configuration_Write(void) {
     configuration=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP Configuration write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_ClockConv_Write(void) { // 0x02014009
+void ESP_ClockConv_Write(void) { // 0x02014009
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=clockconv;
  	Log_Printf(LOG_SCSI_LEVEL,"ESP ClockConv write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
-void SCSI_Test_Write(void) { // 0x0201400a
+void ESP_Test_Write(void) { // 0x0201400a
     esptest=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP Test write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 /* System reads this register to check if we use old or new SCSI controller.
  * Return 0 to report old chip. */
-void SCSI_Conf2_Read(void) { // 0x0201400b
+void ESP_Conf2_Read(void) { // 0x0201400b
     if (ConfigureParams.System.nSCSI == NCR53C90)
         IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = 0x00;
 }
@@ -473,11 +482,9 @@ void esp_reset_soft(void) {
     
     dma_cb = NULL; // clear DMA interface - how to do this?
     mode_dma = 0;
-    readtranscountl = 0x00;
-    readtranscounth = 0x00;
-    writetranscountl = 0x00;
-    writetranscounth = 0x00;
 
+    esp_counter = 0; /* reset counter, but not actual registers! */
+    
     seqstep = 0x00;
 
     command = 0x00;
@@ -560,7 +567,7 @@ void esp_flush_fifo(void) {
 Uint32 get_cmd (void) {
     
     if(mode_dma == 1) {
-        command_len = readtranscountl | (readtranscounth << 8);
+        command_len = esp_counter;
         //dma_memory_read(command_len);
         memcpy(commandbuf, dma_read_buffer, command_len);
     } else {
@@ -612,7 +619,6 @@ void do_busid_cmd(Uint8 busid) {
     Log_Printf(LOG_SCSI_LEVEL, "do_busid_cmd: busid $%02x",busid);
 
     lun = (commandbuf[0]&0x07);
-    
     scsi_command_analyzer(commandbuf, command_len, target,lun);
     data_len = SCSIcommand.transfer_data_len;
 
@@ -652,13 +658,12 @@ void do_busid_cmd(Uint8 busid) {
             Log_Printf(LOG_SCSI_LEVEL, "DATA OUT\n");
             status = (status&STAT_MASK)| STAT_DO;
         }
-    esp_transfer_data();
+        esp_transfer_data();
     }
-    
     intstatus = INTR_BS | INTR_FC;
     seqstep = SEQ_CD;
     
-    esp_raise_irq();   
+    esp_raise_irq();
 }
 
 
@@ -682,11 +687,10 @@ void esp_do_dma(void) {
     Uint32 len;
     int to_device;
     
-    Uint32 dma_translen; // experimental
-    dma_translen = readtranscountl | (readtranscounth << 8); // experimental
-    Log_Printf(LOG_SCSI_LEVEL, "call dma_write\n"); // experimental
-    dma_memory_write(dma_write_buffer, dma_translen, CHANNEL_SCSI);//experimental !!
-
+    Log_Printf(LOG_WARN, "ESP start DMA tansfer: ESP counter = %i\n", esp_counter);
+//    dma_memory_write(dma[CHANNEL_SCSI].buf.data, esp_counter, CHANNEL_SCSI);//experimental !!
+    dma_esp_write_memory();
+    
     
     to_device = SCSIcommand.transferdirection_todevice;
     
@@ -727,14 +731,19 @@ void esp_do_dma(void) {
 }
 
 void esp_dma_done(void) {
-    Log_Printf(LOG_SCSI_LEVEL, "call esp_dma_done\n");
+    Log_Printf(LOG_WARN, "ESP DMA transfer done: ESP counter = %i\n", esp_counter);
     status = (status&STAT_MASK)|STAT_ST;
-    status |= STAT_TC;
-    intstatus = INTR_BS;
-    seqstep = 0;
+    if (esp_counter==0) {
+        status |= STAT_TC;
+    }
+//    intstatus = INTR_BS;
+//    seqstep = 0;
     fifoflags = 0;
-    readtranscountl = 0;
-    readtranscounth = 0;
+    
+    intstatus = INTR_BS | INTR_FC;
+    seqstep = SEQ_CD;
+    
+    esp_raise_irq();
 }
 
 
@@ -742,7 +751,7 @@ void esp_dma_done(void) {
 void handle_ti(void){
     Uint32 dma_len, min_len;
     
-    dma_len = readtranscountl | (readtranscounth << 8);
+    dma_len = esp_counter;
     
     if(dma_len == 0) {
         dma_len = 0x10000;

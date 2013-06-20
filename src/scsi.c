@@ -384,9 +384,11 @@ void SCSI_ReadCapacity(void)
     scsi_disksize[6] = (BLOCKSIZE >> 8) & 0xFF;
     scsi_disksize[7] = BLOCKSIZE & 0xFF;
     
-    memcpy(dma_write_buffer, scsi_disksize, SCSIcommand.transfer_data_len);
-		SCSIcommand.returnCode = HD_STATUS_OK;
-		nLastError = HD_REQSENS_OK;
+    memcpy(dma[CHANNEL_SCSI].buf.data, scsi_disksize, SCSIcommand.transfer_data_len);
+    dma[CHANNEL_SCSI].buf.size = dma[CHANNEL_SCSI].buf.residual = SCSIcommand.transfer_data_len;
+    
+    SCSIcommand.returnCode = HD_STATUS_OK;
+    nLastError = HD_REQSENS_OK;
     
 	bSetLastBlockAddr = false;
 }
@@ -430,7 +432,8 @@ void SCSI_ReadSector(void)
 	}
 	else
 	{
-        n = fread(dma_write_buffer, SCSIcommand.transfer_data_len, 1, scsidisk);
+        n = fread(dma[CHANNEL_SCSI].buf.data, SCSIcommand.transfer_data_len, 1, scsidisk);
+        dma[CHANNEL_SCSI].buf.size = dma[CHANNEL_SCSI].buf.residual = SCSIcommand.transfer_data_len;
         
         /* Test to check if we read correct data */
         //        Log_Printf(LOG_WARN, "Disk Read Test: $%02x,$%02x,$%02x,$%02x,$%02x,$%02x,$%02x,$%02x\n", dma_write_buffer[0],dma_write_buffer[1],dma_write_buffer[2],dma_write_buffer[3],dma_write_buffer[4],dma_write_buffer[5],dma_write_buffer[6],dma_write_buffer[07]);
@@ -485,9 +488,13 @@ void SCSI_Inquiry (void) {
     SCSIcommand.transfer_data_len = SCSI_GetTransferLength();
     Log_Printf(LOG_WARN, "return length: %d", SCSIcommand.transfer_data_len);
     SCSIcommand.transferdirection_todevice = 0;
-    memcpy(dma_write_buffer, inquiry_bytes, SCSIcommand.transfer_data_len);
+    memcpy(dma[CHANNEL_SCSI].buf.data, inquiry_bytes, SCSIcommand.transfer_data_len);
+    dma[CHANNEL_SCSI].buf.size = dma[CHANNEL_SCSI].buf.residual = SCSIcommand.transfer_data_len;
     
-    Log_Printf(LOG_WARN, "Inquiry Data: %c,%c,%c,%c,%c,%c,%c,%c\n",dma_write_buffer[8],dma_write_buffer[9],dma_write_buffer[10],dma_write_buffer[11],dma_write_buffer[12],dma_write_buffer[13],dma_write_buffer[14],dma_write_buffer[15]);
+    Log_Printf(LOG_WARN, "Inquiry Data: %c,%c,%c,%c,%c,%c,%c,%c\n",dma[CHANNEL_SCSI].buf.data[8],
+               dma[CHANNEL_SCSI].buf.data[9],dma[CHANNEL_SCSI].buf.data[10],dma[CHANNEL_SCSI].buf.data[11],
+               dma[CHANNEL_SCSI].buf.data[12],dma[CHANNEL_SCSI].buf.data[13],dma[CHANNEL_SCSI].buf.data[14],
+               dma[CHANNEL_SCSI].buf.data[15]);
                 
 	if (SCSIcommand.transfer_data_len > (int)sizeof(inquiry_bytes))
 		SCSIcommand.transfer_data_len = sizeof(inquiry_bytes);
@@ -570,7 +577,8 @@ void SCSI_RequestSense(void) {
 	}
     
     SCSIcommand.transfer_data_len = nRetLen;
-    memcpy(dma_write_buffer, retbuf, SCSIcommand.transfer_data_len);
+    memcpy(dma[CHANNEL_SCSI].buf.data, retbuf, SCSIcommand.transfer_data_len);
+    dma[CHANNEL_SCSI].buf.size = dma[CHANNEL_SCSI].buf.residual = SCSIcommand.transfer_data_len;
     SCSIcommand.returnCode = HD_STATUS_OK;
 }
 
@@ -687,7 +695,8 @@ void SCSI_ModeSense(void) {
     if (SCSIcommand.transfer_data_len > SCSI_GetTransferLength())
         SCSIcommand.transfer_data_len = SCSI_GetTransferLength();
     
-    memcpy(dma_write_buffer, retbuf, SCSIcommand.transfer_data_len);
+    memcpy(dma[CHANNEL_SCSI].buf.data, retbuf, SCSIcommand.transfer_data_len);
+    dma[CHANNEL_SCSI].buf.size = dma[CHANNEL_SCSI].buf.residual = SCSIcommand.transfer_data_len;
     
     SCSIcommand.returnCode = HD_STATUS_OK;
     nLastError = HD_REQSENS_OK;

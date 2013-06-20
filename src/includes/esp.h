@@ -71,33 +71,33 @@
 #define TCHI_FAS100A 0x04
 
 
-void SCSI_CSR0_Read(void); 
-void SCSI_CSR0_Write(void);
-void SCSI_CSR1_Read(void);
-void SCSI_CSR1_Write(void);
+void ESP_DMA_CTRL_Read(void);
+void ESP_DMA_CTRL_Write(void);
+void ESP_DMA_FIFO_STAT_Read(void);
+void ESP_DMA_FIFO_STAT_Write(void);
 
-void SCSI_TransCountL_Read(void); 
-void SCSI_TransCountL_Write(void); 
-void SCSI_TransCountH_Read(void);
-void SCSI_TransCountH_Write(void); 
-void SCSI_FIFO_Read(void);
-void SCSI_FIFO_Write(void); 
-void SCSI_Command_Read(void); 
-void SCSI_Command_Write(void); 
-void SCSI_Status_Read(void);
-void SCSI_SelectBusID_Write(void); 
-void SCSI_IntStatus_Read(void);
-void SCSI_SelectTimeout_Write(void); 
-void SCSI_SeqStep_Read(void);
-void SCSI_SyncPeriod_Write(void); 
-void SCSI_FIFOflags_Read(void);
-void SCSI_SyncOffset_Write(void); 
-void SCSI_Configuration_Read(void); 
-void SCSI_Configuration_Write(void); 
-void SCSI_ClockConv_Write(void);
-void SCSI_Test_Write(void);
+void ESP_TransCountL_Read(void); 
+void ESP_TransCountL_Write(void); 
+void ESP_TransCountH_Read(void);
+void ESP_TransCountH_Write(void); 
+void ESP_FIFO_Read(void);
+void ESP_FIFO_Write(void); 
+void ESP_Command_Read(void); 
+void ESP_Command_Write(void); 
+void ESP_Status_Read(void);
+void ESP_SelectBusID_Write(void); 
+void ESP_IntStatus_Read(void);
+void ESP_SelectTimeout_Write(void); 
+void ESP_SeqStep_Read(void);
+void ESP_SyncPeriod_Write(void); 
+void ESP_FIFOflags_Read(void);
+void ESP_SyncOffset_Write(void); 
+void ESP_Configuration_Read(void); 
+void ESP_Configuration_Write(void); 
+void ESP_ClockConv_Write(void);
+void ESP_Test_Write(void);
 
-void SCSI_Conf2_Read(void);
+void ESP_Conf2_Read(void);
 
 void esp_reset_hard(void);
 void esp_reset_soft(void);
@@ -114,3 +114,5 @@ void esp_dma_done(void);
 void esp_transfer_data(void);
 void esp_command_complete(void);
 void write_response(void);
+
+extern Uint32 esp_counter;
