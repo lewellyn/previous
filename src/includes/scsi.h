@@ -68,7 +68,14 @@ typedef struct {
     Uint8 pagesize;
 } MODEPAGE;
 
+/* This buffer temporarily stores data to be written to memory or disk */
+#define SCSI_BUFFER_SIZE 65536
 
+struct {
+    Uint8 buffer[SCSI_BUFFER_SIZE];
+    Uint32 size;
+    Uint32 rpos; /* actual read pointer */
+} SCSIdata;
 
 
 void SCSI_Init(void);

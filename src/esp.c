@@ -96,15 +96,14 @@ void ESP_DMA_CTRL_Read(void) {
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = csr_value0;
  	Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA control read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
-#undef LOG_SCSI_LEVEL
-#define LOG_SCSI_LEVEL LOG_WARN
+
 void ESP_DMA_CTRL_Write(void) {
     Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA control write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     csr_value0 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
         
     if ((csr_value0 & 0x04) == 0x04) {
         Log_Printf(LOG_SCSI_LEVEL, "flush FIFO\n");
-        dma_esp_flush_buffer(4);
+        dma_esp_flush_buffer();
     }
     if ((csr_value0 & 0x01) == 0x01) {
         Log_Printf(LOG_SCSI_LEVEL, "scsi chip is WD33C92\n");
@@ -172,8 +171,6 @@ void ESP_DMA_FIFO_STAT_Write(void) {
  	Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA FIFO status write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     csr_value1 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
 }
-#undef LOG_SCSI_LEVEL
-#define LOG_SCSI_LEVEL LOG_DEBUG
 
 
 /* ESP Registers */
@@ -731,7 +728,8 @@ void esp_do_dma(void) {
 }
 
 void esp_dma_done(void) {
-    Log_Printf(LOG_WARN, "ESP DMA transfer done: ESP counter = %i\n", esp_counter);
+    Log_Printf(LOG_WARN, "ESP DMA transfer done: ESP counter = %i, SCSI residual bytes: %i",
+               esp_counter,SCSIdata.size-SCSIdata.rpos);
     status = (status&STAT_MASK)|STAT_ST;
     if (esp_counter==0) {
         status |= STAT_TC;

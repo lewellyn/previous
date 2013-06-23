@@ -8,6 +8,7 @@
 #include "ioMem.h"
 #include "ioMemTables.h"
 #include "m68000.h"
+#include "scsi.h"
 #include "esp.h"
 #include "sysReg.h"
 #include "dma.h"
@@ -20,6 +21,9 @@
 #define LOG_DMA_LEVEL LOG_WARN
 
 #define IO_SEG_MASK	0x1FFFF
+
+/* DMA internal buffer size */
+#define DMA_BURST_SIZE  16
 
 /* read/write CSR bits */
 #define DMA_M2DEV       0x00000000 /* dma from mem to dev */
@@ -58,8 +62,10 @@
  */
 
 
-/* Variables for experiments */
-Uint32 dma_buffer_resid;
+
+static inline Uint32 dma_mklong(Uint8 *buf, Uint32 pos) {
+	return (buf[pos] << 24) | (buf[pos+1] << 16) | (buf[pos+2] << 8) | buf[pos+3];
+}
 
 
 int get_channel(Uint32 address) {
@@ -143,7 +149,7 @@ void DMA_CSR_Write(void) {
         case DMA_RESET:
             if (channel==CHANNEL_SCSI && dma[CHANNEL_SCSI].csr&DMA_ENABLE) {
 //                if (dma[CHANNEL_SCSI].csr&DMA_DEV2M) {
-                    Log_Printf(LOG_WARN,"DMA reset flushing buffer: %i bytes",dma_buffer_resid);
+//                    Log_Printf(LOG_WARN,"DMA reset flushing buffer: %i bytes",esp_counter_resid);
 //                    dma_esp_flush_buffer(dma_buffer_resid);
 //                }
             }
@@ -241,8 +247,8 @@ void DMA_Next_Read(void) { // 0x02004010
     IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].next);
  	Log_Printf(LOG_DMA_LEVEL,"DMA Next read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].next, m68k_getpc());
     /* Experimental! Release interrupt here */
-    int interrupt = get_interrupt_type(channel);
-    set_interrupt(interrupt, RELEASE_INT); // also somewhat experimental...
+//    int interrupt = get_interrupt_type(channel);
+//    set_interrupt(interrupt, RELEASE_INT); // also somewhat experimental...
 }
 
 void DMA_Next_Write(void) {
@@ -315,9 +321,6 @@ void DMA_Size_Write(void) {
 
 /* DMA Functions */
 
-/*void copy_to_scsidma_buffer(Uint8 device_outbuf[], int outbuf_size) {
-    memcpy(dma_buffer, device_outbuf, outbuf_size);
-}*/
 
 /*void dma_clear_memory(Uint32 datalength) {
     Uint32 start_addr;
@@ -373,89 +376,87 @@ void dma_memory_read(Uint8 *buf, Uint32 *size, int channel) {
 
 void dma_esp_write_memory(void) {
     int i;
-    Uint32 write_position;
-    Uint8 burst_size = 16;
     int interrupt = get_interrupt_type(CHANNEL_SCSI);
     
-    /* that could be done better ... */
-    if (dma_buffer_resid==burst_size) {
-        esp_counter+=burst_size;
-    }
     /* do we need to first save init, limit, start, stop to "saved" regs? */
         
-    Log_Printf(LOG_WARN, "[DMA] Write to memory at $%08x, %i bytes",dma[CHANNEL_SCSI].next,dma[CHANNEL_SCSI].buf.residual);
+    Log_Printf(LOG_WARN, "[DMA] Write to memory at $%08x, %i bytes",dma[CHANNEL_SCSI].next,esp_counter);
 
     TRY(prb) {
-        while (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit && dma[CHANNEL_SCSI].buf.residual) {
-            //Log_Printf(LOG_WARN, "Burst writing buf bytes %i-%i to %08x",size-residual_bytes,size-residual_bytes+burst_size,dma[CHANNEL_SCSI].next);
+        while (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit &&
+               (SCSIdata.size-SCSIdata.rpos)>=DMA_BURST_SIZE && esp_counter>=DMA_BURST_SIZE) {
                         
-            /* write to memory in burst mode */
-            for (i=0; i<burst_size && dma[CHANNEL_SCSI].buf.residual>0 && esp_counter!=0; i++) {
-                write_position = dma[CHANNEL_SCSI].buf.size - dma[CHANNEL_SCSI].buf.residual;
-                NEXTMemory_WriteByte(dma[CHANNEL_SCSI].next, dma[CHANNEL_SCSI].buf.data[write_position]);
-                dma[CHANNEL_SCSI].buf.residual--;
-//                if (esp_counter) {
-                    esp_counter--;
-//                }
-                dma[CHANNEL_SCSI].next++;
+            /* Write 4 long words to memory (burst mode) */
+            for (i=0; i<DMA_BURST_SIZE; i+=4) {
+                NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next+i, dma_mklong(SCSIdata.buffer, SCSIdata.rpos+i));
             }
-            if (esp_counter==0) {
-                break;
-            }
+            esp_counter -= DMA_BURST_SIZE;
+            SCSIdata.rpos += DMA_BURST_SIZE;
+            dma[CHANNEL_SCSI].next+=DMA_BURST_SIZE;
         }
     } CATCH(prb) {
+        Log_Printf(LOG_WARN, "[DMA] Bus error while writing to %08x",dma[CHANNEL_SCSI].next+i);
         dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE;
         dma[CHANNEL_SCSI].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
-    /* If there are residual bytes in dma chip buffer, keep them but subtract them from esp counter */
-    if (esp_counter>=burst_size) {
-        dma_buffer_resid=burst_size;
-        esp_counter-=burst_size; /* need them during chaining, see above */
-    } else {
-        dma_buffer_resid = esp_counter;
+    
+    /* If there are still bytes to transfer, but size is less than burst size, they 
+     * will stay in the internal buffer of the DMA chip. They need to be flused out
+     * later. ESP counter decrements, because bytes already transfered to DMA chip.
+     */
+    if (esp_counter!=0 && esp_counter<DMA_BURST_SIZE && (SCSIdata.size-SCSIdata.rpos)>=esp_counter) {
+        Log_Printf(LOG_WARN, "[DMA] Residual bytes in DMA buffer: %i bytes",esp_counter);
         esp_counter = 0;
     }
     
-    set_interrupt(interrupt, SET_INT);
+    /* TODO: handle all kinds of situations between esp_counter, scsidata.size-scsidata.rpos and burst_size */
+    
+    /* If we have reached limit, generate an interrupt and set the flags */
+    if (dma[CHANNEL_SCSI].next==dma[CHANNEL_SCSI].limit) {
+        set_interrupt(interrupt, SET_INT);
+        dma[CHANNEL_SCSI].csr |= DMA_COMPLETE;
 
-    if(dma[CHANNEL_SCSI].csr & DMA_SUPDATE) { /* if we are in chaining mode */
-        dma[CHANNEL_SCSI].next = dma[CHANNEL_SCSI].start;
-        dma[CHANNEL_SCSI].limit = dma[CHANNEL_SCSI].stop;
-        /* Set bits in CSR */
-        dma[CHANNEL_SCSI].csr &= ~DMA_SUPDATE; /* 1st done */
-    } else {
-        dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE; /* all done */
-        esp_dma_done(); /* Give control back to ESP */
+        if(dma[CHANNEL_SCSI].csr & DMA_SUPDATE) { /* if we are in chaining mode */
+            dma[CHANNEL_SCSI].next = dma[CHANNEL_SCSI].start;
+            dma[CHANNEL_SCSI].limit = dma[CHANNEL_SCSI].stop;
+            /* Set bits in CSR */
+            dma[CHANNEL_SCSI].csr &= ~DMA_SUPDATE; /* 1st done */
+        } else {
+            dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE; /* all done */
+            esp_dma_done(); /* Give control back to ESP */
+        }
+        return;
     }
-    dma[CHANNEL_SCSI].csr |= DMA_COMPLETE;
+    
+    /* If ESP counter reached zero, give control to ESP */
+    if (esp_counter==0) {
+        esp_dma_done();
+    }
 }
 
-void dma_esp_flush_buffer(Uint32 buffersize) {
-    Uint32 write_position;
-
-    Log_Printf(LOG_WARN, "[DMA] Flush buffer to memory at $%08x, %i bytes",dma[CHANNEL_SCSI].next,buffersize);
+void dma_esp_flush_buffer(void) {
+    int interrupt = get_interrupt_type(CHANNEL_SCSI);
     
     TRY(prb) {
-        while (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit && dma[CHANNEL_SCSI].buf.residual && buffersize) {
-            
-            /* write to memory in burst mode */
-            while (buffersize>0 && dma[CHANNEL_SCSI].buf.residual>0) {
-//            for (i=0; i<buffersize && dma[CHANNEL_SCSI].buf.residual>0; i++) {
-                write_position = dma[CHANNEL_SCSI].buf.size - dma[CHANNEL_SCSI].buf.residual;
-                NEXTMemory_WriteByte(dma[CHANNEL_SCSI].next, dma[CHANNEL_SCSI].buf.data[write_position]);
-                dma[CHANNEL_SCSI].buf.residual--;
-                if (esp_counter) {
-                    esp_counter--;
-                }
-                dma[CHANNEL_SCSI].next++;
-                buffersize--;
-            }
+        if (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit) {
+            Log_Printf(LOG_WARN, "[DMA] Flush buffer to memory at $%08x, 4 bytes",dma[CHANNEL_SCSI].next);
+
+            /* Write one long word to memory */
+            NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next, dma_mklong(SCSIdata.buffer, SCSIdata.rpos));
+
+            dma[CHANNEL_SCSI].next += 4;
+            SCSIdata.rpos +=4;
         }
     } CATCH(prb) {
         dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE;
         dma[CHANNEL_SCSI].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
+    
+    /* Set interrupt if limit is reached (not sure this is needed) */
+    if (dma[CHANNEL_SCSI].next==dma[CHANNEL_SCSI].limit) {
+        set_interrupt(interrupt, SET_INT);
+    }
 }
 
 void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
@@ -477,33 +478,8 @@ void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
     
     if(dma[channel].init == 0) {
         base_addr = dma[channel].next;
-        Log_Printf(LOG_WARN, "DMA USING NEXT REG\n");
-        Log_Printf(LOG_WARN, "CSR    = %08X",dma[channel].csr);
-        Log_Printf(LOG_WARN, "SNEXT  = %08X",dma[channel].saved_next);
-        Log_Printf(LOG_WARN, "SLIMIT = %08X",dma[channel].saved_limit);
-        Log_Printf(LOG_WARN, "SSTART = %08X",dma[channel].saved_start);
-        Log_Printf(LOG_WARN, "SSTOP  = %08X",dma[channel].saved_stop);
-        Log_Printf(LOG_WARN, "NEXT   = %08X",dma[channel].next);
-        Log_Printf(LOG_WARN, "LIMIT  = %08X",dma[channel].limit);
-        Log_Printf(LOG_WARN, "START  = %08X",dma[channel].start);
-        Log_Printf(LOG_WARN, "STOP   = %08X",dma[channel].stop);
-        Log_Printf(LOG_WARN, "INIT   = %08X",dma[channel].init);
-        Log_Printf(LOG_WARN, "SIZE   = %08X",dma[channel].size);
     } else {
         base_addr = dma[channel].init;
-        Log_Printf(LOG_WARN, "DMA USING INIT REG\n");
-        Log_Printf(LOG_WARN, "CSR    = %08X",dma[channel].csr);
-        Log_Printf(LOG_WARN, "SNEXT  = %08X",dma[channel].saved_next);
-        Log_Printf(LOG_WARN, "SLIMIT = %08X",dma[channel].saved_limit);
-        Log_Printf(LOG_WARN, "SSTART = %08X",dma[channel].saved_start);
-        Log_Printf(LOG_WARN, "SSTOP  = %08X",dma[channel].saved_stop);
-        Log_Printf(LOG_WARN, "NEXT   = %08X",dma[channel].next);
-        Log_Printf(LOG_WARN, "LIMIT  = %08X",dma[channel].limit);
-        Log_Printf(LOG_WARN, "START  = %08X",dma[channel].start);
-        Log_Printf(LOG_WARN, "STOP   = %08X",dma[channel].stop);
-        Log_Printf(LOG_WARN, "INIT   = %08X",dma[channel].init);
-        Log_Printf(LOG_WARN, "SIZE   = %08X",dma[channel].size);
-
         
         /* If the transfer size is greater than (limit - init):
          * Copy residual bytes to physical addresses at start. */

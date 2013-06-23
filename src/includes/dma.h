@@ -45,7 +45,7 @@ void DMA_Size_Read(void);
 void DMA_Size_Write(void);
 
 void dma_esp_write_memory(void);
-void dma_esp_flush_buffer(Uint32 buffersize);
+void dma_esp_flush_buffer(void);
 
 void dma_memory_write(Uint8 *buf, Uint32 size, int channel);
 void dma_memory_read(Uint8 *buf, Uint32 *size, int channel);
@@ -71,11 +71,11 @@ typedef struct {
     Uint32 size;
     
     /* Not in real hardware, but useful for emulation */
-    struct {
-        Uint8 data[DMA_BUFFER_SIZE];
-        Uint32 size;
-        Uint32 residual;
-    } buf;
+//    struct {
+//        Uint8 data[DMA_BUFFER_SIZE];
+//        Uint32 size;
+//        Uint32 residual;
+//    } buf;
 } DMA_CONTROL;
 
 DMA_CONTROL dma[16];
