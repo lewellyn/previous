@@ -136,6 +136,7 @@ void esp_reset_soft(void);
 void esp_flush_fifo(void);
 void handle_satn(void);
 void handle_ti(void);
+void esp_transfer_pad(void);
 void esp_raise_irq(void);
 void esp_lower_irq(void);
 Uint32 get_cmd(void);

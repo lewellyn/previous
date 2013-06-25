@@ -324,10 +324,7 @@ void ESP_Command_Write(void) {
             break;            
         case CMD_PAD:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: transfer pad\n");
-            status = STAT_TC | STAT_DI;
-            intstatus = INTR_FC;
-            seqstep = SEQ_0;
-            esp_raise_irq();
+            esp_transfer_pad();
             break;
         case CMD_SATN:
             Log_Printf(LOG_SCSI_LEVEL, "ESP Command: set ATN\n");
@@ -730,6 +727,11 @@ void esp_dma_done(void) {
     fifoflags = 0;
     
     intstatus = INTR_BS | INTR_FC;
+    
+    if (SCSIdata.rpos<SCSIdata.size) {
+        status = (status&STAT_MASK)|STAT_DI;
+        intstatus = INTR_FC;
+    }
     seqstep = SEQ_CD;
     
     esp_raise_irq();
@@ -767,6 +769,22 @@ void handle_ti(void){
         return;
     }
 }
+
+/* Transfer padding */
+void esp_transfer_pad(void) {
+    Log_Printf(LOG_WARN, "[ESP] Transfer padding, ESP counter: %i bytes, SCSI resid: %i bytes\n",
+               esp_counter, SCSIdata.size-SCSIdata.rpos);
+    seqstep = SEQ_0; /* TODO: check this */
+    if ((SCSIdata.size-SCSIdata.rpos)<esp_counter) {
+        esp_counter -= (SCSIdata.size-SCSIdata.rpos);
+        SCSIdata.rpos = SCSIdata.size;
+    } else {
+        SCSIdata.rpos+=esp_counter;
+        esp_counter = 0;
+    }
+    esp_dma_done();
+}
+
 
 void esp_command_complete (void) {
     Log_Printf(LOG_SCSI_LEVEL, "SCSI Command complete\n");

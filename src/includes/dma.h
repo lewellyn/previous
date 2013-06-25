@@ -69,13 +69,6 @@ typedef struct {
     Uint32 stop;
     Uint32 init;
     Uint32 size;
-    
-    /* Not in real hardware, but useful for emulation */
-//    struct {
-//        Uint8 data[DMA_BUFFER_SIZE];
-//        Uint32 size;
-//        Uint32 residual;
-//    } buf;
 } DMA_CONTROL;
 
 DMA_CONTROL dma[16];
