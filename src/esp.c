@@ -34,9 +34,6 @@ typedef enum {
 
 SCSI_STATE state;
 
-/* SCSI DMA Command/Status Registers */
-Uint8 csr_value0;
-Uint8 csr_value1;
 
 /* ESP Registers */
 Uint8 writetranscountl;
@@ -93,53 +90,51 @@ static int bus_id_command=0;
 /* ESP DMA control and status registers */
 
 void ESP_DMA_CTRL_Read(void) {
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = csr_value0;
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = esp_dma.control;
  	Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA control read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void ESP_DMA_CTRL_Write(void) {
     Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA control write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-    csr_value0 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+    esp_dma.control = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
         
-    if ((csr_value0 & 0x04) == 0x04) {
-        Log_Printf(LOG_SCSI_LEVEL, "flush FIFO\n");
+    if (esp_dma.control&ESPCTRL_FLUSH) {
+        Log_Printf(LOG_SCSI_LEVEL, "flush DMA buffer\n");
         dma_esp_flush_buffer();
     }
-    if ((csr_value0 & 0x01) == 0x01) {
-        Log_Printf(LOG_SCSI_LEVEL, "scsi chip is WD33C92\n");
+    if (esp_dma.control&ESPCTRL_CHIP_TYPE) {
+        Log_Printf(LOG_SCSI_LEVEL, "SCSI controller is WD33C92\n");
     } else {
-        Log_Printf(LOG_SCSI_LEVEL, "scsi chip is NCR53C90\n");
+        Log_Printf(LOG_SCSI_LEVEL, "SCSI controller is NCR53C90\n");
     }
-    if ((csr_value0 & 0x02) == 0x02) {
-        Log_Printf(LOG_SCSI_LEVEL, "reset scsi chip\n");
+    if (esp_dma.control&ESPCTRL_RESET) {
+        Log_Printf(LOG_SCSI_LEVEL, "reset SCSI controller\n");
         esp_reset_hard();
     }
-    if ((csr_value0 & 0x08) == 0x08) {
-        Log_Printf(LOG_SCSI_LEVEL, "dma from scsi to mem\n");
+    if (esp_dma.control&ESPCTRL_DMA_READ) {
+        Log_Printf(LOG_SCSI_LEVEL, "DMA from SCSI to mem\n");
+    } else {
+        Log_Printf(LOG_SCSI_LEVEL, "DMA from mem to SCSI\n");
     }
-    if ((csr_value0 & 0x10) == 0x10) {
-        // set_interrupt(INT_SCSI_DMA, SET_INT);
-        // esp_raise_irq(); 
+    if (esp_dma.control&ESPCTRL_MODE_DMA) {
         Log_Printf(LOG_SCSI_LEVEL, "mode DMA\n");
     }else{
-        // set_interrupt(INT_SCSI_DMA, RELEASE_INT);
-        //esp_lower_irq();
         Log_Printf(LOG_SCSI_LEVEL, "mode PIO\n");
     }
-    if ((csr_value0 & 0x20) == 0x20) {
-        Log_Printf(LOG_SCSI_LEVEL, "interrupt enable");
+    if (esp_dma.control&ESPCTRL_ENABLE_INT) {
+        Log_Printf(LOG_SCSI_LEVEL, "enable ESP interrupt");
     }
-    switch (csr_value0 & 0xC0) {
-        case 0x00:
+    switch (esp_dma.control&ESPCTRL_CLKMASK) {
+        case ESPCTRL_CLK10MHz:
             Log_Printf(LOG_SCSI_LEVEL, "10 MHz clock\n");
             break;
-        case 0x40:
+        case ESPCTRL_CLK12MHz:
             Log_Printf(LOG_SCSI_LEVEL, "12.5 MHz clock\n");
             break;
-        case 0xC0:
+        case ESPCTRL_CLK16MHz:
             Log_Printf(LOG_SCSI_LEVEL, "16.6 MHz clock\n");
             break;
-        case 0x80:
+        case ESPCTRL_CLK20MHz:
             Log_Printf(LOG_SCSI_LEVEL, "20 MHz clock\n");
             break;
         default:
@@ -148,30 +143,24 @@ void ESP_DMA_CTRL_Write(void) {
 }
 
 void ESP_DMA_FIFO_STAT_Read(void) {
-    
-    /*
-     * dma fifo status register
-     */
-#define	S5RDMAS_STATE		0xc0	/* DMA/SCSI bank state */
-#define	S5RDMAS_D0S0		0x00	/* DMA rdy for bank 0, SCSI in bank 0 */
-#define	S5RDMAS_D0S1		0x40	/* DMA req for bank 0, SCSI in bank 1 */
-#define	S5RDMAS_D1S1		0x80	/* DMA rdy for bank 1, SCSI in bank 1 */
-#define	S5RDMAS_D1S0		0xc0	/* DMA req for bank 1, SCSI in bank 0 */
-#define	S5RDMAS_OUTFIFOMASK	0x38	/* output fifo byte (INVERTED) */
-#define	S5RDMAS_INFIFOMASK	0x07	/* input fifo byte (INVERTED) */
-    
-#define	S5RDMA_FIFOALIGNMENT	4	/* mass storage chip buffer size */
-
-    
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = 0x80;
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = esp_dma.status;
  	Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA FIFO status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void ESP_DMA_FIFO_STAT_Write(void) {
  	Log_Printf(LOG_SCSI_LEVEL,"SCSI DMA FIFO status write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-    csr_value1 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+    esp_dma.status = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
 }
 
+void ESP_DMA_set_status(void) { /* this is just a guess */
+    if ((esp_dma.status&ESPSTAT_STATE_MASK) == ESPSTAT_STATE_D0S1) {
+        //Log_Printf(LOG_WARN,"DMA in buffer 0, SCSI in buffer 1\n");
+        esp_dma.status = (esp_dma.status&~ESPSTAT_STATE_MASK)|ESPSTAT_STATE_D1S0;
+    } else {
+        //Log_Printf(LOG_WARN,"DMA in buffer 1, SCSI in buffer 0\n");
+        esp_dma.status = (esp_dma.status&~ESPSTAT_STATE_MASK)|ESPSTAT_STATE_D0S1;
+    }
+}
 
 /* ESP Registers */
 
@@ -496,7 +485,9 @@ void esp_raise_irq(void) {
         status |= STAT_INT;
         irq_status = 1;
         
-        set_interrupt(INT_SCSI, SET_INT);
+        if (esp_dma.control&ESPCTRL_ENABLE_INT) {
+            set_interrupt(INT_SCSI, SET_INT);
+        }
         
         //Log_Printf(LOG_SCSI_LEVEL, "Raise IRQ\n");
         char s[16];

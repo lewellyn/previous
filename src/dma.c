@@ -147,17 +147,17 @@ void DMA_CSR_Write(void) {
     
     switch (writecsr&DMA_CMD_MASK) {
         case DMA_RESET:
-            if (channel==CHANNEL_SCSI && dma[CHANNEL_SCSI].csr&DMA_ENABLE) {
-//                if (dma[CHANNEL_SCSI].csr&DMA_DEV2M) {
-//                    Log_Printf(LOG_WARN,"DMA reset flushing buffer: %i bytes",esp_counter_resid);
-//                    dma_esp_flush_buffer(dma_buffer_resid);
-//                }
-            }
             dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE | DMA_DEV2M);
             Log_Printf(LOG_WARN,"DMA reset");
             break;
         case DMA_INITBUF:
+            esp_dma.status = 0x00; /* just a guess */
             Log_Printf(LOG_DMA_LEVEL,"DMA initialize buffers");
+            break;
+        case (DMA_RESET | DMA_INITBUF):
+            dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE | DMA_DEV2M);
+            esp_dma.status = 0x00; /* just a guess */
+            Log_Printf(LOG_WARN,"DMA reset and initialize buffers");
             break;
         case DMA_CLRCOMPLETE:
             dma[channel].csr &= ~DMA_COMPLETE;
@@ -183,6 +183,10 @@ void DMA_CSR_Write(void) {
             dma[channel].csr |= DMA_SUPDATE;
             dma[channel].csr |= DMA_ENABLE;
             Log_Printf(LOG_DMA_LEVEL,"DMA start chaining");
+            break;
+
+        case 0x00:
+            Log_Printf(LOG_WARN,"DMA no command");
             break;
 
         default:
@@ -385,7 +389,7 @@ void dma_esp_write_memory(void) {
     TRY(prb) {
         while (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit &&
                (SCSIdata.size-SCSIdata.rpos)>=DMA_BURST_SIZE && esp_counter>=DMA_BURST_SIZE) {
-                        
+
             /* Write 4 long words to memory (burst mode) */
             for (i=0; i<DMA_BURST_SIZE; i+=4) {
                 NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next+i, dma_mklong(SCSIdata.buffer, SCSIdata.rpos+i));
@@ -393,6 +397,7 @@ void dma_esp_write_memory(void) {
             esp_counter -= DMA_BURST_SIZE;
             SCSIdata.rpos += DMA_BURST_SIZE;
             dma[CHANNEL_SCSI].next+=DMA_BURST_SIZE;
+            ESP_DMA_set_status();
         }
     } CATCH(prb) {
         Log_Printf(LOG_WARN, "[DMA] Bus error while writing to %08x",dma[CHANNEL_SCSI].next+i);
@@ -407,6 +412,7 @@ void dma_esp_write_memory(void) {
      */
     if (esp_counter!=0 && esp_counter<DMA_BURST_SIZE && (SCSIdata.size-SCSIdata.rpos)>=esp_counter) {
         Log_Printf(LOG_WARN, "[DMA] Residual bytes in DMA buffer: %i bytes",esp_counter);
+        ESP_DMA_set_status();
         esp_counter = 0;
     }
     
@@ -436,8 +442,8 @@ void dma_esp_write_memory(void) {
 }
 
 void dma_esp_flush_buffer(void) {
-    int interrupt = get_interrupt_type(CHANNEL_SCSI);
-    
+//    int interrupt = get_interrupt_type(CHANNEL_SCSI);
+
     TRY(prb) {
         if (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit) {
             Log_Printf(LOG_WARN, "[DMA] Flush buffer to memory at $%08x, 4 bytes",dma[CHANNEL_SCSI].next);
@@ -454,9 +460,9 @@ void dma_esp_flush_buffer(void) {
     } ENDTRY
     
     /* Set interrupt if limit is reached (not sure this is needed) */
-    if (dma[CHANNEL_SCSI].next==dma[CHANNEL_SCSI].limit) {
-        set_interrupt(interrupt, SET_INT);
-    }
+//    if (dma[CHANNEL_SCSI].next==dma[CHANNEL_SCSI].limit) {
+//        set_interrupt(interrupt, SET_INT);
+//    }
 }
 
 void dma_memory_write(Uint8 *buf, Uint32 size, int channel) {
