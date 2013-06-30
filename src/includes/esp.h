@@ -2,21 +2,31 @@
 #define CMD_DMA      0x80
 #define CMD_CMD      0x7f
 
+#define CMD_TYP_MASK 0x70
+#define CMD_TYP_MSC  0x00
+#define CMD_TYP_TGT  0x20
+#define CMD_TYP_INR  0x10
+#define CMD_TYP_DIS  0x40
+
+/* Miscellaneous Commands */
 #define CMD_NOP      0x00
 #define CMD_FLUSH    0x01
 #define CMD_RESET    0x02
 #define CMD_BUSRESET 0x03
+/* Initiator Commands */
 #define CMD_TI       0x10
 #define CMD_ICCS     0x11
 #define CMD_MSGACC   0x12
 #define CMD_PAD      0x18
 #define CMD_SATN     0x1a
+/* Disconnected Commands */
+#define CMD_RESEL    0x40
 #define CMD_SEL      0x41
 #define CMD_SELATN   0x42
 #define CMD_SELATNS  0x43
 #define CMD_ENSEL    0x44
 #define CMD_DISSEL   0x45
-
+/* Target Commands */
 #define CMD_SEMSG    0x20
 #define CMD_SESTAT   0x21
 #define CMD_SEDAT    0x22
@@ -29,13 +39,15 @@
 #define CMD_RDATA    0x2A
 #define CMD_RCSEQ    0x2B
 
-/* Interrupt Status Register */
-#define STAT_DO      0x00
-#define STAT_DI      0x01
-#define STAT_CD      0x02
-#define STAT_ST      0x03
-#define STAT_MO      0x06
-#define STAT_MI      0x07
+/* Status Register */
+#define PHASE_MASK   0x07
+
+#define STAT_DO      0x00 /* data out */
+#define STAT_DI      0x01 /* data in */
+#define STAT_CD      0x02 /* command */
+#define STAT_ST      0x03 /* status */
+#define STAT_MO      0x06 /* message out */
+#define STAT_MI      0x07 /* message in */
 
 #define STAT_MASK    0xF8
 
@@ -48,7 +60,7 @@
 /* Bus ID Register */
 #define BUSID_DID    0x07
 
-/* Interrupt Register */
+/* Interrupt Status Register */
 #define INTR_SEL     0x01
 #define INTR_SELATN  0x02
 #define INTR_RESEL   0x04
@@ -133,19 +145,19 @@ void ESP_Conf2_Read(void);
 
 void esp_reset_hard(void);
 void esp_reset_soft(void);
+void esp_bus_reset(void);
 void esp_flush_fifo(void);
-void handle_satn(void);
-void handle_ti(void);
+
+void esp_message_accepted(void);
+void esp_initiator_command_complete(void);
+void esp_transfer_info(void);
 void esp_transfer_pad(void);
+void esp_select(bool atn);
+
 void esp_raise_irq(void);
 void esp_lower_irq(void);
-Uint32 get_cmd(void);
-void do_cmd(void);
-void do_busid_cmd(Uint8);
-void esp_do_dma(void);
-void esp_dma_done(void);
-void esp_transfer_data(void);
-void esp_command_complete(void);
-void write_response(void);
+
+void esp_dma_done(bool write);
+
 
 extern Uint32 esp_counter;

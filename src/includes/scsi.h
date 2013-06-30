@@ -38,25 +38,48 @@
 #define HD_REQSENS_NODRIVE  0x25              /* Invalid drive */
 
 
-typedef struct {
-    int readCount;    /* count of number of command bytes written */
-    unsigned char source_busid;
-    unsigned char target;
-    unsigned char lun;
-    unsigned char opcode;
-    bool nodevice;
-    bool timeout;
-    int transfer_data_len;
-    int transferdirection_todevice;
-    bool extended;
-    
-    int byteCount;             /* count of number of command bytes written */
-    unsigned char command[10];
-    short int returnCode;      /* return code from the HDC operation */
-} SCSICOMMAND;
+/* ----------- NEW ---------- */
+/* Status Codes */
+#define STAT_GOOD           0x00
+#define STAT_CHECK_COND     0x02
+#define STAT_COND_MET       0x04
+#define STAT_BUSY           0x08
+#define STAT_INTERMEDIATE   0x10
+#define STAT_INTER_COND_MET 0x14
+#define STAT_RESERV_CONFL   0x18
 
-/* SCSI globals */
-SCSICOMMAND SCSIcommand;
+/* Messages */
+#define MSG_COMPLETE        0x00
+#define MSG_SAVE_PTRS       0x02
+#define MSG_RESTORE_PTRS    0x03
+#define MSG_DISCONNECT      0x04
+#define MSG_INITIATOR_ERR   0x05
+#define MSG_ABORT           0x06
+#define MSG_MSG_REJECT      0x07
+#define MSG_NOP             0x08
+#define MSG_PARITY_ERR      0x09
+#define MSG_LINK_CMD_CMPLT  0x0A
+#define MSG_LNKCMDCMPLTFLAG 0x0B
+#define MSG_DEVICE_RESET    0x0C
+
+#define MSG_IDENTIFY_MASK   0x80
+#define MSG_ID_DISCONN      0x40
+#define MSG_LUNMASK         0x07
+
+/* Sense Keys */
+#define SENSE_NOSENSE       0x00
+#define SENSE_RECOVERED     0x01
+#define SENSE_NOTREADY      0x02
+#define SENSE_MEDIA         0x03
+#define SENSE_HARDWARE      0x04
+#define SENSE_ILLEGAL_REQ   0x05
+#define SENSE_UNIT_ATN      0x06
+#define SENSE_DATAPROTECT   0x07
+#define SENSE_ABORTED_CMD   0x0B
+#define SENSE_VOL_OVERFLOW  0x0D
+#define SENSE_MISCOMPARE    0x0E
+
+
 
 /* Mode Pages */
 #define MODEPAGE_MAX_SIZE 24
@@ -78,26 +101,41 @@ struct {
 } SCSIdata;
 
 
+struct {
+    Uint8 target;
+//    Uint8 phase;
+} SCSIbus;
+
+
+/* SCSI phase */
+Uint8 scsi_phase;
+
 void SCSI_Init(void);
 void SCSI_Uninit(void);
 void SCSI_Reset(void);
-void scsi_command_analyzer(Uint8 command[], int size, int target,int lun);
+
+Uint8 SCSIdisk_Send_Status(void);
+Uint8 SCSIdisk_Send_Message(void);
+void SCSIdisk_Send_Data(void);
+bool SCSI_Select(Uint8 target);
+void SCSI_Receive_Command(Uint8 *commandbuf, int size, Uint8 identify);
+
 
 /* Helpers */
-int SCSI_GetTransferLength(void);
-unsigned long SCSI_GetOffset(void);
-int SCSI_GetCount(void);
+int SCSI_GetTransferLength(Uint8 opcode, Uint8 *cmd_descr_block);
+unsigned long SCSI_GetOffset(Uint8 opcode, Uint8 *cmd_descr_block);
+int SCSI_GetCount(Uint8 opcode, Uint8 *cmd_descr_block);
 MODEPAGE SCSI_GetModePage(Uint8 pagecode);
 
 
-void SCSI_Emulate_Command(void);
+void SCSI_Emulate_Command(Uint8 opcode, Uint8 *cmd_descr_block);
 
 /* SCSI Commands */
-void SCSI_Inquiry (void);
-void SCSI_StartStop(void);
-void SCSI_TestUnitReady(void);
-void SCSI_ReadCapacity(void);
-void SCSI_ReadSector(void);
-void SCSI_WriteSector(void);
-void SCSI_RequestSense(void);
-void SCSI_ModeSense(void);
+void SCSI_Inquiry (Uint8 *cmd_descr_block);
+void SCSI_StartStop(Uint8 *cmd_descr_block);
+void SCSI_TestUnitReady(Uint8 *cmd_descr_block);
+void SCSI_ReadCapacity(Uint8 *cmd_descr_block);
+void SCSI_ReadSector(Uint8 *cmd_descr_block);
+void SCSI_WriteSector(Uint8 *cmd_descr_block);
+void SCSI_RequestSense(Uint8 *cmd_descr_block);
+void SCSI_ModeSense(Uint8 *cmd_descr_block);

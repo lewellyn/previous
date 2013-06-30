@@ -28,14 +28,18 @@ static Uint32 nLastBlockAddr;
 static bool bSetLastBlockAddr;
 static Uint8 nLastError;
 
+
 /* Disk Infos */
 
-bool bCDROM;
-bool bTargetDevice;
-Uint32 nDiskSize;
+struct {
+    FILE* dsk;
+    Uint32 size;
+    bool cdrom;
+    Uint8 lun;
+    Uint8 status;
+    Uint8 message;
+} SCSIdisk;
 
-
-static FILE *scsidisk = NULL;
 
 FILE* scsiimage[ESP_MAX_DEVS];
 Uint32 nFileSize[ESP_MAX_DEVS];
@@ -69,7 +73,7 @@ void SCSI_Uninit(void) {
     		File_Close(scsiimage[target]);
     }
     
-    scsidisk = NULL;
+    SCSIdisk.dsk = NULL;
 }
 
 void SCSI_Reset(void) {
@@ -80,9 +84,18 @@ void SCSI_Reset(void) {
 
 
 /* INQUIRY response data */
+#define DEVTYPE_DISK        0x00    /* read/write disks */
+#define DEVTYPE_TAPE        0x01    /* tapes and other sequential devices */
+#define DEVTYPE_PRINTER     0x02    /* printers */
+#define DEVTYPE_PROCESSOR   0x03    /* cpus */
+#define DEVTYPE_WORM        0x04    /* write-once optical disks */
+#define DEVTYPE_READONLY    0x05    /* cd-roms */
+#define DEVTYPE_NOTPRESENT  0x7f    /* logical unit not present */
+
+
 static unsigned char inquiry_bytes[] =
 {
-	0x00,             /* 0: device type: 0x00 = direct access device, 0x05 = cd-rom, 0x07 = mo-disk */
+	0x00,             /* 0: device type: see above */
 	0x00,             /* 1: &0x7F - device type qulifier 0x00 unsupported, &0x80 - rmb: 0x00 = nonremovable, 0x80 = removable */
 	0x01,             /* 2: ANSI SCSI standard (first release) compliant */
     0x02,             /* 3: Restponse format (format of following data): 0x01 SCSI-1 compliant */
@@ -98,90 +111,101 @@ static unsigned char inquiry_bytes[] =
 };
 
 
+Uint8 SCSIdisk_Send_Status(void) {
+    return SCSIdisk.status;
+}
 
-void scsi_command_analyzer(Uint8 commandbuf[], int size, int target, int lun) {
-    int i;
-    SCSIcommand.source_busid = commandbuf[0];
-    for (i = 1; i < size; i++) {
-        SCSIcommand.command[i-1] = commandbuf[i];
-    }
+Uint8 SCSIdisk_Send_Message(void) {
+    return SCSIdisk.message;
+}
 
-    SCSIcommand.opcode = SCSIcommand.command[0];
-    if (target >= ESP_MAX_DEVS) {
-        Log_Printf(LOG_WARN, "Invalid target: %i!\n", target);
-        abort();
-    }
-    SCSIcommand.target = target;
-    SCSIcommand.lun = lun;
-    Log_Printf(LOG_WARN, "SCSI command: Length = %i, Opcode = $%02x, target = %i, lun=%i\n", size, SCSIcommand.opcode, SCSIcommand.target,SCSIcommand.lun);
-    
-    scsidisk = scsiimage[target];
-    nDiskSize = nFileSize[target];
-    bCDROM = ConfigureParams.SCSI.target[target].bCDROM;
-    bTargetDevice = ConfigureParams.SCSI.target[target].bAttached;
-
-    //bTargetDevice |= bCDROM; // handle empty cd-rom drive - does not work yet!
-    if(scsidisk) { // experimental!
-        SCSIcommand.nodevice = false;
-        SCSIcommand.timeout = false;
-        if ((SCSIcommand.lun!=LUN_DISC) && (SCSIcommand.opcode!=HD_REQ_SENSE) && (SCSIcommand.opcode!=HD_INQUIRY))
-	{
-        	Log_Printf(LOG_WARN, "SCSI command: No device at target %i\n", SCSIcommand.target);
-        SCSIcommand.nodevice = true;
-        SCSIcommand.timeout = false;
-        	SCSIcommand.transferdirection_todevice = 0;
-		SCSIcommand.transfer_data_len=0;
-		SCSIcommand.returnCode = HD_STATUS_ERROR;
-		nLastError= HD_REQSENS_NODRIVE;
-		return;
-    	}
-        SCSI_Emulate_Command();
-    } else {	
-	// hacks for NeXT (to be tested on real life...)
-	// question is : what an SCSI controler should answer for missing drives (and if SCSI controler is aware of SCSI opcodes)
-    //	if (SCSIcommand.opcode==HD_TEST_UNIT_RDY) {SCSI_TestMissingUnitReady();SCSIcommand.nodevice = false;return;}
-//        SCSIcommand.nodevice = false;
-//        SCSIcommand.timeout = false;
-//	if (SCSIcommand.opcode==HD_REQ_SENSE) {SCSI_Emulate_Command();return;}
-        Log_Printf(LOG_WARN, "SCSI command: No target %i %s at %d", SCSIcommand.target,__FILE__,__LINE__);
-        SCSIcommand.nodevice = false;
-        SCSIcommand.timeout = true;
-        SCSIcommand.transferdirection_todevice = 0;
+void SCSIdisk_Send_Data(void) {
+    /* Send one byte. If the transfer is complete, set status phase */
+    SCSIdata.rpos++;
+    if (SCSIdata.rpos==SCSIdata.size) {
+        scsi_phase = STAT_ST;
     }
 }
 
-void SCSI_Emulate_Command(void)
-{
+
+bool SCSI_Select(Uint8 target) {
+    SCSIdisk.dsk = scsiimage[target];
+
+    /* If there is no disk present, return timeout true */
+    if (SCSIdisk.dsk==NULL) {
+        Log_Printf(LOG_WARN, "[SCSI] Selection timeout, target = %i", target);
+        scsi_phase = STAT_ST; /* TODO: Check what's the correct phase */
+        return true;
+    } else {
+        SCSIbus.target = target;
+        SCSIdisk.size = nFileSize[target];
+        SCSIdisk.cdrom = ConfigureParams.SCSI.target[target].bCDROM;
+        //bTargetDevice = ConfigureParams.SCSI.target[target].bAttached;
+        
+        //bTargetDevice |= bCDROM; // handle empty cd-rom drive - does not work yet!
+
+        return false;
+    }
+}
+
+
+void SCSI_Receive_Command(Uint8 *cdb, int size, Uint8 identify) {
+    Uint8 lun = 0;
+    Uint8 opcode = cdb[0];
     
-	switch(SCSIcommand.opcode)
+    /* Get logical unit number */
+    if (identify&MSG_IDENTIFY_MASK) { /* if identify message is valid */
+        lun = identify&MSG_LUNMASK; /* use lun from identify message */
+    } else {
+        lun = (cdb[1]&0xE0)>>5; /* use lun specified in CDB */
+    }
+
+    if (lun!=0 && opcode!=HD_REQ_SENSE && opcode!=HD_INQUIRY) {
+        scsi_phase = STAT_ST;
+        SCSIdisk.status = STAT_CHECK_COND; /* status: check condition */
+        nLastError = HD_REQSENS_NODRIVE;
+        return;
+    }
+    
+    SCSIdisk.lun = lun;
+    
+    Log_Printf(LOG_WARN, "SCSI command: Length = %i, Opcode = $%02x, target = %i, lun=%i\n", size, opcode, SCSIbus.target,SCSIdisk.lun);
+    
+    SCSI_Emulate_Command(opcode, cdb);
+}
+
+
+void SCSI_Emulate_Command(Uint8 opcode, Uint8 *cdb)
+{
+	switch(opcode)
 	{
             
         case HD_TEST_UNIT_RDY:
             Log_Printf(LOG_WARN, "SCSI command: Test unit ready\n");
-            SCSI_TestUnitReady();
+            SCSI_TestUnitReady(cdb);
             break;
             
         case HD_READ_CAPACITY1:
             Log_Printf(LOG_WARN, "SCSI command: Read capacity\n");
-            SCSI_ReadCapacity();
+            SCSI_ReadCapacity(cdb);
             break;
             
         case HD_READ_SECTOR:
         case HD_READ_SECTOR1:
             Log_Printf(LOG_WARN, "SCSI command: Read sector\n");
-            SCSI_ReadSector();
+            SCSI_ReadSector(cdb);
             break;
             
         case HD_WRITE_SECTOR:
         case HD_WRITE_SECTOR1:
             Log_Printf(LOG_WARN, "SCSI command: Write sector\n");
-            SCSI_WriteSector();
+            SCSI_WriteSector(cdb);
 //            abort();
             break;
             
         case HD_INQUIRY:
             Log_Printf(LOG_WARN, "SCSI command: Inquiry\n");
-            SCSI_Inquiry();
+            SCSI_Inquiry(cdb);
             break;
             
         case HD_SEEK:
@@ -192,17 +216,17 @@ void SCSI_Emulate_Command(void)
             
         case HD_SHIP:
             Log_Printf(LOG_WARN, "SCSI command: Ship\n");
-            SCSI_StartStop();
+            SCSI_StartStop(cdb);
             break;
             
         case HD_REQ_SENSE:
             Log_Printf(LOG_WARN, "SCSI command: Request sense\n");
-            SCSI_RequestSense();
+            SCSI_RequestSense(cdb);
             break;
             
         case HD_MODESELECT:
             Log_Printf(LOG_WARN, "MODE SELECT call not implemented yet.\n");
-            SCSIcommand.returnCode = HD_STATUS_OK;
+            SCSIdisk.status = STAT_GOOD;
             nLastError = HD_REQSENS_OK;
             bSetLastBlockAddr = false;
 //            FDC_SetDMAStatus(false);
@@ -212,7 +236,7 @@ void SCSI_Emulate_Command(void)
             
         case HD_MODESENSE:
             Log_Printf(LOG_WARN, "SCSI command: Mode sense\n");
-            SCSI_ModeSense();
+            SCSI_ModeSense(cdb);
             break;
             
         case HD_FORMAT_DRIVE:
@@ -228,13 +252,14 @@ void SCSI_Emulate_Command(void)
             
         default:
             Log_Printf(LOG_WARN, "Unknown Command\n");
-            SCSIcommand.returnCode = HD_STATUS_ERROR;
+            SCSIdisk.status = STAT_CHECK_COND;
             nLastError = HD_REQSENS_OPCODE;
             bSetLastBlockAddr = false;
 //            FDC_AcknowledgeInterrupt();
             break;
 	}
-    esp_command_complete();
+    
+    SCSIdisk.message = MSG_COMPLETE; /* not sure about this */
     
     /* Update the led each time a command is processed */
 	Statusbar_EnableHDLed();
@@ -256,32 +281,32 @@ int SCSI_fill_data_buffer(void *buf, Uint32 size, bool disk) {
     }
 }
 
-int SCSI_GetTransferLength(void)
+int SCSI_GetTransferLength(Uint8 opcode, Uint8 *cdb)
 {
-	return SCSIcommand.opcode < 0x20?
+	return opcode < 0x20?
     // class 0
-    SCSIcommand.command[4] :
+    cdb[4] :
     // class 1
-    COMMAND_ReadInt16(SCSIcommand.command, 7);
+    COMMAND_ReadInt16(cdb, 7);
 }
 
-unsigned long SCSI_GetOffset(void)
+unsigned long SCSI_GetOffset(Uint8 opcode, Uint8 *cdb)
 {
-	return SCSIcommand.opcode < 0x20?
+	return opcode < 0x20?
     // class 0
-    (COMMAND_ReadInt24(SCSIcommand.command, 1) & 0x1FFFFF) :
+    (COMMAND_ReadInt24(cdb, 1) & 0x1FFFFF) :
     // class 1
-    COMMAND_ReadInt32(SCSIcommand.command, 2);
+    COMMAND_ReadInt32(cdb, 2);
 }
 
 // get reserved count for SCSI reply
-int SCSI_GetCount(void)
+int SCSI_GetCount(Uint8 opcode, Uint8 *cdb)
 {
-	return SCSIcommand.opcode < 0x20?
+	return opcode < 0x20?
     // class 0
-    SCSIcommand.command[4] :
+    cdb[4] :
     // class 1
-    COMMAND_ReadInt16(SCSIcommand.command, 7);
+    COMMAND_ReadInt16(cdb, 7);
 }
 
 MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
@@ -310,7 +335,7 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
             break;
 
         case 0x04: // rigid disc geometry page
-            sectors = nDiskSize / BLOCKSIZE;
+            sectors = SCSIdisk.size / BLOCKSIZE;
             heads = 16; // max heads per cylinder: 16
             cylinders = sectors / (63 * heads); // max sectors per track: 63
             if ((sectors % (63 * heads)) != 0) {
@@ -371,20 +396,18 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
 
 /* SCSI Commands */
 
-void SCSI_TestUnitReady(void)
+void SCSI_TestUnitReady(Uint8 *cdb)
 {
-    SCSIcommand.transfer_data_len = 0;
-	SCSIcommand.returnCode = HD_STATUS_OK;
+	SCSIdisk.status = STAT_GOOD;
+    scsi_phase = STAT_ST;
 }
 
 
-void SCSI_ReadCapacity(void)
+void SCSI_ReadCapacity(Uint8 *cdb)
 {        
-    Log_Printf(LOG_WARN, "Read disk image: size = %i\n", nDiskSize);
-
-    SCSIcommand.transfer_data_len = 8;
+    Log_Printf(LOG_WARN, "Read disk image: size = %i\n", SCSIdisk.size);
   
-    Uint32 sectors = nDiskSize / BLOCKSIZE;
+    Uint32 sectors = SCSIdisk.size / BLOCKSIZE;
     
     static Uint8 scsi_disksize[8];
 
@@ -397,85 +420,77 @@ void SCSI_ReadCapacity(void)
     scsi_disksize[6] = (BLOCKSIZE >> 8) & 0xFF;
     scsi_disksize[7] = BLOCKSIZE & 0xFF;
     
-    SCSI_fill_data_buffer(scsi_disksize, SCSIcommand.transfer_data_len, false);
+    int transfer_length = 8;
     
-    SCSIcommand.returnCode = HD_STATUS_OK;
+    SCSI_fill_data_buffer(scsi_disksize, transfer_length, false);
+    
+    SCSIdisk.status = STAT_GOOD;
+    scsi_phase = STAT_DI;
     nLastError = HD_REQSENS_OK;
     
 	bSetLastBlockAddr = false;
 }
 
-void SCSI_WriteSector(void) {
+void SCSI_WriteSector(Uint8 *cdb) {
 	int n=0;
     
-	nLastBlockAddr = SCSI_GetOffset() * BLOCKSIZE;
-    SCSIcommand.transfer_data_len = SCSI_GetCount() * BLOCKSIZE;
+	nLastBlockAddr = SCSI_GetOffset(cdb[0], cdb) * BLOCKSIZE;
+    int transfer_length = SCSI_GetCount(cdb[0], cdb) * BLOCKSIZE;
     
     
 	/* seek to the position */
-	if ((scsidisk==NULL) || (fseek(scsidisk, nLastBlockAddr, SEEK_SET) != 0))
+	if ((SCSIdisk.dsk==NULL) || (fseek(SCSIdisk.dsk, nLastBlockAddr, SEEK_SET) != 0))
 	{
-        SCSIcommand.returnCode = HD_STATUS_ERROR;
+        SCSIdisk.status = STAT_CHECK_COND;
+        scsi_phase = STAT_DO;
         nLastError = HD_REQSENS_INVADDR;
 	}
 	else
 	{
     if (1 == 1) {
 // fixme : for now writes are error
-			SCSIcommand.returnCode = HD_STATUS_OK;
+			SCSIdisk.status = STAT_GOOD;
 			nLastError = HD_REQSENS_OK;
 		}
 	}
  }
 
-void SCSI_ReadSector(void)
+void SCSI_ReadSector(Uint8 *cdb)
 {
-	int n=0;
+	int n = 0;
     
-	nLastBlockAddr = SCSI_GetOffset() * BLOCKSIZE;
-    SCSIcommand.transfer_data_len = SCSI_GetCount() * BLOCKSIZE;
+	nLastBlockAddr = SCSI_GetOffset(cdb[0], cdb) * BLOCKSIZE;
+    int transfer_length = SCSI_GetCount(cdb[0], cdb) * BLOCKSIZE;
     
     
 	/* seek to the position */
-	if ((scsidisk==NULL) || (fseek(scsidisk, nLastBlockAddr, SEEK_SET) != 0))
-	{
-        SCSIcommand.returnCode = HD_STATUS_ERROR;
+	if ((SCSIdisk.dsk==NULL) || (fseek(SCSIdisk.dsk, nLastBlockAddr, SEEK_SET) != 0)) {
+        SCSIdisk.status = STAT_CHECK_COND;
+        scsi_phase = STAT_ST;
         nLastError = HD_REQSENS_INVADDR;
-	}
-	else
-	{
-        n = SCSI_fill_data_buffer(scsidisk, SCSIcommand.transfer_data_len, true);
-        
-        /* Test to check if we read correct data */
-        //        Log_Printf(LOG_WARN, "Disk Read Test: $%02x,$%02x,$%02x,$%02x,$%02x,$%02x,$%02x,$%02x\n", dma_write_buffer[0],dma_write_buffer[1],dma_write_buffer[2],dma_write_buffer[3],dma_write_buffer[4],dma_write_buffer[5],dma_write_buffer[6],dma_write_buffer[07]);
+	} else {
+        n = SCSI_fill_data_buffer(SCSIdisk.dsk, transfer_length, true);
     }
 
     if (n == 1) {
-			SCSIcommand.returnCode = HD_STATUS_OK;
-			nLastError = HD_REQSENS_OK;
-		}
-		else
-		{
-			SCSIcommand.returnCode = HD_STATUS_ERROR;
-			nLastError = HD_REQSENS_NOSECTOR;
-		}
-        
-		/* Update DMA counter */
-//		FDC_WriteDMAAddress(nDmaAddr + 512*n);
-//  }
+        SCSIdisk.status = STAT_GOOD;
+        scsi_phase = STAT_DI;
+        nLastError = HD_REQSENS_OK;
+    } else {
+        SCSIdisk.status = STAT_CHECK_COND;
+        scsi_phase = STAT_ST;
+        nLastError = HD_REQSENS_NOSECTOR;
+    }
     
-//	FDC_SetDMAStatus(false);              /* no DMA error */
-//	FDC_AcknowledgeInterrupt();
 	bSetLastBlockAddr = true;
-	//FDCSectorCountRegister = 0;
 }
 
 
 
-void SCSI_Inquiry (void) {
+void SCSI_Inquiry (Uint8 *cdb) {
     
-    if (bCDROM) {
-        inquiry_bytes[0] = 0x05;
+    if (SCSIdisk.cdrom) {
+        inquiry_bytes[0] = DEVTYPE_READONLY;
         inquiry_bytes[1] |= 0x80;
         inquiry_bytes[16] = 'C';
         inquiry_bytes[18] = '-';
@@ -484,7 +499,7 @@ void SCSI_Inquiry (void) {
         inquiry_bytes[21] = 'M';
         Log_Printf(LOG_WARN, "Disk is CD-ROM\n");
     } else {
-        inquiry_bytes[0] = 0x00;
+        inquiry_bytes[0] = DEVTYPE_DISK;
         inquiry_bytes[1] &= ~0x80;
         inquiry_bytes[16] = 'H';
         inquiry_bytes[18] = 'D';
@@ -494,41 +509,44 @@ void SCSI_Inquiry (void) {
         Log_Printf(LOG_WARN, "Disk is HDD\n");
     }
     
-    if (SCSIcommand.lun!=LUN_DISC) {        inquiry_bytes[0] = 0x1F;}
+    if (SCSIdisk.lun!=LUN_DISC) {
+        inquiry_bytes[0] = DEVTYPE_NOTPRESENT;
+    }
     
-    SCSIcommand.transfer_data_len = SCSI_GetTransferLength();
-    Log_Printf(LOG_WARN, "return length: %d", SCSIcommand.transfer_data_len);
-    SCSIcommand.transferdirection_todevice = 0;
+    int transfer_lenght = SCSI_GetTransferLength(cdb[0], cdb);
     
-    SCSI_fill_data_buffer(inquiry_bytes, SCSIcommand.transfer_data_len, false);
+    if (transfer_lenght > (int)sizeof(inquiry_bytes))
+		transfer_lenght = sizeof(inquiry_bytes);
+
+    Log_Printf(LOG_WARN, "return length: %d", transfer_lenght);
+    
+    SCSI_fill_data_buffer(inquiry_bytes, transfer_lenght, false);
     
     Log_Printf(LOG_WARN, "Inquiry Data: %c,%c,%c,%c,%c,%c,%c,%c\n",SCSIdata.buffer[8],
                SCSIdata.buffer[9],SCSIdata.buffer[10],SCSIdata.buffer[11],SCSIdata.buffer[12],
                SCSIdata.buffer[13],SCSIdata.buffer[14],SCSIdata.buffer[15]);
-                
-	if (SCSIcommand.transfer_data_len > (int)sizeof(inquiry_bytes))
-		SCSIcommand.transfer_data_len = sizeof(inquiry_bytes);
-    
-    SCSIcommand.returnCode = HD_STATUS_OK;
+                    
+    SCSIdisk.status = STAT_GOOD;
+    scsi_phase = STAT_DI;
 	nLastError = HD_REQSENS_OK;
 	bSetLastBlockAddr = false;
 }
 
 
-void SCSI_StartStop(void) {
-    SCSIcommand.transfer_data_len = 0;
-    SCSIcommand.transferdirection_todevice = 0;
-    SCSIcommand.returnCode = HD_STATUS_OK;
+void SCSI_StartStop(Uint8 *cdb) {
+    SCSIdisk.status = STAT_GOOD;
+    scsi_phase = STAT_ST;
 }
 
 
-void SCSI_RequestSense(void) {
+void SCSI_RequestSense(Uint8 *cdb) {
 	int nRetLen;
 	Uint8 retbuf[22];
 
-        SCSIcommand.returnCode = HD_STATUS_OK;
+    SCSIdisk.status = STAT_GOOD;
+    scsi_phase = STAT_DI;
         
-	nRetLen = SCSI_GetCount();
+	nRetLen = SCSI_GetCount(cdb[0], cdb);
     
 	if ((nRetLen < 4 && nRetLen != 0) || nRetLen > 22)
 	{
@@ -586,30 +604,30 @@ void SCSI_RequestSense(void) {
 		retbuf[21] = nLastBlockAddr;
 	}
     
-    SCSIcommand.transfer_data_len = nRetLen;
+    int transfer_length = nRetLen;
     
-    SCSI_fill_data_buffer(retbuf, SCSIcommand.transfer_data_len, false);
+    SCSI_fill_data_buffer(retbuf, transfer_length, false);
 
-    SCSIcommand.returnCode = HD_STATUS_OK;
+    SCSIdisk.status = STAT_GOOD;
 }
 
 
-void SCSI_ModeSense(void) {
+void SCSI_ModeSense(Uint8 *cdb) {
     Uint8 retbuf[256];
     MODEPAGE page;
     
-    Uint32 sectors = nDiskSize / BLOCKSIZE;
+    Uint32 sectors = SCSIdisk.size / BLOCKSIZE;
 
-    Uint8 pagecontrol = (SCSIcommand.command[2] & 0x0C) >> 6;
-    Uint8 pagecode = SCSIcommand.command[2] & 0x3F;
-    Uint8 dbd = SCSIcommand.command[1] & 0x08; // disable block descriptor
+    Uint8 pagecontrol = (cdb[2] & 0x0C) >> 6;
+    Uint8 pagecode = cdb[2] & 0x3F;
+    Uint8 dbd = cdb[1] & 0x08; // disable block descriptor
         
     Log_Printf(LOG_WARN, "Mode Sense: page = %02x, page_control = %i, %s\n", pagecode, pagecontrol, dbd == 0x08 ? "block descriptor disabled" : "block descriptor enabled");
     
     /* Header */
     retbuf[0] = 0x00; // length of following data
     retbuf[1] = 0x00; // medium type (always 0)
-    retbuf[2] = bCDROM == true ? 0x80 : 0x00; // if media is read-only 0x80, else 0x00
+    retbuf[2] = SCSIdisk.cdrom == true ? 0x80 : 0x00; // if media is read-only 0x80, else 0x00
     retbuf[3] = 0x08; // block descriptor length
     
     /* Block descriptor data */
@@ -624,7 +642,8 @@ void SCSI_ModeSense(void) {
         retbuf[10] = (BLOCKSIZE >> 8) & 0xFF;     // Block size in bytes, med
         retbuf[11] = BLOCKSIZE & 0xFF;     // Block size in bytes, low
         header_size = 12;
-        Log_Printf(LOG_WARN, "Mode Sense: Block descriptor data: %s, size = %i blocks, blocksize = %i byte\n", bCDROM == true ? "disk is read-only" : "disk is read/write" , sectors, BLOCKSIZE);
+        Log_Printf(LOG_WARN, "Mode Sense: Block descriptor data: %s, size = %i blocks, blocksize = %i byte\n",
+                   SCSIdisk.cdrom == true ? "disk is read-only" : "disk is read/write" , sectors, BLOCKSIZE);
     }
     retbuf[0] = header_size - 1;
     
@@ -702,13 +721,14 @@ void SCSI_ModeSense(void) {
     }
     
     
-    SCSIcommand.transfer_data_len = retbuf[0] + 1;
-    if (SCSIcommand.transfer_data_len > SCSI_GetTransferLength())
-        SCSIcommand.transfer_data_len = SCSI_GetTransferLength();
+    int transfer_length = retbuf[0] + 1;
+    if (transfer_length > SCSI_GetTransferLength(cdb[0], cdb))
+        transfer_length = SCSI_GetTransferLength(cdb[0], cdb);
     
-    SCSI_fill_data_buffer(retbuf, SCSIcommand.transfer_data_len, false);
+    SCSI_fill_data_buffer(retbuf, transfer_length, false);
     
-    SCSIcommand.returnCode = HD_STATUS_OK;
+    SCSIdisk.status = STAT_GOOD;
+    scsi_phase = STAT_DI;
     nLastError = HD_REQSENS_OK;
     
 	bSetLastBlockAddr = false;

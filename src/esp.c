@@ -18,21 +18,11 @@
 
 typedef enum {
     DISCONNECTED,
-    RESELECTABLE,
-    SELECTING,
     INITIATOR,
-    DISABLINGSEL,
-    COMPLETING,
-    DMAING,
-    ACCEPTINGMSG,
-    SENDINGMSG,
-    PADDING,
-    GETTINGMSG,
-    GETTINGLUN,
-    IGNOREILLCMD
+    TARGET
 } SCSI_STATE;
 
-SCSI_STATE state;
+SCSI_STATE esp_state;
 
 
 /* ESP Registers */
@@ -65,26 +55,13 @@ Uint8 fifo_read_ptr;
 Uint8 fifo_write_ptr;
 
 /* Command buffer */
-#define SCSI_CMD_BUF_SIZE 16
+#define SCSI_CMD_BUF_SIZE 12 /* maximum length of command descriptor block */
 Uint8 commandbuf[SCSI_CMD_BUF_SIZE];
 int command_len;
 
 
 /* Experimental */
-
-//Uint32 dma;
-Uint32 do_cmdvar;
-Uint32 dma_counter;
-Uint32 data_len;
-Uint32 dma_left;
-Uint32 cmdlen;
-Uint32 async_len;
-Uint8 *async_buf;
-int dma_enabled = 1;
-void (*dma_cb);
-
 static bool no_target=false;
-static int bus_id_command=0;
 
 
 /* ESP DMA control and status registers */
@@ -219,7 +196,20 @@ void ESP_Command_Read(void) { // 0x02014003
 void ESP_Command_Write(void) {
     command=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP Command write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+        
+    /* Check if command is valid for actual state */
+    if ((command&CMD_TYP_MASK)!=CMD_TYP_MSC) {
+        if ((esp_state==TARGET && !command&CMD_TYP_TGT) ||
+            (esp_state==INITIATOR && !command&CMD_TYP_INR) ||
+            (esp_state==DISCONNECTED && !command&CMD_TYP_DIS)) {
+            Log_Printf(LOG_WARN, "ESP Command: Illegal command for actual ESP state!\n");
+            intstatus |= INTR_ILL;
+            esp_raise_irq();
+            return;
+        }
+    }
     
+    /* Check if the command is a DMA command */
     if (command & CMD_DMA) {
         /* Load the internal counter on every DMA command, do not decrement actual registers! */
         esp_counter = writetranscountl | (writetranscounth << 8);
@@ -238,96 +228,82 @@ void ESP_Command_Write(void) {
     switch (command & CMD_CMD) {
             /* Miscellaneous */
         case CMD_NOP:
-            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: NOP\n");
-    	    // status = (status&STAT_MASK)|STAT_ST;
+            Log_Printf(LOG_WARN, "ESP Command: NOP\n");
             break;
         case CMD_FLUSH:
-            Log_Printf(LOG_SCSI_LEVEL,"ESP Command: flush FIFO\n");
+            Log_Printf(LOG_WARN,"ESP Command: flush FIFO\n");
             esp_flush_fifo();
     	    status = (status&STAT_MASK)|STAT_ST;
             break;
         case CMD_RESET:
-            Log_Printf(LOG_SCSI_LEVEL,"ESP Command: reset chip\n");
+            Log_Printf(LOG_WARN,"ESP Command: reset chip\n");
             esp_reset_hard();
             break;
         case CMD_BUSRESET:
-            //Reset all Devices on SCSI bus
-            Log_Printf(LOG_WARN, "ESP Command: reset SCSI bus\n");
-            esp_reset_soft();
-            if (!(configuration & CFG1_RESREPT)) {
-                intstatus = INTR_RST;
-                status = (status&STAT_MASK)|STAT_MI;
-            	seqstep = 0;
-                Log_Printf(LOG_SCSI_LEVEL,"Bus Reset raising IRQ configuration=%x\n",configuration);
-                //esp_raise_irq(); // temporary disabled for experiment! moved to read config reg.
-            } else 
-                Log_Printf(LOG_SCSI_LEVEL,"Bus Reset not interrupting configuration=%x\n",configuration);
+            esp_bus_reset();
             break;
             /* Disconnected */
+        case CMD_RESEL:
+            Log_Printf(LOG_WARN, "ESP Command: reselect sequence\n");
+            abort();
+            break;
         case CMD_SEL:
-            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: select without ATN sequence\n");
-	    //abort();
-            handle_satn(); // enabled for experiment!
+            Log_Printf(LOG_WARN, "ESP Command: select without ATN sequence\n");
+            abort();
             break;
         case CMD_SELATN:
-            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: select with ATN sequence\n");
-            handle_satn();
+            Log_Printf(LOG_WARN, "ESP Command: select with ATN sequence\n");
+            esp_select(true);
             break;
         case CMD_SELATNS:
-            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: select with ATN and stop sequence\n");
-	    abort();
+            Log_Printf(LOG_WARN, "ESP Command: select with ATN and stop sequence\n");
+            abort();
             break;
         case CMD_ENSEL:
             Log_Printf(LOG_WARN, "ESP Command: enable selection/reselection no_target=%x intstatus=%x status=%x seqstep=%x",
 			no_target,intstatus,status,seqstep);
+#if 0
             if (no_target) {
                 Log_Printf(LOG_SCSI_LEVEL, "ESP retry timeout");
                 intstatus = INTR_RESEL;
             	seqstep = SEQ_SELTIMEOUT;
             } else {
-                Log_Printf(LOG_WARN, "Reselect: target %i, lun %i\n", SCSIcommand.target, SCSIcommand.lun);
+                Log_Printf(LOG_WARN, "Reselect: target %i, lun %i\n", SCSIbus.target, SCSIcommand.lun);
                 status = (status&STAT_MASK)|STAT_MI;
                 intstatus = INTR_RESEL|INTR_FC;
-                esp_fifo[0] = (1<<SCSIcommand.target); // target bit
+                esp_fifo[0] = (1<<SCSIbus.target); // target bit
                 esp_fifo[1] = 0x80|(SCSIcommand.lun&0x07); // identify message (identifymask|(lun&lun_mask))
                 fifoflags = 2;
                 fifo_write_ptr = 2;
                 fifo_read_ptr = 0;
 //                esp_raise_irq();
             }
+#endif
             break;
         case CMD_DISSEL:
-            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: disable selection/reselection\n");
+            Log_Printf(LOG_WARN, "ESP Command: disable selection/reselection\n");
             intstatus = INTR_FC;
             esp_raise_irq();
             break;
             /* Initiator */
         case CMD_TI:
-            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: transfer information\n");
-            handle_ti();
-    	    esp_raise_irq();
+            Log_Printf(LOG_WARN, "ESP Command: transfer information\n");
+            esp_transfer_info();
             break;
         case CMD_ICCS:
-            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: initiator command complete sequence\n");
-            write_response();
-            intstatus = INTR_FC;
-            status = (status&STAT_MASK)|STAT_MI;
-            esp_raise_irq();
+            Log_Printf(LOG_WARN, "ESP Command: initiator command complete sequence\n");
+            esp_initiator_command_complete();
             break;
         case CMD_MSGACC:
-            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: message accepted\n");
-            status = (status&STAT_MASK)|STAT_ST;	   
-            intstatus = INTR_BS;
-            seqstep = SEQ_0;
-            fifoflags = 0x00;
-            esp_raise_irq();
+            Log_Printf(LOG_WARN, "ESP Command: message accepted\n");
+            esp_message_accepted();
             break;            
         case CMD_PAD:
-            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: transfer pad\n");
+            Log_Printf(LOG_WARN, "ESP Command: transfer pad\n");
             esp_transfer_pad();
             break;
         case CMD_SATN:
-            Log_Printf(LOG_SCSI_LEVEL, "ESP Command: set ATN\n");
+            Log_Printf(LOG_WARN, "ESP Command: set ATN\n");
             break;
             /* Target */
         case CMD_SEMSG:
@@ -361,6 +337,7 @@ void ESP_Command_Write(void) {
         default:
             Log_Printf(LOG_WARN, "ESP Command: Illegal command!\n");
             intstatus |= INTR_ILL;
+            esp_raise_irq();
             break;
     }
 }
@@ -416,7 +393,7 @@ void ESP_SyncOffset_Write(void) {
 void ESP_Configuration_Read(void) { // 0x02014008
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=configuration;
  	Log_Printf(LOG_SCSI_LEVEL,"ESP Configuration read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-    esp_raise_irq(); // experimental!
+    //esp_raise_irq(); // experimental!
 }
 
 void ESP_Configuration_Write(void) {
@@ -442,40 +419,6 @@ void ESP_Conf2_Read(void) { // 0x0201400b
 }
 
 
-/* Functions */
-
-void esp_reset_hard(void) {
-    Log_Printf(LOG_WARN, "ESP hard reset\n");
-    /* hard reset */
-    clockconv = 0x02;
-    configuration &= ~0xF8; // clear chip test mode, parity enable, parity test, scsi request/int disable, slow cable mode
-    syncperiod = 0x05;
-    syncoffset = 0x00;
-    intstatus = 0x00;
-    status &= ~(STAT_VGC | STAT_PE | STAT_GE); // need valid group code bit? clear transfer complete aka valid group code, parity error, gross error
-    esp_flush_fifo();
-    esp_lower_irq();
-    esp_reset_soft();
-}
-
-void esp_reset_soft(void) {
-    status &= ~STAT_TC; // clear transfer count zero
-    
-    /* incomplete, need to work on everything below this point */
-    
-    dma_cb = NULL; // clear DMA interface - how to do this?
-    mode_dma = 0;
-
-    esp_counter = 0; /* reset counter, but not actual registers! */
-    
-    seqstep = 0x00;
-
-    command = 0x00;
-    selectbusid = 0x00;
-    selecttimeout= 0x00;
-    fifoflags = 0x00;
-    esptest = 0x00;
-}
 
 void esp_raise_irq(void) {
     if(!(status & STAT_INT)) {
@@ -486,48 +429,38 @@ void esp_raise_irq(void) {
             set_interrupt(INT_SCSI, SET_INT);
         }
         
-        //Log_Printf(LOG_SCSI_LEVEL, "Raise IRQ\n");
-        char s[16];
-        switch (state) {
-            case DISCONNECTED: sprintf(s, "disconntected"); break;
-            case RESELECTABLE: sprintf(s, "reselectable"); break;
-            case SELECTING: sprintf(s, "selecting"); break;
-            case INITIATOR: sprintf(s, "initiator"); break;
-            case DISABLINGSEL: sprintf(s, "diablingsel"); break;
-            case COMPLETING: sprintf(s, "completing"); break;
-            case DMAING: sprintf(s, "dmaing"); break;
-            case ACCEPTINGMSG: sprintf(s, "acceptingmsg"); break;
-            case SENDINGMSG: sprintf(s, "sendingmsg"); break;
-            case PADDING: sprintf(s, "padding"); break;
-            case GETTINGMSG: sprintf(s, "gettingmsg"); break;
-            case GETTINGLUN: sprintf(s, "gettinglun"); break;
-            case IGNOREILLCMD: sprintf(s, "ignoreillcmd"); break;
-            default: sprintf(s, "unknown"); break;
+        printf("[ESP] Raise IRQ: state=");
+        switch (esp_state) {
+            case DISCONNECTED: printf("disconnected"); break;
+            case INITIATOR: printf("initiator"); break;
+            case TARGET: printf("target"); break;
+            default: printf("unknown"); break;
         }
-//        Log_Printf(LOG_WARN, "Raise IRQ: state: %s\n", s);
-        Log_Printf(LOG_WARN, "Raise IRQ:");
+        printf(", phase=");
         switch (status&STAT_MI) {
-            case STAT_DO: sprintf(s, "data out"); break;
-            case STAT_DI: sprintf(s, "data in"); break;
-            case STAT_CD: sprintf(s, "command"); break;
-            case STAT_ST: sprintf(s, "status"); break;
-            case STAT_MI: sprintf(s, "msg in"); break;
-            case STAT_MO: sprintf(s, "msg out"); break;
-            default: sprintf(s, "unknown"); break;
+            case STAT_DO: printf("data out"); break;
+            case STAT_DI: printf("data in"); break;
+            case STAT_CD: printf("command"); break;
+            case STAT_ST: printf("status"); break;
+            case STAT_MI: printf("msg in"); break;
+            case STAT_MO: printf("msg out"); break;
+            default: printf("unknown"); break;
         }
-        Log_Printf(LOG_WARN, "Status: %02x (phase: %s, %s%s)\n", status, s,
-                   status&STAT_TC?"transfer complete":"",
-                   status&STAT_INT?", interrupt":"");
-        Log_Printf(LOG_WARN, "Sequence Step: %02x\n", seqstep);
-        Log_Printf(LOG_WARN, "Interrupt Status: %02x (%s%s%s%s%s%s%s%s)\n", intstatus,
-                   intstatus&INTR_RST?"bus reset, ":"",
-                   intstatus&INTR_BS?"bus service, ":"",
-                   intstatus&INTR_DC?"disconnected, ":"",
-                   intstatus&INTR_FC?"function compl, ":"",
-                   intstatus&INTR_ILL?"illegal comm, ":"",
-                   intstatus&INTR_RESEL?"reselected, ":"",
-                   intstatus&INTR_SEL?"selected, ":"",
-                   intstatus&INTR_SELATN?"selected w ATN":"");
+        if (status&STAT_TC) {
+            printf(", transfer complete");
+        } else {
+            printf(", transfer not complete");
+        }
+        printf(", sequence step=%i", seqstep);
+        printf(", interrupt status:\n");
+        if (intstatus&INTR_RST) printf("bus reset\n");
+        if (intstatus&INTR_BS) printf("bus service\n");
+        if (intstatus&INTR_DC) printf("disconnected\n");
+        if (intstatus&INTR_FC) printf("function complete\n");
+        if (intstatus&INTR_ILL) printf("illegal command\n");
+        if (intstatus&INTR_RESEL) printf("reselected\n");
+        if (intstatus&INTR_SEL) printf("selected\n");
+        if (intstatus&INTR_SELATN) printf("selected with ATN\n");
     }
 }
 
@@ -542,6 +475,60 @@ void esp_lower_irq(void) {
     }
 }
 
+/* Functions */
+
+/* Reset chip */
+void esp_reset_hard(void) {
+    Log_Printf(LOG_WARN, "ESP hard reset\n");
+
+    clockconv = 0x02;
+    configuration &= ~0xF8; // clear chip test mode, parity enable, parity test, scsi request/int disable, slow cable mode
+    esp_flush_fifo();
+    syncperiod = 0x05;
+    syncoffset = 0x00;
+    esp_lower_irq();
+    intstatus = 0x00;
+    status &= ~(STAT_VGC | STAT_PE | STAT_GE); // need valid group code bit? clear transfer complete aka valid group code, parity error, gross error
+    esp_reset_soft();
+}
+
+
+
+void esp_reset_soft(void) {
+    status &= ~STAT_TC; /* clear transfer count zero */
+    
+    /* check, if this is complete */
+    mode_dma = 0;
+    esp_counter = 0; /* reset counter, but not actual registers! */
+    
+    seqstep = 0x00;
+    
+    /* writetranscountl, writetranscounth, selectbusid, selecttimeout are not initilized by reset */
+    selectbusid = 0x00;
+    selecttimeout= 0x00;
+
+    /* This part is "disconnect reset" */
+    command = 0x00;
+    esp_state = DISCONNECTED;
+}
+
+
+/* Reset SCSI bus */
+void esp_bus_reset(void) {
+    Log_Printf(LOG_WARN, "ESP Command: reset SCSI bus\n");
+    
+    esp_reset_soft();
+    if (!(configuration & CFG1_RESREPT)) {
+        intstatus = INTR_RST;
+        status = (status&STAT_MASK)|STAT_MI; /* CHECK: why message in phase? */
+        Log_Printf(LOG_SCSI_LEVEL,"Bus Reset raising IRQ configuration=%x\n",configuration);
+        esp_raise_irq(); // temporary disabled for experiment! moved to read config reg.
+    } else
+        Log_Printf(LOG_SCSI_LEVEL,"Bus Reset not interrupting configuration=%x\n",configuration);
+}
+
+
+/* Flush FIFO */
 void esp_flush_fifo(void) {
     fifo_read_ptr = 0;
     fifo_write_ptr = 0;
@@ -549,224 +536,116 @@ void esp_flush_fifo(void) {
     fifoflags &= 0xE0;
 }
 
-Uint32 get_cmd (void) {
+
+/* Select with or without ATN */
+void esp_select(bool atn) {
+    int cmd_size;
+    Uint8 identify_msg = 0;
+    seqstep = 0;
     
+    /* First select our target */
+    Uint8 target = selectbusid & BUSID_DID; /* Get bus ID from register */
+    bool timeout = SCSI_Select(target);
+    if (timeout) {
+        /* If a timeout occurs, do disconnect interrupt */
+        intstatus = INTR_DC;
+        status = (status&STAT_MASK)|scsi_phase; /* check status */
+        esp_state = DISCONNECTED;
+        esp_raise_irq(); /* TODO: This needs to be delayed selection timeout interrupt */
+        return;
+    }
+    
+    /* Next get our command */
     if(mode_dma == 1) {
-        command_len = esp_counter;
-        //dma_memory_read(command_len);
-        memcpy(commandbuf, dma_read_buffer, command_len);
+        cmd_size = esp_counter;
+        Log_Printf(LOG_WARN, "[ESP] Select: Reading command using DMA, size %i byte",cmd_size);
+        //memcpy(commandbuf, dma_read_buffer, cmd_size); /* add DMA function here */
+        abort();
     } else {
-        command_len = fifo_write_ptr - fifo_read_ptr;
-        memcpy(commandbuf, esp_fifo, command_len);
+        if (atn) { /* Read identify message from FIFO */
+            scsi_phase = STAT_MO;
+            seqstep = 1;
+            identify_msg = esp_fifo[fifo_read_ptr];
+            fifo_read_ptr++;
+        }
         
+        /* Read command from FIFO */
+        scsi_phase = STAT_CD;
+        seqstep = 3;
+        for (cmd_size = 0; cmd_size < SCSI_CMD_BUF_SIZE && fifo_read_ptr<fifo_write_ptr; cmd_size++) {
+            commandbuf[cmd_size] = esp_fifo[fifo_read_ptr];
+            fifo_read_ptr++;
+        }
+
+        Log_Printf(LOG_WARN, "[ESP] Select: Reading command from FIFO, size: %i byte",cmd_size);
+
         esp_flush_fifo();
     }
-    Log_Printf(LOG_SCSI_LEVEL, "get_cmd: len %i", command_len);
     
-    return command_len;
-}
+    Log_Printf(LOG_WARN, "[ESP] Select: Identify Message: $%02X",identify_msg);
+    Log_Printf(LOG_WARN, "[ESP] Select: Target: %i, Lun: %i",target,identify_msg&0x07);
 
-void do_cmd(void) {
-    Uint8 busid = selectbusid;
-    do_busid_cmd(busid);
-}
+    SCSI_Receive_Command(commandbuf, cmd_size, identify_msg);
+    seqstep = 4;
 
-void handle_satn(void) {
-    Uint8 scsi_command_group;
-    
-    get_cmd(); // make get_cmd void function?
-    // clear valid command status
-    status &= ~STAT_VGC;
-
-    /* Decode command to determine the command group and thus the
-     * length of the incoming command. Set "valid group code" bit
-     * in status register if the group is 0, 1, 5, 6, or 7 (group
-     * 2 is also valid on NCR53C90A).
-     */
-    scsi_command_group = (commandbuf[1] & 0xE0) >> 5;
-    if(scsi_command_group < 3 || scsi_command_group > 4) {
-        if(ConfigureParams.System.nSCSI == NCR53C90 && scsi_command_group == 2) {
-            Log_Printf(LOG_WARN, "Invalid command group %i on NCR53C90\n", scsi_command_group);
-        } else {
-            status |= STAT_VGC;
-        }
-    } else {
-        Log_Printf(LOG_WARN, "Invalid command group %i on NCR53C90A\n", scsi_command_group);
-    }
-
-    if (command_len != 0)
-        do_cmd();
-}
-
-void do_busid_cmd(Uint8 busid) {
-    int lun,lun2;
-    int target = busid & BUSID_DID;
-    Log_Printf(LOG_SCSI_LEVEL, "do_busid_cmd: busid $%02x",busid);
-
-    lun = (commandbuf[0]&0x07);
-    scsi_command_analyzer(commandbuf, command_len, target,lun);
-    data_len = SCSIcommand.transfer_data_len;
-
-    if ((target >= ESP_MAX_DEVS) || (SCSIcommand.timeout==true)) { // experimental
-    Log_Printf(LOG_SCSI_LEVEL, "No target found !! Target %d Lun %d raise irq %s at %d",target,lun,__FILE__,__LINE__);
-        intstatus = INTR_DC;
-        seqstep = 0x00;//SEQ_SELTIMEOUT;
-        status = (status&STAT_MASK)|STAT_MI; // seems weird... http://permalink.gmane.org/gmane.os.netbsd.ports.next68k/305
-        no_target=true;
-        esp_raise_irq();
-	return;
-    }
-
-    if (SCSIcommand.nodevice==true) { // experimental
-    Log_Printf(LOG_SCSI_LEVEL, "No device found !! Target %d Lun %d raise irq %s at %d",target,lun,__FILE__,__LINE__);
-	
-        status = (status&STAT_MASK)|STAT_ST;
-        intstatus = INTR_BS|INTR_FC;//INTR_DC;
-        seqstep = SEQ_CD;//SEQ_SELTIMEOUT;
-        esp_raise_irq();
-        return;
-    }
-    
-    status = (status&STAT_MASK)| STAT_ST;
-
-    if (data_len != 0) {
-        Log_Printf(LOG_SCSI_LEVEL, "executing command\n");
-        status = STAT_TC;
-        
-        dma_left = 0;
-        dma_counter = 0;
-        
-        if(SCSIcommand.transferdirection_todevice == 0) {
-            Log_Printf(LOG_SCSI_LEVEL, "DATA IN\n");
-            status = (status&STAT_MASK)| STAT_DI;
-        } else {
-            Log_Printf(LOG_SCSI_LEVEL, "DATA OUT\n");
-            status = (status&STAT_MASK)| STAT_DO;
-        }
-        esp_transfer_data();
-    }
+    status = (status&STAT_MASK)|scsi_phase;
     intstatus = INTR_BS | INTR_FC;
     seqstep = SEQ_CD;
     
+    esp_state = INITIATOR;
     esp_raise_irq();
 }
 
 
-void esp_transfer_data(void) {
-    Log_Printf(LOG_SCSI_LEVEL, "transfer %d/%d\n", dma_left, data_len);
-    
-//    async_len = len;
-//    async_buf = scsi_req_get_buf(req);
-    if(dma_left) {
-        esp_do_dma();
-    } else if(dma_counter != 0 && data_len <= 0) {
-        esp_dma_done();
-    }
-}
-
-
-void esp_do_dma(void) {
-    
-    Log_Printf(LOG_SCSI_LEVEL, "call esp_do_dma\n");
-
-    Uint32 len;
-    int to_device;
-    
-    Log_Printf(LOG_WARN, "ESP start DMA tansfer: ESP counter = %i\n", esp_counter);
-//    dma_memory_write(dma[CHANNEL_SCSI].buf.data, esp_counter, CHANNEL_SCSI);//experimental !!
-    dma_esp_write_memory();
-    
-    
-    to_device = SCSIcommand.transferdirection_todevice;
-    
-    len = dma_left;
-    
-    if(do_cmdvar){
-        abort();
-    }
-    if(async_len == 0) {
-
-    }
-    if(len > async_len) {
-        len = async_len;
-    }
-    if(to_device) {
-//        dma_memory_read(async_buf, len);
-    } else { 
-//        dma_memory_write(async_buf, len);
-    }
-    
-    dma_left -= len;
-    async_buf += len;
-    async_len -= len;
-    
-    if(to_device)
-        data_len += len;
-    else
-        data_len -= len;
-    
-    if(async_len == 0) {
-//        scsi_req_continue(current_req);
-        
-        if (to_device || dma_left != 0 || (fifo_write_ptr - fifo_read_ptr) == 0) {
-//            return;
-        }
-    }
-    esp_dma_done();
-}
-
-void esp_dma_done(void) {
+/* DMA done: this is called as part of transfer info or transfer pad
+ * after DMA transfer has completed. */
+void esp_dma_done(bool write) {
     Log_Printf(LOG_WARN, "ESP DMA transfer done: ESP counter = %i, SCSI residual bytes: %i",
                esp_counter,SCSIdata.size-SCSIdata.rpos);
-    status = (status&STAT_MASK)|STAT_ST;
-    if (esp_counter==0) {
-        status |= STAT_TC;
-    }
-//    intstatus = INTR_BS;
-//    seqstep = 0;
-    fifoflags = 0;
     
-    intstatus = INTR_BS | INTR_FC;
-    
-    if (SCSIdata.rpos<SCSIdata.size) {
-        status = (status&STAT_MASK)|STAT_DI;
+    status = (status&STAT_MASK)|scsi_phase;
+//    fifoflags = 0;
+
+    if (esp_counter == 0) { /* Transfer done */
         intstatus = INTR_FC;
-    }
-    seqstep = SEQ_CD;
+        status |= STAT_TC;
+        esp_raise_irq();
+    } else if ((write && scsi_phase!=STAT_DI) || (!write && scsi_phase!=STAT_DO)) { /* Phase change detected */
+        intstatus = INTR_BS;
+        esp_raise_irq();
+    } /* else continue transfering data using DMA, no interrupt */
     
+    /* HACK: because of problems with DMA function, we need to interrupt here *
+     * so that things continue. This needs to be removed later */
+    intstatus = INTR_BS;
     esp_raise_irq();
 }
 
 
-// transfer information
-void handle_ti(void){
-    Uint32 dma_len, min_len;
-    
-    dma_len = esp_counter;
-    
-    if(dma_len == 0) {
-        dma_len = 0x10000;
-    }
-    
-    dma_counter = dma_len;
-    
-    if(do_cmdvar)
-        min_len = (dma_len < 32) ? dma_len : 32;
-    else
-        min_len = (dma_len > data_len) ? dma_len : data_len;
-    Log_Printf(LOG_SCSI_LEVEL, "Transfer Information len %d\n", min_len);
-    
+/* Transfer information */
+void esp_transfer_info(void) {
     if(mode_dma) {
-        dma_left = min_len;
         status &= ~STAT_TC;
-        esp_do_dma();
-    }else if(do_cmdvar){
-        Log_Printf(LOG_SCSI_LEVEL, "Command len: %i\n",cmdlen);
-        data_len = 0;
-        cmdlen = 0;
-        do_cmdvar = 0;
-        do_cmd();
-        return;
+        
+        switch (scsi_phase) {
+            case STAT_DI:
+                Log_Printf(LOG_WARN, "ESP start DMA tansfer from device to memory: ESP counter = %i\n", esp_counter);
+                dma_esp_write_memory();
+                break;
+            case STAT_DO:
+                Log_Printf(LOG_WARN, "ESP start DMA tansfer from memory to device: ESP counter = %i\n", esp_counter);
+                abort();
+                break;
+            default:
+                Log_Printf(LOG_WARN, "ESP transfer info: illegal phase");
+                abort();
+                break;
+        }
+        /* Function continues after DMA transfer (esp_dma_done) */
+
+    } else {
+        Log_Printf(LOG_WARN, "ESP start PIO tansfer (not implemented!)");
+        abort();
     }
 }
 
@@ -774,50 +653,83 @@ void handle_ti(void){
 void esp_transfer_pad(void) {
     Log_Printf(LOG_WARN, "[ESP] Transfer padding, ESP counter: %i bytes, SCSI resid: %i bytes\n",
                esp_counter, SCSIdata.size-SCSIdata.rpos);
-    seqstep = SEQ_0; /* TODO: check this */
-    if ((SCSIdata.size-SCSIdata.rpos)<esp_counter) {
-        esp_counter -= (SCSIdata.size-SCSIdata.rpos);
-        SCSIdata.rpos = SCSIdata.size;
-    } else {
-        SCSIdata.rpos+=esp_counter;
-        esp_counter = 0;
-    }
-    esp_dma_done();
-}
-
-
-void esp_command_complete (void) {
-    Log_Printf(LOG_SCSI_LEVEL, "SCSI Command complete\n");
-    if (data_len != 0)
-        Log_Printf(LOG_SCSI_LEVEL, "SCSI Command completed unexpectedly\n");
-    data_len = 0;
-    dma_left = 0;
-    async_len = 0;
+//    seqstep = SEQ_0; /* TODO: check this */
     
-//    if(status) {
-//        Log_Printf(LOG_SCSI_LEVEL, "Command failed\n");
-//    }
-//  status = status; return status, not status register!!
-    status = STAT_ST;
-    seqstep = SEQ_0;
-    if(mode_dma)    
-	esp_dma_done();
+    switch (scsi_phase) {
+        case STAT_DI:
+            while (scsi_phase==STAT_DI && esp_counter>0) {
+                SCSIdisk_Send_Data();
+                esp_counter--;
+            }
+            esp_dma_done(true);
+            break;
+            
+        default:
+            abort();
+            break;
+    }
 }
 
-void write_response(void) {
-    Log_Printf(LOG_SCSI_LEVEL, "Transfer status: $%02x\n", SCSIcommand.returnCode);
-    esp_fifo[0] = SCSIcommand.returnCode; // status
-    esp_fifo[1] = 0x00; // message
+
+/* Initiator command complete */
+void esp_initiator_command_complete(void) {
     
     if(mode_dma == 1) {
+        Log_Printf(LOG_WARN, "ESP initiator command complete via DMA not implemented!");
+        abort();
+        esp_fifo[0] = SCSIdisk_Send_Status(); // status
+        esp_fifo[1] = SCSIdisk_Send_Message(); // message
         dma_memory_write(esp_fifo, 2, CHANNEL_SCSI);
         status = (status & STAT_MASK) | STAT_TC | STAT_ST;
         intstatus = INTR_BS | INTR_FC;
         seqstep = SEQ_CD;
     } else {
-        status = (status & STAT_MASK) | STAT_ST;
-        fifo_read_ptr = 0;
-        fifo_write_ptr = 2;
-        fifoflags = (fifoflags & 0xE0) | 2;
+        /* Receive status byte */
+        esp_fifo[fifo_write_ptr] = SCSIdisk_Send_Status();
+        fifo_write_ptr++;
+        fifoflags = (fifoflags & 0xE0) | fifo_write_ptr;
+        scsi_phase = STAT_MI;
+
+        /* Receive message byte */
+        esp_fifo[fifo_write_ptr] = SCSIdisk_Send_Message(); /* 0x00 = command complete */
+        fifo_write_ptr++;
+        fifoflags = (fifoflags & 0xE0) | fifo_write_ptr;
     }
+
+    intstatus = INTR_FC;
+    status = (status&STAT_MASK)|scsi_phase;
+    esp_raise_irq();
 }
+
+
+/* Message accepted */
+void esp_message_accepted(void) {
+    scsi_phase = STAT_ST; /* set at the end of iccs? */
+    status = (status&STAT_MASK)|scsi_phase;
+    intstatus = INTR_BS;
+    seqstep = SEQ_0;
+    fifoflags = 0x00;
+    esp_raise_irq();
+}
+
+
+
+#if 0 /* this is for target commands! */
+/* Decode command to determine the command group and thus the
+ * length of the incoming command. Set "valid group code" bit
+ * in status register if the group is 0, 1, 5, 6, or 7 (group
+ * 2 is also valid on NCR53C90A).
+ */
+Uint8 scsi_command_group = (commandbuf[0] & 0xE0) >> 5;
+if(scsi_command_group < 3 || scsi_command_group > 4) {
+    if(ConfigureParams.System.nSCSI == NCR53C90 && scsi_command_group == 2) {
+        Log_Printf(LOG_WARN, "[ESP] Select: Invalid command group %i on NCR53C90\n", scsi_command_group);
+        status &= ~STAT_VGC;
+    } else {
+        status |= STAT_VGC;
+    }
+} else {
+    Log_Printf(LOG_WARN, "[ESP] Select: Invalid command group %i on NCR53C90A\n", scsi_command_group);
+    status &= ~STAT_VGC;
+}
+#endif

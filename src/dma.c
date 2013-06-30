@@ -370,13 +370,20 @@ void dma_esp_write_memory(void) {
     /* do we need to first save init, limit, start, stop to "saved" regs? */
         
     Log_Printf(LOG_WARN, "[DMA] Write to memory at $%08x, %i bytes",dma[CHANNEL_SCSI].next,esp_counter);
+    
+    if ((dma[CHANNEL_SCSI].limit-dma[CHANNEL_SCSI].next)%DMA_BURST_SIZE) {
+        Log_Printf(LOG_WARN, "[DMA] Warning! DMA not aligned to burst size: Next = %08X, Limit = %08X, burst size = %i",dma[CHANNEL_SCSI].next,dma[CHANNEL_SCSI].limit, DMA_BURST_SIZE);
+    }
 
+    /* TODO: Find out how we should handle non burst-size aligned start address. 
+     * End address is always burst-size aligned. */
+    
     TRY(prb) {
         do {
             /* Fill DMA internal buffer (no real buffer, we use an imaginary one) */
-            while (act_buf_size<DMA_BURST_SIZE && esp_counter>0 && SCSIdata.rpos<SCSIdata.size) {
+            while (act_buf_size<DMA_BURST_SIZE && esp_counter>0 && scsi_phase==STAT_DI) {
                 esp_counter--;
-                SCSIdata.rpos++;
+                SCSIdisk_Send_Data();
                 act_buf_size++;
             }
             ESP_DMA_set_status();
@@ -384,17 +391,17 @@ void dma_esp_write_memory(void) {
             //Log_Printf(LOG_WARN, "[DMA] Internal buffer size: %i bytes",act_buf_size);
             
             /* If buffer is full, burst write to memory */
-            if (act_buf_size==DMA_BURST_SIZE) {
-                for (i=0; i<DMA_BURST_SIZE; i+=4) {
+            if (act_buf_size==DMA_BURST_SIZE && dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit) {
+                for (i=0; i<act_buf_size; i+=4) {
                     NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next+i, dma_mklong(SCSIdata.buffer, SCSIdata.rpos-act_buf_size+i));
                 }
-                dma[CHANNEL_SCSI].next+=DMA_BURST_SIZE;
+                dma[CHANNEL_SCSI].next+=act_buf_size;
                 act_buf_size = 0;
             } else { /* else do not write the bytes to memory but keep them inside the buffer */ 
                 Log_Printf(LOG_WARN, "[DMA] Residual bytes in DMA buffer: %i bytes",act_buf_size);
                 break;
             }
-        } while (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit);
+        } while ((dma[CHANNEL_SCSI].limit-dma[CHANNEL_SCSI].next)>=DMA_BURST_SIZE);
     } CATCH(prb) {
         Log_Printf(LOG_WARN, "[DMA] Bus error while writing to %08x",dma[CHANNEL_SCSI].next+i);
         dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE;
@@ -414,15 +421,15 @@ void dma_esp_write_memory(void) {
             dma[CHANNEL_SCSI].csr &= ~DMA_SUPDATE; /* 1st done */
         } else {
             dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE; /* all done */
-            esp_dma_done(); /* Give control back to ESP */
+//            esp_dma_done(); /* Give control back to ESP */
         }
-        return;
+//        return;
     }
     
     /* If ESP counter reached zero, give control to ESP */
-    if (esp_counter==0) {
-        esp_dma_done();
-    }
+//    if (esp_counter==0) {
+        esp_dma_done(true);
+//    }
 }
 
 void dma_esp_flush_buffer(void) {
@@ -436,6 +443,8 @@ void dma_esp_flush_buffer(void) {
             NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next, dma_mklong(SCSIdata.buffer, SCSIdata.rpos-act_buf_size));
 
             dma[CHANNEL_SCSI].next += 4;
+            /* TODO: Check if we should also change rpos if act_buf_size is exceeded 
+             * to write correct data from SCSI buffer. */
             if (act_buf_size>4) {
                 act_buf_size -= 4;
             } else {
