@@ -96,9 +96,9 @@ void SCSI_Reset(void) {
 static unsigned char inquiry_bytes[] =
 {
 	0x00,             /* 0: device type: see above */
-	0x00,             /* 1: &0x7F - device type qulifier 0x00 unsupported, &0x80 - rmb: 0x00 = nonremovable, 0x80 = removable */
+	0x00,             /* 1: &0x7F - device type qualifier 0x00 unsupported, &0x80 - rmb: 0x00 = nonremovable, 0x80 = removable */
 	0x01,             /* 2: ANSI SCSI standard (first release) compliant */
-    0x02,             /* 3: Restponse format (format of following data): 0x01 SCSI-1 compliant */
+    0x02,             /* 3: Response format (format of following data): 0x01 SCSI-1 compliant */
 	0x31,             /* 4: additional length of the following data */
     0x00, 0x00,       /* 5,6: reserved */
     0x1C,             /* 7: RelAdr=0, Wbus32=0, Wbus16=0, Sync=1, Linked=1, RSVD=1, CmdQue=0, SftRe=0 */
@@ -128,7 +128,7 @@ void SCSIdisk_Send_Data(void) {
 }
 
 
-bool SCSI_Select(Uint8 target) {
+bool SCSIdisk_Select(Uint8 target) {
     SCSIdisk.dsk = scsiimage[target];
 
     /* If there is no disk present, return timeout true */
@@ -149,7 +149,7 @@ bool SCSI_Select(Uint8 target) {
 }
 
 
-void SCSI_Receive_Command(Uint8 *cdb, int size, Uint8 identify) {
+void SCSIdisk_Receive_Command(Uint8 *cdb, Uint8 identify) {
     Uint8 lun = 0;
     Uint8 opcode = cdb[0];
     
@@ -169,7 +169,7 @@ void SCSI_Receive_Command(Uint8 *cdb, int size, Uint8 identify) {
     
     SCSIdisk.lun = lun;
     
-    Log_Printf(LOG_WARN, "SCSI command: Length = %i, Opcode = $%02x, target = %i, lun=%i\n", size, opcode, SCSIbus.target,SCSIdisk.lun);
+    Log_Printf(LOG_WARN, "SCSI command: Opcode = $%02x, target = %i, lun=%i\n", opcode, SCSIbus.target,SCSIdisk.lun);
     
     SCSI_Emulate_Command(opcode, cdb);
 }
@@ -437,6 +437,8 @@ void SCSI_WriteSector(Uint8 *cdb) {
 	nLastBlockAddr = SCSI_GetOffset(cdb[0], cdb) * BLOCKSIZE;
     int transfer_length = SCSI_GetCount(cdb[0], cdb) * BLOCKSIZE;
     
+    Log_Printf(LOG_WARN, "SCSI write %i block(s) at offset %i (blocksize: %i byte)",
+               transfer_length/BLOCKSIZE, nLastBlockAddr/BLOCKSIZE, BLOCKSIZE);
     
 	/* seek to the position */
 	if ((SCSIdisk.dsk==NULL) || (fseek(SCSIdisk.dsk, nLastBlockAddr, SEEK_SET) != 0))
@@ -462,6 +464,8 @@ void SCSI_ReadSector(Uint8 *cdb)
 	nLastBlockAddr = SCSI_GetOffset(cdb[0], cdb) * BLOCKSIZE;
     int transfer_length = SCSI_GetCount(cdb[0], cdb) * BLOCKSIZE;
     
+    Log_Printf(LOG_WARN, "SCSI read %i block(s) at offset %i (blocksize: %i byte)",
+               transfer_length/BLOCKSIZE, nLastBlockAddr/BLOCKSIZE, BLOCKSIZE);
     
 	/* seek to the position */
 	if ((SCSIdisk.dsk==NULL) || (fseek(SCSIdisk.dsk, nLastBlockAddr, SEEK_SET) != 0)) {

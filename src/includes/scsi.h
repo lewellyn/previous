@@ -117,25 +117,25 @@ void SCSI_Reset(void);
 Uint8 SCSIdisk_Send_Status(void);
 Uint8 SCSIdisk_Send_Message(void);
 void SCSIdisk_Send_Data(void);
-bool SCSI_Select(Uint8 target);
-void SCSI_Receive_Command(Uint8 *commandbuf, int size, Uint8 identify);
+bool SCSIdisk_Select(Uint8 target);
+void SCSIdisk_Receive_Command(Uint8 *commandbuf, Uint8 identify);
 
 
 /* Helpers */
-int SCSI_GetTransferLength(Uint8 opcode, Uint8 *cmd_descr_block);
-unsigned long SCSI_GetOffset(Uint8 opcode, Uint8 *cmd_descr_block);
-int SCSI_GetCount(Uint8 opcode, Uint8 *cmd_descr_block);
+int SCSI_GetTransferLength(Uint8 opcode, Uint8 *cdb);
+unsigned long SCSI_GetOffset(Uint8 opcode, Uint8 *cdb);
+int SCSI_GetCount(Uint8 opcode, Uint8 *cdb);
 MODEPAGE SCSI_GetModePage(Uint8 pagecode);
 
 
-void SCSI_Emulate_Command(Uint8 opcode, Uint8 *cmd_descr_block);
+void SCSI_Emulate_Command(Uint8 opcode, Uint8 *cdb);
 
 /* SCSI Commands */
-void SCSI_Inquiry (Uint8 *cmd_descr_block);
-void SCSI_StartStop(Uint8 *cmd_descr_block);
-void SCSI_TestUnitReady(Uint8 *cmd_descr_block);
-void SCSI_ReadCapacity(Uint8 *cmd_descr_block);
-void SCSI_ReadSector(Uint8 *cmd_descr_block);
-void SCSI_WriteSector(Uint8 *cmd_descr_block);
-void SCSI_RequestSense(Uint8 *cmd_descr_block);
-void SCSI_ModeSense(Uint8 *cmd_descr_block);
+void SCSI_Inquiry (Uint8 *cdb);
+void SCSI_StartStop(Uint8 *cdb);
+void SCSI_TestUnitReady(Uint8 *cdb);
+void SCSI_ReadCapacity(Uint8 *cdb);
+void SCSI_ReadSector(Uint8 *cdb);
+void SCSI_WriteSector(Uint8 *cdb);
+void SCSI_RequestSense(Uint8 *cdb);
+void SCSI_ModeSense(Uint8 *cdb);

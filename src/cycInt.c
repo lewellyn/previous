@@ -56,6 +56,7 @@ const char CycInt_fileid[] = "Hatari cycInt.c : " __DATE__ " " __TIME__;
 #include "screen.h"
 #include "video.h"
 #include "sysReg.h"
+#include "esp.h"
 
 
 void (*PendingInterruptFunction)(void);
@@ -69,7 +70,8 @@ static void (* const pIntHandlerFunctions[MAX_INTERRUPTS])(void) =
 {
 	NULL,
 	Video_InterruptHandler_VBL,
-	Hardclock_InterruptHandler
+	Hardclock_InterruptHandler,
+    ESP_InterruptHandler
 };
 
 /* Event timer structure - keeps next timer to occur in structure so don't need

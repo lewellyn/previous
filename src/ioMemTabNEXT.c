@@ -405,5 +405,12 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x0201c002, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x0201c003, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     
+#if 0
+    /* NBIC Registers */
+    { 0x02020000, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x02020004, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+    { 0xf0fffff0, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
+#endif
+    
 	{ 0, 0, NULL, NULL }
 };

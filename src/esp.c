@@ -240,6 +240,7 @@ void ESP_Command_Write(void) {
             esp_reset_hard();
             break;
         case CMD_BUSRESET:
+            Log_Printf(LOG_WARN, "ESP Command: reset SCSI bus\n");
             esp_bus_reset();
             break;
             /* Disconnected */
@@ -283,6 +284,7 @@ void ESP_Command_Write(void) {
         case CMD_DISSEL:
             Log_Printf(LOG_WARN, "ESP Command: disable selection/reselection\n");
             intstatus = INTR_FC;
+            abort();
             esp_raise_irq();
             break;
             /* Initiator */
@@ -316,7 +318,7 @@ void ESP_Command_Write(void) {
         case CMD_RCOMM:
         case CMD_RDATA:
         case CMD_RCSEQ:
-
+            abort();
             status = (status&STAT_MASK)|STAT_ST;	   
             intstatus = INTR_ILL;
             seqstep = SEQ_0;
@@ -326,7 +328,7 @@ void ESP_Command_Write(void) {
             break;
         case CMD_DIS:
 
-
+            abort();
             Log_Printf(LOG_WARN, "ESP Command: DISCONNECT !\n");
             status = (status&STAT_MASK)|STAT_ST;	   
             intstatus = INTR_DC; 
@@ -418,6 +420,14 @@ void ESP_Conf2_Read(void) { // 0x0201400b
         IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = 0x00;
 }
 
+
+/* Helper functions */
+
+/* This is the handler function for ESP delayed interrupts */
+void ESP_InterruptHandler(void) {
+	CycInt_AcknowledgeInterrupt();
+    esp_raise_irq();
+}
 
 
 void esp_raise_irq(void) {
@@ -515,14 +525,13 @@ void esp_reset_soft(void) {
 
 /* Reset SCSI bus */
 void esp_bus_reset(void) {
-    Log_Printf(LOG_WARN, "ESP Command: reset SCSI bus\n");
     
     esp_reset_soft();
     if (!(configuration & CFG1_RESREPT)) {
         intstatus = INTR_RST;
         status = (status&STAT_MASK)|STAT_MI; /* CHECK: why message in phase? */
         Log_Printf(LOG_SCSI_LEVEL,"Bus Reset raising IRQ configuration=%x\n",configuration);
-        esp_raise_irq(); // temporary disabled for experiment! moved to read config reg.
+        CycInt_AddRelativeInterrupt(50*33, INT_CPU_CYCLE, INTERRUPT_ESP); /* TODO: find correct timing, use actual cpu clock from preferences */
     } else
         Log_Printf(LOG_SCSI_LEVEL,"Bus Reset not interrupting configuration=%x\n",configuration);
 }
@@ -545,13 +554,13 @@ void esp_select(bool atn) {
     
     /* First select our target */
     Uint8 target = selectbusid & BUSID_DID; /* Get bus ID from register */
-    bool timeout = SCSI_Select(target);
+    bool timeout = SCSIdisk_Select(target);
     if (timeout) {
-        /* If a timeout occurs, do disconnect interrupt */
+        /* If a timeout occurs, generate disconnect interrupt */
         intstatus = INTR_DC;
         status = (status&STAT_MASK)|scsi_phase; /* check status */
         esp_state = DISCONNECTED;
-        esp_raise_irq(); /* TODO: This needs to be delayed selection timeout interrupt */
+        CycInt_AddRelativeInterrupt(100000*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_ESP); /* TODO: correct timing using selecttimeout and clockconv */
         return;
     }
     
@@ -585,7 +594,7 @@ void esp_select(bool atn) {
     Log_Printf(LOG_WARN, "[ESP] Select: Identify Message: $%02X",identify_msg);
     Log_Printf(LOG_WARN, "[ESP] Select: Target: %i, Lun: %i",target,identify_msg&0x07);
 
-    SCSI_Receive_Command(commandbuf, cmd_size, identify_msg);
+    SCSIdisk_Receive_Command(commandbuf, identify_msg);
     seqstep = 4;
 
     status = (status&STAT_MASK)|scsi_phase;
@@ -644,7 +653,7 @@ void esp_transfer_info(void) {
         /* Function continues after DMA transfer (esp_dma_done) */
 
     } else {
-        Log_Printf(LOG_WARN, "ESP start PIO tansfer (not implemented!)");
+        Log_Printf(LOG_WARN, "ESP start PIO transfer (not implemented!)");
         abort();
     }
 }

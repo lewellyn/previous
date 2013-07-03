@@ -161,3 +161,5 @@ void esp_dma_done(bool write);
 
 
 extern Uint32 esp_counter;
+
+void ESP_InterruptHandler(void);
