@@ -75,7 +75,7 @@ Uint8 MACaddress[6];
 
 void Ethernet_Read(void) {
 	Uint8 reg = IoAccessCurrentAddress&0x0F;
-	Uint8 val;
+	Uint8 val = 0;
     
 	switch (reg) {
 		case EN_TXSTAT:
@@ -189,8 +189,8 @@ void Ethernet_Reset(void) {
 }
 
 void Ethernet_Transmit(void) {
-    Uint32 size;
-    dma_memory_read(ethernet_buffer, &size, CHANNEL_EN_TX);
+    Uint32 size = 0;
+    //dma_memory_read(ethernet_buffer, &size, CHANNEL_EN_TX);
     ethernet.tx_status = TXSTAT_RDY;
     EnTx_Raise_IRQ();
     
@@ -210,7 +210,7 @@ void Ethernet_Receive(Uint8 *packet, Uint32 size) {
         Log_Printf(LOG_EN_LEVEL, "Ethernet: Receive packet from %02X:%02X:%02X:%02X:%02X:%02X",
                    packet[6], packet[7], packet[8], packet[9], packet[10], packet[11]);
                    
-        dma_memory_write(packet, size, CHANNEL_EN_RX); // loop back for experiment
+        //dma_memory_write(packet, size, CHANNEL_EN_RX); // loop back for experiment
         ethernet.rx_status |= RXSTAT_OK; // packet received is correct
         EnRx_Raise_IRQ();
     }

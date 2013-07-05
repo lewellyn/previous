@@ -54,14 +54,8 @@ Uint8 esp_fifo[ESP_FIFO_SIZE];
 Uint8 fifo_read_ptr;
 Uint8 fifo_write_ptr;
 
-/* Command buffer */
-#define SCSI_CMD_BUF_SIZE 12 /* maximum length of command descriptor block */
-Uint8 commandbuf[SCSI_CMD_BUF_SIZE];
-int command_len;
-
-
 /* Experimental */
-static bool no_target=false;
+#define ESP_CLOCK_FREQ  20 /* ESP is clocked at 20 MHz */
 
 
 /* ESP DMA control and status registers */
@@ -168,7 +162,6 @@ void ESP_FIFO_Read(void) { // 0x02014002
         Log_Printf(LOG_WARN,"ESP FIFO Read, size = %i, val=%02x", fifo_write_ptr - fifo_read_ptr, IoMem[IoAccessCurrentAddress & IO_SEG_MASK]);
         fifo_read_ptr++;
         fifoflags = fifoflags - 1;
-//        esp_raise_irq();
     } else {
         IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = 0x00;
         Log_Printf(LOG_WARN, "ESP FIFO is empty!\n");
@@ -261,8 +254,7 @@ void ESP_Command_Write(void) {
             abort();
             break;
         case CMD_ENSEL:
-            Log_Printf(LOG_WARN, "ESP Command: enable selection/reselection no_target=%x intstatus=%x status=%x seqstep=%x",
-			no_target,intstatus,status,seqstep);
+            Log_Printf(LOG_WARN, "ESP Command: enable selection/reselection\n");
 #if 0
             if (no_target) {
                 Log_Printf(LOG_SCSI_LEVEL, "ESP retry timeout");
@@ -318,18 +310,17 @@ void ESP_Command_Write(void) {
         case CMD_RCOMM:
         case CMD_RDATA:
         case CMD_RCSEQ:
+            Log_Printf(LOG_WARN, "ESP Command: Target commands not emulated!\n");
             abort();
             status = (status&STAT_MASK)|STAT_ST;	   
             intstatus = INTR_ILL;
             seqstep = SEQ_0;
             fifoflags = 0x00;
             esp_raise_irq();
-            Log_Printf(LOG_WARN, "ESP Command: Target commands not supported!\n");
             break;
         case CMD_DIS:
-
+            Log_Printf(LOG_WARN, "ESP Command: DISCONNECT not emulated!\n");
             abort();
-            Log_Printf(LOG_WARN, "ESP Command: DISCONNECT !\n");
             status = (status&STAT_MASK)|STAT_ST;	   
             intstatus = INTR_DC; 
             seqstep = SEQ_0;
@@ -352,7 +343,6 @@ void ESP_Status_Read(void) { // 0x02014004
 void ESP_SelectBusID_Write(void) {
     selectbusid=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP SelectBusID write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-	no_target=false;
 }
 
 void ESP_IntStatus_Read(void) { // 0x02014005
@@ -404,7 +394,7 @@ void ESP_Configuration_Write(void) {
 }
 
 void ESP_ClockConv_Write(void) { // 0x02014009
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=clockconv;
+    clockconv=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_SCSI_LEVEL,"ESP ClockConv write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
@@ -513,9 +503,7 @@ void esp_reset_soft(void) {
     
     seqstep = 0x00;
     
-    /* writetranscountl, writetranscounth, selectbusid, selecttimeout are not initilized by reset */
-    selectbusid = 0x00;
-    selecttimeout= 0x00;
+    /* writetranscountl, writetranscounth, selectbusid, selecttimeout are not initialized by reset */
 
     /* This part is "disconnect reset" */
     command = 0x00;
@@ -550,6 +538,8 @@ void esp_flush_fifo(void) {
 void esp_select(bool atn) {
     int cmd_size;
     Uint8 identify_msg = 0;
+    Uint8 commandbuf[SCSI_CDB_MAX_SIZE];
+
     seqstep = 0;
     
     /* First select our target */
@@ -560,7 +550,9 @@ void esp_select(bool atn) {
         intstatus = INTR_DC;
         status = (status&STAT_MASK)|scsi_phase; /* check status */
         esp_state = DISCONNECTED;
-        CycInt_AddRelativeInterrupt(100000*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_ESP); /* TODO: correct timing using selecttimeout and clockconv */
+        int seltout = (selecttimeout * 8192 * clockconv) / ESP_CLOCK_FREQ; /* timeout in microseconds */
+        Log_Printf(LOG_WARN, "[ESP] Select: Timeout after %i microseconds",seltout);
+        CycInt_AddRelativeInterrupt(seltout*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_ESP);
         return;
     }
     
@@ -581,7 +573,7 @@ void esp_select(bool atn) {
         /* Read command from FIFO */
         scsi_phase = STAT_CD;
         seqstep = 3;
-        for (cmd_size = 0; cmd_size < SCSI_CMD_BUF_SIZE && fifo_read_ptr<fifo_write_ptr; cmd_size++) {
+        for (cmd_size = 0; cmd_size < SCSI_CDB_MAX_SIZE && fifo_read_ptr<fifo_write_ptr; cmd_size++) {
             commandbuf[cmd_size] = esp_fifo[fifo_read_ptr];
             fifo_read_ptr++;
         }
@@ -613,7 +605,6 @@ void esp_dma_done(bool write) {
                esp_counter,SCSIdata.size-SCSIdata.rpos);
     
     status = (status&STAT_MASK)|scsi_phase;
-//    fifoflags = 0;
 
     if (esp_counter == 0) { /* Transfer done */
         intstatus = INTR_FC;
@@ -623,11 +614,6 @@ void esp_dma_done(bool write) {
         intstatus = INTR_BS;
         esp_raise_irq();
     } /* else continue transfering data using DMA, no interrupt */
-    
-    /* HACK: because of problems with DMA function, we need to interrupt here *
-     * so that things continue. This needs to be removed later */
-    intstatus = INTR_BS;
-    esp_raise_irq();
 }
 
 
@@ -638,12 +624,12 @@ void esp_transfer_info(void) {
         
         switch (scsi_phase) {
             case STAT_DI:
-                Log_Printf(LOG_WARN, "ESP start DMA tansfer from device to memory: ESP counter = %i\n", esp_counter);
+                Log_Printf(LOG_WARN, "ESP start DMA transfer from device to memory: ESP counter = %i\n", esp_counter);
                 dma_esp_write_memory();
                 break;
             case STAT_DO:
-                Log_Printf(LOG_WARN, "ESP start DMA tansfer from memory to device: ESP counter = %i\n", esp_counter);
-                abort();
+                Log_Printf(LOG_WARN, "ESP start DMA transfer from memory to device: ESP counter = %i\n", esp_counter);
+                dma_esp_read_memory();
                 break;
             default:
                 Log_Printf(LOG_WARN, "ESP transfer info: illegal phase");
@@ -662,7 +648,6 @@ void esp_transfer_info(void) {
 void esp_transfer_pad(void) {
     Log_Printf(LOG_WARN, "[ESP] Transfer padding, ESP counter: %i bytes, SCSI resid: %i bytes\n",
                esp_counter, SCSIdata.size-SCSIdata.rpos);
-//    seqstep = SEQ_0; /* TODO: check this */
     
     switch (scsi_phase) {
         case STAT_DI:
@@ -671,6 +656,13 @@ void esp_transfer_pad(void) {
                 esp_counter--;
             }
             esp_dma_done(true);
+            break;
+        case STAT_DO:
+            while (scsi_phase==STAT_DO && esp_counter>0) {
+                SCSIdisk_Receive_Data();
+                esp_counter--;
+            }
+            esp_dma_done(false);
             break;
             
         default:
@@ -716,8 +708,6 @@ void esp_message_accepted(void) {
     scsi_phase = STAT_ST; /* set at the end of iccs? */
     status = (status&STAT_MASK)|scsi_phase;
     intstatus = INTR_BS;
-    seqstep = SEQ_0;
-    fifoflags = 0x00;
     esp_raise_irq();
 }
 

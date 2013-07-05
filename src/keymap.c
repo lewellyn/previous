@@ -147,7 +147,7 @@ void Monitor_CSR_Write(void) {
                        IoAccessCurrentAddress, val, m68k_getpc());
             monitor_csr.status_dma = val;
             if (monitor_csr.status_dma&DMAOUT_ENABLE) {
-                dma_memory_read(sound, &length, CHANNEL_SOUNDOUT);
+                //dma_memory_read(sound, &length, CHANNEL_SOUNDOUT);
                 monitor_csr.status_dma |= DMAOUT_ENABLE;
             }
             break;

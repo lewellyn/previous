@@ -46,14 +46,10 @@ void DMA_Size_Write(void);
 
 void dma_esp_write_memory(void);
 void dma_esp_flush_buffer(void);
+void dma_esp_read_memory(void);
+void dma_esp_interrupt(void);
 
-void dma_memory_write(Uint8 *buf, Uint32 size, int channel);
-void dma_memory_read(Uint8 *buf, Uint32 *size, int channel);
-void dma_clear_memory(Uint32 datalength);
-
-/* Buffers */
-#define DMA_BUFFER_SIZE 65536
-
+void ESPDMA_InterruptHandler(void);
 
 /* DMA registers */
 
@@ -72,13 +68,3 @@ typedef struct {
 } DMA_CONTROL;
 
 DMA_CONTROL dma[16];
-
-/* DMA interfaces */
-
-struct {
-    
-} dma_esp;
-
-
-/* dma read buffer */
-Uint8 dma_read_buffer[DMA_BUFFER_SIZE];

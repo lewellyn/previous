@@ -80,6 +80,8 @@
 #define SENSE_MISCOMPARE    0x0E
 
 
+/* Command Descriptor Block */
+#define SCSI_CDB_MAX_SIZE 12
 
 /* Mode Pages */
 #define MODEPAGE_MAX_SIZE 24
@@ -100,6 +102,9 @@ struct {
     Uint32 rpos; /* actual read pointer */
 } SCSIdata;
 
+int SCSI_fill_data_buffer(void *buf, Uint32 size, bool disk);
+void SCSI_WriteFromBuffer(Uint8 *buf, Uint32 size);
+
 
 struct {
     Uint8 target;
@@ -117,6 +122,7 @@ void SCSI_Reset(void);
 Uint8 SCSIdisk_Send_Status(void);
 Uint8 SCSIdisk_Send_Message(void);
 void SCSIdisk_Send_Data(void);
+void SCSIdisk_Receive_Data(void);
 bool SCSIdisk_Select(Uint8 target);
 void SCSIdisk_Receive_Command(Uint8 *commandbuf, Uint8 identify);
 

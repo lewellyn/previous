@@ -147,7 +147,7 @@ void SCC_Write(void) {
                 SCC_Interrupt();
                 
                 if (val&0x40 && val&0x80) {
-                    dma_memory_read(channel[ch].rx_buf, &channel[ch].rx_buf_size, CHANNEL_SCC);
+                    //dma_memory_read(channel[ch].rx_buf, &channel[ch].rx_buf_size, CHANNEL_SCC);
                     channel[ch].rreg[R_STATUS] = RR0_RXAVAIL; // Rx Character Available
                 }
                 break;

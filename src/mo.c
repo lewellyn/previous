@@ -117,6 +117,7 @@ void MOdrive_Read(void) {
             break;
 
         default:
+            val = 0;
             break;
     }
     
@@ -162,7 +163,7 @@ void MOdrive_Write(void) {
             mo_drive.ctrlr_csr1 = val;
             switch (mo_drive.ctrlr_csr1) {
                 case ECC_WRITE:
-                    dma_memory_read(ECC_buffer, &length, CHANNEL_DISK);
+                    //dma_memory_read(ECC_buffer, &length, CHANNEL_DISK);
                     mo_drive.intstatus |= 0xFF;
                     if (mo_drive.ctrlr_csr2&ECC_MODE)
                         check_ecc();
@@ -171,7 +172,7 @@ void MOdrive_Write(void) {
                     break;
                     
                 case ECC_READ:
-                    dma_memory_write(ECC_buffer, length, CHANNEL_DISK);
+                    //dma_memory_write(ECC_buffer, length, CHANNEL_DISK);
                     mo_drive.intstatus |= 0xFF;
                     break;
                     

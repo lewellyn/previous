@@ -127,6 +127,16 @@ void SCSIdisk_Send_Data(void) {
     }
 }
 
+void SCSIdisk_Receive_Data(void) {
+    /* Receive one byte. If the transfer is complete, set status phase 
+     * and write the buffer contents to the disk. */
+    SCSIdata.rpos++;
+    if (SCSIdata.rpos==SCSIdata.size) {
+        scsi_phase = STAT_ST;
+        SCSI_WriteFromBuffer(*SCSIdata.buffer, SCSIdata.size); /* write to disk */
+    }
+}
+
 
 bool SCSIdisk_Select(Uint8 target) {
     SCSIdisk.dsk = scsiimage[target];
@@ -432,7 +442,6 @@ void SCSI_ReadCapacity(Uint8 *cdb)
 }
 
 void SCSI_WriteSector(Uint8 *cdb) {
-	int n=0;
     
 	nLastBlockAddr = SCSI_GetOffset(cdb[0], cdb) * BLOCKSIZE;
     int transfer_length = SCSI_GetCount(cdb[0], cdb) * BLOCKSIZE;
@@ -440,22 +449,45 @@ void SCSI_WriteSector(Uint8 *cdb) {
     Log_Printf(LOG_WARN, "SCSI write %i block(s) at offset %i (blocksize: %i byte)",
                transfer_length/BLOCKSIZE, nLastBlockAddr/BLOCKSIZE, BLOCKSIZE);
     
-	/* seek to the position */
-	if ((SCSIdisk.dsk==NULL) || (fseek(SCSIdisk.dsk, nLastBlockAddr, SEEK_SET) != 0))
-	{
+    /* Initialize our data buffer */
+    memset(SCSIdata.buffer, 0, SCSI_BUFFER_SIZE); /* first clear buffer */
+    SCSIdata.size = transfer_length;
+    SCSIdata.rpos = 0;
+    
+    /* seek to the position */
+    if ((SCSIdisk.dsk==NULL) || (fseek(SCSIdisk.dsk, nLastBlockAddr, SEEK_SET) != 0)) {
         SCSIdisk.status = STAT_CHECK_COND;
-        scsi_phase = STAT_DO;
+        scsi_phase = STAT_ST;
         nLastError = HD_REQSENS_INVADDR;
-	}
-	else
-	{
-    if (1 == 1) {
-// fixme : for now writes are error
-			SCSIdisk.status = STAT_GOOD;
-			nLastError = HD_REQSENS_OK;
-		}
-	}
- }
+    } else {
+        SCSIdisk.status = STAT_GOOD;
+        scsi_phase = STAT_DO;
+        nLastError = HD_REQSENS_OK;
+    }
+    /* Continued in SCSI_WriteFromBuffer() */
+}
+
+void SCSI_WriteFromBuffer(Uint8 *buf, Uint32 size) {
+    int n = 0;
+
+    Log_Printf(LOG_WARN, "SCSI Warning! We do not yet write data to disk images.");
+    SCSIdisk.status = STAT_GOOD;
+    nLastError = HD_REQSENS_OK;
+    return;
+    abort(); /* Make sure we don't mess our images */
+    
+    /* Write data from buffer to disk image */
+    n = fwrite(buf, size, 1, SCSIdisk.dsk);
+    
+    if (n == 1) {
+        SCSIdisk.status = STAT_GOOD;
+        nLastError = HD_REQSENS_OK;
+    } else {
+        SCSIdisk.status = STAT_CHECK_COND;
+        scsi_phase = STAT_ST;
+        nLastError = HD_REQSENS_NOSECTOR;
+    }
+}
 
 void SCSI_ReadSector(Uint8 *cdb)
 {
