@@ -44,10 +44,15 @@ void DMA_Init_Write(void);
 void DMA_Size_Read(void);
 void DMA_Size_Write(void);
 
+void dma_interrupt(int channel);
+
 void dma_esp_write_memory(void);
 void dma_esp_flush_buffer(void);
 void dma_esp_read_memory(void);
-void dma_esp_interrupt(void);
+
+void dma_m2r_read_memory(void);
+void dma_r2m_write_memory(void);
+
 
 void ESPDMA_InterruptHandler(void);
 
@@ -65,6 +70,8 @@ typedef struct {
     Uint32 stop;
     Uint32 init;
     Uint32 size;
+    
+    Uint32 direction;
 } DMA_CONTROL;
 
 DMA_CONTROL dma[16];

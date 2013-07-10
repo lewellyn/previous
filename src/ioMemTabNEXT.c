@@ -270,12 +270,12 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x020001c0, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     
     /* Channel R2M */
-    { 0x020041c0, SIZE_LONG, DMA_Saved_Next_Read, DMA_Saved_Next_Write },
-    { 0x020041c4, SIZE_LONG, DMA_Saved_Limit_Read, DMA_Saved_Limit_Write },
-    { 0x020041c8, SIZE_LONG, DMA_Saved_Start_Read, DMA_Saved_Start_Write },
-    { 0x020041cc, SIZE_LONG, DMA_Saved_Stop_Read, DMA_Saved_Stop_Write },
-    { 0x020043c0, SIZE_LONG, DMA_Init_Read, DMA_Init_Write }, // check this!
-    { 0x020043c4, SIZE_LONG, DMA_Size_Read, DMA_Size_Write }, // check this!
+    { 0x020041c0, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
+    { 0x020041c4, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
+    { 0x020041c8, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
+    { 0x020041cc, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
+    { 0x020043c0, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
+    { 0x020043c4, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
     /* Channel M2R */
     { 0x020041d0, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },

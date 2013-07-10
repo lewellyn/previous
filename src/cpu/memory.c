@@ -753,19 +753,19 @@ static uae_u32 ROMmem_bget(uaecptr addr)
 static void ROMmem_lput(uaecptr addr, uae_u32 b)
 {
     illegal_trace(write_log ("Illegal ROMmem lput at %08lx\n", (long)addr));
-//    M68000_BusError(addr, 0);
+    M68000_BusError(addr, 0);
 }
 
 static void ROMmem_wput(uaecptr addr, uae_u32 b)
 {
     illegal_trace(write_log ("Illegal ROMmem wput at %08lx\n", (long)addr));
-//    M68000_BusError(addr, 0);
+    M68000_BusError(addr, 0);
 }
 
 static void ROMmem_bput(uaecptr addr, uae_u32 b)
 {
     illegal_trace(write_log ("Illegal ROMmem bput at %08lx\n", (long)addr));
-//    M68000_BusError(addr, 0);
+    M68000_BusError(addr, 0);
 }
 
 static int ROMmem_check(uaecptr addr, uae_u32 size)

@@ -591,7 +591,6 @@ void esp_select(bool atn) {
 
     status = (status&STAT_MASK)|scsi_phase;
     intstatus = INTR_BS | INTR_FC;
-    seqstep = SEQ_CD;
     
     esp_state = INITIATOR;
     esp_raise_irq();
@@ -678,12 +677,9 @@ void esp_initiator_command_complete(void) {
     if(mode_dma == 1) {
         Log_Printf(LOG_WARN, "ESP initiator command complete via DMA not implemented!");
         abort();
-        esp_fifo[0] = SCSIdisk_Send_Status(); // status
-        esp_fifo[1] = SCSIdisk_Send_Message(); // message
-        dma_memory_write(esp_fifo, 2, CHANNEL_SCSI);
-        status = (status & STAT_MASK) | STAT_TC | STAT_ST;
-        intstatus = INTR_BS | INTR_FC;
-        seqstep = SEQ_CD;
+        //esp_fifo[0] = SCSIdisk_Send_Status(); // status
+        //esp_fifo[1] = SCSIdisk_Send_Message(); // message
+        //dma_memory_write(esp_fifo, 2, CHANNEL_SCSI);
     } else {
         /* Receive status byte */
         esp_fifo[fifo_write_ptr] = SCSIdisk_Send_Status();

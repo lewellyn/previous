@@ -26,9 +26,10 @@
 #define DMA_BURST_SIZE  16
 int act_buf_size = 0;
 
-/* read/write CSR bits */
-#define DMA_M2DEV       0x00000000 /* dma from mem to dev */
-#define DMA_DEV2M       0x00040000 /* dma from dev to mem */
+/* Experimental for M2M */
+Uint8 m2m_buffer[DMA_BURST_SIZE];
+Uint32 m2m_bufsize;
+
 /* read CSR bits */
 #define DMA_ENABLE      0x01000000 /* enable dma transfer */
 #define DMA_SUPDATE     0x02000000 /* single update */
@@ -37,6 +38,8 @@ int act_buf_size = 0;
 /* write CSR bits */
 #define DMA_SETENABLE   0x00010000 /* set enable */
 #define DMA_SETSUPDATE  0x00020000 /* set single update */
+#define DMA_M2DEV       0x00000000 /* dma from mem to dev */
+#define DMA_DEV2M       0x00040000 /* dma from dev to mem */
 #define DMA_CLRCOMPLETE 0x00080000 /* clear complete conditional */
 #define DMA_RESET       0x00100000 /* clr cmplt, sup, enable */
 #define DMA_INITBUF     0x00200000 /* initialize DMA buffers */
@@ -124,9 +127,12 @@ int get_interrupt_type(int channel) {
 
 void DMA_CSR_Read(void) { // 0x02000010, length of register is byte on 68030 based NeXT Computer
     int channel = get_channel(IoAccessCurrentAddress);
-    if(ConfigureParams.System.nMachineType == NEXT_CUBE030) { // for 68030 based NeXT Computer
-        IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = ((dma[channel].csr&DMA_STAT_MASK) >> 24) | ((dma[channel].csr&DMA_DEV2M) >> 16); /* status bits | direction bit */
-        Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].csr >> 24, m68k_getpc());
+
+    if (ConfigureParams.System.nMachineType==NEXT_CUBE030) { // for 68030 based NeXT Computer
+        Uint8 csr030 = dma[channel].csr>>24;
+        IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = csr030;
+        IoMem[(IoAccessCurrentAddress+1) & IO_SEG_MASK] = IoMem[(IoAccessCurrentAddress+2) & IO_SEG_MASK] = IoMem[(IoAccessCurrentAddress+3) & IO_SEG_MASK] = 0x00; // just to be sure
+        Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, csr030, m68k_getpc());
     } else {
         IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].csr);
         Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].csr, m68k_getpc());
@@ -137,14 +143,15 @@ void DMA_CSR_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress);
     int interrupt = get_interrupt_type(channel);
     Uint32 writecsr;
-    if(ConfigureParams.System.nMachineType == NEXT_CUBE030) { // for 68030 based NeXT Computer
-        writecsr = IoMem[IoAccessCurrentAddress & IO_SEG_MASK] << 16;
-        Log_Printf(LOG_DMA_LEVEL,"DMA CSR write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, writecsr >> 16, m68k_getpc());
+
+    if (ConfigureParams.System.nMachineType==NEXT_CUBE030) { // for 68030 based NeXT Computer
+        Uint8 csr030 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+1) & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+2) & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+3) & IO_SEG_MASK];
+        writecsr = csr030<<16;
+        Log_Printf(LOG_DMA_LEVEL,"DMA CSR write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, csr030, m68k_getpc());
     } else {
         writecsr = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
         Log_Printf(LOG_DMA_LEVEL,"DMA CSR write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, writecsr, m68k_getpc());
     }
-     
     
     /* For debugging */
     if(writecsr&DMA_DEV2M)
@@ -174,19 +181,17 @@ void DMA_CSR_Write(void) {
     }
 
     /* Handle CSR bits */
-    if(writecsr&DMA_DEV2M) {
-        dma[channel].csr |= DMA_DEV2M;
-    } else {
-        dma[channel].csr &= ~DMA_DEV2M;
-    }
+    dma[channel].direction = writecsr&DMA_DEV2M;
 
     if (writecsr&DMA_RESET) {
-        dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE | DMA_DEV2M);
+        dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE);
     }
     if (writecsr&DMA_INITBUF) {
         if (channel==CHANNEL_SCSI) {
             esp_dma.status = 0x00; /* just a guess */
             act_buf_size = 0;
+        } else if (channel==CHANNEL_M2R) {
+            m2m_bufsize = 0;
         }
     }
     if (writecsr&DMA_SETSUPDATE) {
@@ -194,13 +199,23 @@ void DMA_CSR_Write(void) {
     }
     if (writecsr&DMA_SETENABLE) {
         dma[channel].csr |= DMA_ENABLE;
+        switch (channel) {
+            case CHANNEL_M2R:
+                dma_m2r_read_memory();
+                break;
+            case CHANNEL_R2M:
+                dma_r2m_write_memory();
+                break;
+                
+            default: break;
+        }
     }
     if (writecsr&DMA_CLRCOMPLETE) {
         dma[channel].csr &= ~DMA_COMPLETE;
 
         switch (channel) {
             case CHANNEL_SCSI:
-                if (dma[channel].csr&DMA_DEV2M)
+                if (dma[channel].direction==DMA_DEV2M)
                     dma_esp_write_memory();
                 else
                     dma_esp_read_memory();
@@ -320,6 +335,8 @@ void DMA_Init_Write(void) {
     if (channel==CHANNEL_SCSI) {
         esp_dma.status = 0x00; /* just a guess */
         act_buf_size = 0;
+    } else if (channel==CHANNEL_M2R) {
+        m2m_bufsize = 0;
     }
     Log_Printf(LOG_DMA_LEVEL,"DMA Init write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].init, m68k_getpc());
 }
@@ -337,10 +354,47 @@ void DMA_Size_Write(void) {
 }
 
 
+/* DMA interrupt functions */
+
+void dma_interrupt(channel) {
+    int interrupt = get_interrupt_type(channel);
+    
+    /* If we have reached limit, generate an interrupt and set the flags */
+    if (dma[channel].next==dma[channel].limit) {
+        
+        dma[channel].csr |= DMA_COMPLETE;
+        
+        if(dma[channel].csr & DMA_SUPDATE) { /* if we are in chaining mode */
+            dma[channel].next = dma[channel].start;
+            dma[channel].limit = dma[channel].stop;
+            /* Set bits in CSR */
+            dma[channel].csr &= ~DMA_SUPDATE; /* 1st done */
+        } else {
+            dma[channel].csr &= ~DMA_ENABLE; /* all done */
+        }
+        set_interrupt(interrupt, SET_INT);
+    }
+}
+
+/* Functions for delayed interrupts */
+
+/* Handler function for DMA ESP delayed interrupt */
+void ESPDMA_InterruptHandler(void) {
+    bool write = (dma[CHANNEL_SCSI].direction==DMA_DEV2M) ? true : false;
+    
+	CycInt_AcknowledgeInterrupt();
+    dma_interrupt(CHANNEL_SCSI);
+    
+    /* Let ESP check if it needs to interrupt */
+    esp_dma_done(write);
+}
+
 
 /* DMA Read and Write Memory Functions */
 
 /* Channel SCSI */
+#define DMAESP_DELAY 100 /* Delay for interrupt in microseconds */
+
 void dma_esp_write_memory(void) {
     Log_Printf(LOG_WARN, "[DMA] Write to memory at $%08x, %i bytes",dma[CHANNEL_SCSI].next,esp_counter);
 
@@ -403,7 +457,14 @@ void dma_esp_write_memory(void) {
         dma[CHANNEL_SCSI].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
-    dma_esp_interrupt(); /* Maybe this needs to be delayed */
+#if DMAESP_DELAY > 0
+    CycInt_AddRelativeInterrupt(DMAESP_DELAY*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_ESPDMA);
+#else
+    dma_interrupt(CHANNEL_SCSI);
+    
+    /* Let ESP check if it needs to interrupt */
+    esp_dma_done(true);
+#endif
 }
 
 void dma_esp_flush_buffer(void) {
@@ -492,37 +553,49 @@ void dma_esp_read_memory(void) {
         Log_Printf(LOG_WARN, "[DMA] Warning! Data not yet written to disk.");
     }
     
-    dma_esp_interrupt(); /* Maybe this needs to be delayed */
-}
-
-void dma_esp_interrupt(void) {
-    bool write = (dma[CHANNEL_SCSI].csr&DMA_DEV2M) ? true : false;
-    
-    /* If we have reached limit, generate an interrupt and set the flags */
-    if (dma[CHANNEL_SCSI].next==dma[CHANNEL_SCSI].limit) {
-
-        dma[CHANNEL_SCSI].csr |= DMA_COMPLETE;
-        
-        if(dma[CHANNEL_SCSI].csr & DMA_SUPDATE) { /* if we are in chaining mode */
-            dma[CHANNEL_SCSI].next = dma[CHANNEL_SCSI].start;
-            dma[CHANNEL_SCSI].limit = dma[CHANNEL_SCSI].stop;
-            /* Set bits in CSR */
-            dma[CHANNEL_SCSI].csr &= ~DMA_SUPDATE; /* 1st done */
-        } else {
-            dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE; /* all done */
-        }
-        set_interrupt(INT_SCSI_DMA, SET_INT);
-    }
+#if DMAESP_DELAY > 0
+    CycInt_AddRelativeInterrupt(DMAESP_DELAY*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_ESPDMA);
+#else
+    dma_interrupt(CHANNEL_SCSI);
     
     /* Let ESP check if it needs to interrupt */
-    esp_dma_done(write);
+    esp_dma_done(false);
+#endif
 }
 
 
-/* Interrupt Handler Functions */
+/* Memory to Memory */
 
-/* This is the handler function for DMA ESP delayed interrupts */
-void ESPDMA_InterruptHandler(void) {
-	CycInt_AcknowledgeInterrupt();
-    dma_esp_interrupt();
+void dma_m2r_read_memory(void) {
+//    return;
+    int i;
+    Log_Printf(LOG_WARN, "[DMA] Reading %i bytes at $%08X.",
+               dma[CHANNEL_M2R].limit-dma[CHANNEL_M2R].next,dma[CHANNEL_M2R].next);
+    
+    while (m2m_bufsize<DMA_BURST_SIZE){//(dma[CHANNEL_M2R].next<dma[CHANNEL_M2R].limit) {
+        for (i=0; i<DMA_BURST_SIZE; i+=4) {
+            dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_SCSI].next+i), m2m_buffer, m2m_bufsize+i);
+        }
+        m2m_bufsize+=DMA_BURST_SIZE;
+        dma[CHANNEL_M2R].next+=DMA_BURST_SIZE;
+    }
+    dma_interrupt(CHANNEL_M2R);
+}
+
+void dma_r2m_write_memory(void) {
+//    dma[CHANNEL_R2M].csr &= ~DMA_ENABLE;
+//    return;
+    int i;
+    int size = m2m_bufsize;
+    Log_Printf(LOG_WARN, "[DMA] Writing %i bytes at $%08X.",
+               m2m_bufsize,dma[CHANNEL_R2M].next);
+
+    while (dma[CHANNEL_R2M].next<dma[CHANNEL_R2M].limit && size>=DMA_BURST_SIZE) {
+        for (i=0; i<DMA_BURST_SIZE; i+=4) {
+            NEXTMemory_WriteLong(dma[CHANNEL_R2M].next, dma_getlong(m2m_buffer, m2m_bufsize));
+        }
+        size-=DMA_BURST_SIZE;
+        dma[CHANNEL_R2M].next+=DMA_BURST_SIZE;
+    }
+    dma_interrupt(CHANNEL_R2M);
 }
