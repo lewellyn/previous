@@ -26,9 +26,6 @@
 #define DMA_BURST_SIZE  16
 int act_buf_size = 0;
 
-/* Experimental for M2M */
-Uint8 m2m_buffer[DMA_BURST_SIZE];
-Uint32 m2m_bufsize;
 
 /* read CSR bits */
 #define DMA_ENABLE      0x01000000 /* enable dma transfer */
@@ -190,8 +187,6 @@ void DMA_CSR_Write(void) {
         if (channel==CHANNEL_SCSI) {
             esp_dma.status = 0x00; /* just a guess */
             act_buf_size = 0;
-        } else if (channel==CHANNEL_M2R) {
-            m2m_bufsize = 0;
         }
     }
     if (writecsr&DMA_SETSUPDATE) {
@@ -201,10 +196,11 @@ void DMA_CSR_Write(void) {
         dma[channel].csr |= DMA_ENABLE;
         switch (channel) {
             case CHANNEL_M2R:
-                dma_m2r_read_memory();
-                break;
             case CHANNEL_R2M:
-                dma_r2m_write_memory();
+                if ((dma[CHANNEL_R2M].csr&DMA_ENABLE)&&(dma[CHANNEL_M2R].csr&DMA_ENABLE)) {
+                    /* Enable Memory to Memory DMA, if read and write channels are enabled */
+                    dma_m2m_write_memory();
+                }
                 break;
                 
             default: break;
@@ -335,8 +331,6 @@ void DMA_Init_Write(void) {
     if (channel==CHANNEL_SCSI) {
         esp_dma.status = 0x00; /* just a guess */
         act_buf_size = 0;
-    } else if (channel==CHANNEL_M2R) {
-        m2m_bufsize = 0;
     }
     Log_Printf(LOG_DMA_LEVEL,"DMA Init write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].init, m68k_getpc());
 }
@@ -387,6 +381,16 @@ void ESPDMA_InterruptHandler(void) {
     
     /* Let ESP check if it needs to interrupt */
     esp_dma_done(write);
+}
+
+/* Handler functions for DMA M2M delyed interrupts */
+void M2RDMA_InterruptHandler(void) {
+    CycInt_AcknowledgeInterrupt();
+    dma_interrupt(CHANNEL_M2R);
+}
+void R2MDMA_InterruptHandler(void) {
+    CycInt_AcknowledgeInterrupt();
+    dma_interrupt(CHANNEL_R2M);
 }
 
 
@@ -566,36 +570,35 @@ void dma_esp_read_memory(void) {
 
 /* Memory to Memory */
 
-void dma_m2r_read_memory(void) {
-//    return;
+void dma_m2m_write_memory(void) {
     int i;
-    Log_Printf(LOG_WARN, "[DMA] Reading %i bytes at $%08X.",
-               dma[CHANNEL_M2R].limit-dma[CHANNEL_M2R].next,dma[CHANNEL_M2R].next);
+    int time = 0;
+    Uint32 m2m_buffer[DMA_BURST_SIZE/4];
     
-    while (m2m_bufsize<DMA_BURST_SIZE){//(dma[CHANNEL_M2R].next<dma[CHANNEL_M2R].limit) {
-        for (i=0; i<DMA_BURST_SIZE; i+=4) {
-            dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_SCSI].next+i), m2m_buffer, m2m_bufsize+i);
-        }
-        m2m_bufsize+=DMA_BURST_SIZE;
-        dma[CHANNEL_M2R].next+=DMA_BURST_SIZE;
+    if (((dma[CHANNEL_R2M].limit-dma[CHANNEL_R2M].next)%DMA_BURST_SIZE) ||
+        ((dma[CHANNEL_M2R].limit-dma[CHANNEL_M2R].next)%DMA_BURST_SIZE)) {
+        Log_Printf(LOG_WARN, "[DMA] Error! Memory to Memory DMA not burst size aligned!");
     }
-    dma_interrupt(CHANNEL_M2R);
-}
 
-void dma_r2m_write_memory(void) {
-//    dma[CHANNEL_R2M].csr &= ~DMA_ENABLE;
-//    return;
-    int i;
-    int size = m2m_bufsize;
-    Log_Printf(LOG_WARN, "[DMA] Writing %i bytes at $%08X.",
-               m2m_bufsize,dma[CHANNEL_R2M].next);
-
-    while (dma[CHANNEL_R2M].next<dma[CHANNEL_R2M].limit && size>=DMA_BURST_SIZE) {
-        for (i=0; i<DMA_BURST_SIZE; i+=4) {
-            NEXTMemory_WriteLong(dma[CHANNEL_R2M].next, dma_getlong(m2m_buffer, m2m_bufsize));
+    Log_Printf(LOG_WARN, "[DMA] Copying %i bytes from $%08X to $%08X.",
+               dma[CHANNEL_R2M].limit-dma[CHANNEL_R2M].next,dma[CHANNEL_M2R].next,dma[CHANNEL_R2M].next);
+    
+    while (dma[CHANNEL_R2M].next<dma[CHANNEL_R2M].limit) {
+        if (dma[CHANNEL_M2R].next<dma[CHANNEL_M2R].limit) {
+            /* Refill the buffer, if there is still data to read */
+            for (i=0; i<DMA_BURST_SIZE; i+=4) {
+                m2m_buffer[i/4]=NEXTMemory_ReadLong(dma[CHANNEL_M2R].next+i);
+            }
+            dma[CHANNEL_M2R].next+=DMA_BURST_SIZE;
+            time+=(DMA_BURST_SIZE*3)/4;
         }
-        size-=DMA_BURST_SIZE;
+        /* Write the contents of the buffer to memory */
+        for (i=0; i<DMA_BURST_SIZE; i+=4) {
+            NEXTMemory_WriteLong(dma[CHANNEL_R2M].next+i, m2m_buffer[i/4]);
+        }
         dma[CHANNEL_R2M].next+=DMA_BURST_SIZE;
+        time+=(DMA_BURST_SIZE*3)/4;
     }
-    dma_interrupt(CHANNEL_R2M);
+    CycInt_AddRelativeInterrupt(time, INT_CPU_CYCLE, INTERRUPT_M2R);
+    CycInt_AddRelativeInterrupt(time, INT_CPU_CYCLE, INTERRUPT_R2M);
 }
