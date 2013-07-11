@@ -40,8 +40,6 @@
 #define CMD_RCSEQ    0x2B
 
 /* Status Register */
-#define PHASE_MASK   0x07
-
 #define STAT_DO      0x00 /* data out */
 #define STAT_DI      0x01 /* data in */
 #define STAT_CD      0x02 /* command */
@@ -50,6 +48,7 @@
 #define STAT_MI      0x07 /* message in */
 
 #define STAT_MASK    0xF8
+#define STAT_PHASE   0x07
 
 #define STAT_VGC     0x08
 #define STAT_TC      0x10
@@ -70,12 +69,12 @@
 #define INTR_ILL     0x40
 #define INTR_RST     0x80
 
-/*Sequence Step Register */
+/* Sequence Step Register */
 #define SEQ_0        0x00
 #define SEQ_SELTIMEOUT 0x02
 #define SEQ_CD       0x04
 
-/*Configuration Register */
+/* Configuration Register */
 #define CFG1_RESREPT 0x40
 
 #define CFG2_ENFEA   0x40

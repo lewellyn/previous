@@ -14,6 +14,8 @@
 #include "dialog.h"
 #include "file.h"
 
+#define LOG_SCSI_LEVEL  LOG_WARN    /* Print debugging messages */
+
 
 #define COMMAND_ReadInt16(a, i) (((unsigned) a[i] << 8) | a[i + 1])
 #define COMMAND_ReadInt24(a, i) (((unsigned) a[i] << 16) | ((unsigned) a[i + 1] << 8) | a[i + 2])
@@ -62,7 +64,7 @@ void SCSI_Init(void) {
     }
     
     for (target = 0; target < ESP_MAX_DEVS; target++) {
-        Log_Printf(LOG_WARN, "Disk0: %s\n", ConfigureParams.SCSI.target[target].szImageName);
+        Log_Printf(LOG_WARN, "Disk%i: %s\n",target,ConfigureParams.SCSI.target[target].szImageName);
     }
 }
 
@@ -143,7 +145,7 @@ bool SCSIdisk_Select(Uint8 target) {
 
     /* If there is no disk present, return timeout true */
     if (SCSIdisk.dsk==NULL) {
-        Log_Printf(LOG_WARN, "[SCSI] Selection timeout, target = %i", target);
+        Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Selection timeout, target = %i", target);
         scsi_phase = STAT_ST; /* TODO: Check what's the correct phase */
         return true;
     } else {
@@ -179,7 +181,7 @@ void SCSIdisk_Receive_Command(Uint8 *cdb, Uint8 identify) {
     
     SCSIdisk.lun = lun;
     
-    Log_Printf(LOG_WARN, "SCSI command: Opcode = $%02x, target = %i, lun=%i\n", opcode, SCSIbus.target,SCSIdisk.lun);
+    Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Opcode = $%02x, target = %i, lun=%i\n", opcode, SCSIbus.target,SCSIdisk.lun);
     
     SCSI_Emulate_Command(opcode, cdb);
 }
@@ -191,30 +193,30 @@ void SCSI_Emulate_Command(Uint8 opcode, Uint8 *cdb)
 	{
             
         case HD_TEST_UNIT_RDY:
-            Log_Printf(LOG_WARN, "SCSI command: Test unit ready\n");
+            Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Test unit ready\n");
             SCSI_TestUnitReady(cdb);
             break;
             
         case HD_READ_CAPACITY1:
-            Log_Printf(LOG_WARN, "SCSI command: Read capacity\n");
+            Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Read capacity\n");
             SCSI_ReadCapacity(cdb);
             break;
             
         case HD_READ_SECTOR:
         case HD_READ_SECTOR1:
-            Log_Printf(LOG_WARN, "SCSI command: Read sector\n");
+            Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Read sector\n");
             SCSI_ReadSector(cdb);
             break;
             
         case HD_WRITE_SECTOR:
         case HD_WRITE_SECTOR1:
-            Log_Printf(LOG_WARN, "SCSI command: Write sector\n");
+            Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Write sector\n");
             SCSI_WriteSector(cdb);
 //            abort();
             break;
             
         case HD_INQUIRY:
-            Log_Printf(LOG_WARN, "SCSI command: Inquiry\n");
+            Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Inquiry\n");
             SCSI_Inquiry(cdb);
             break;
             
@@ -225,12 +227,12 @@ void SCSI_Emulate_Command(Uint8 opcode, Uint8 *cdb)
             break;
             
         case HD_SHIP:
-            Log_Printf(LOG_WARN, "SCSI command: Ship\n");
+            Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Ship\n");
             SCSI_StartStop(cdb);
             break;
             
         case HD_REQ_SENSE:
-            Log_Printf(LOG_WARN, "SCSI command: Request sense\n");
+            Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Request sense\n");
             SCSI_RequestSense(cdb);
             break;
             
@@ -245,7 +247,7 @@ void SCSI_Emulate_Command(Uint8 opcode, Uint8 *cdb)
             break;
             
         case HD_MODESENSE:
-            Log_Printf(LOG_WARN, "SCSI command: Mode sense\n");
+            Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Mode sense\n");
             SCSI_ModeSense(cdb);
             break;
             
@@ -278,7 +280,7 @@ void SCSI_Emulate_Command(Uint8 opcode, Uint8 *cdb)
 
 /* Helpers */
 int SCSI_fill_data_buffer(void *buf, Uint32 size, bool disk) {
-    Log_Printf(LOG_WARN, "[SCSI] Filling buffer with %i bytes", size);
+    Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Filling buffer with %i bytes", size);
     memset(SCSIdata.buffer, 0, SCSI_BUFFER_SIZE); /* first clear buffer */
     SCSIdata.rpos = 0;
     SCSIdata.size = size;
@@ -341,7 +343,7 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
         case 0x02: // disconnect/reconnect page
         case 0x03: // format device page
             page.pagesize = 0;
-            Log_Printf(LOG_WARN, "Mode Sense: Page %02x not yet emulated!\n", pagecode);
+            Log_Printf(LOG_WARN, "[SCSI] Mode Sense: Page %02x not yet emulated!\n", pagecode);
             break;
 
         case 0x04: // rigid disc geometry page
@@ -351,10 +353,10 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
             if ((sectors % (63 * heads)) != 0) {
                 cylinders += 1;
             }
-            Log_Printf(LOG_WARN, "Disk geometry: %i sectors, %i cylinders, %i heads\n", sectors, cylinders, heads);
+            Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Disk geometry: %i sectors, %i cylinders, %i heads\n", sectors, cylinders, heads);
             
             page.pagesize = 0; //20;
-            Log_Printf(LOG_WARN, "Disk geometry page disabled!\n"); abort();
+            Log_Printf(LOG_WARN, "[SCSI] Disk geometry page disabled!\n"); abort();
             page.modepage[0] = 0x04; // &0x80: page savable? (not supported!), &0x7F: page code = 0x04
             page.modepage[1] = 0x12;
             page.modepage[2] = (cylinders >> 16) & 0xFF;
@@ -383,7 +385,7 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
         case 0x38: // cache control page
         case 0x3C: // soft ID page (EEPROM)
             page.pagesize = 0;
-            Log_Printf(LOG_WARN, "Mode Sense: Page %02x not yet emulated!\n", pagecode);
+            Log_Printf(LOG_WARN, "[SCSI] Mode Sense: Page %02x not yet emulated!\n", pagecode);
             break;
             
         case 0x00: // operating page
@@ -396,7 +398,7 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
             
         default:
             page.pagesize = 0;
-            Log_Printf(LOG_WARN, "Mode Sense: Invalid page code: %02x!\n", pagecode);
+            Log_Printf(LOG_WARN, "[SCSI] Mode Sense: Invalid page code: %02x!\n", pagecode);
             break;
     }
     return page;
@@ -415,7 +417,7 @@ void SCSI_TestUnitReady(Uint8 *cdb)
 
 void SCSI_ReadCapacity(Uint8 *cdb)
 {        
-    Log_Printf(LOG_WARN, "Read disk image: size = %i\n", SCSIdisk.size);
+    Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Read disk image: size = %i\n", SCSIdisk.size);
   
     Uint32 sectors = SCSIdisk.size / BLOCKSIZE;
     
@@ -496,7 +498,7 @@ void SCSI_ReadSector(Uint8 *cdb)
 	nLastBlockAddr = SCSI_GetOffset(cdb[0], cdb) * BLOCKSIZE;
     int transfer_length = SCSI_GetCount(cdb[0], cdb) * BLOCKSIZE;
     
-    Log_Printf(LOG_WARN, "SCSI read %i block(s) at offset %i (blocksize: %i byte)",
+    Log_Printf(LOG_SCSI_LEVEL, "SCSI read %i block(s) at offset %i (blocksize: %i byte)",
                transfer_length/BLOCKSIZE, nLastBlockAddr/BLOCKSIZE, BLOCKSIZE);
     
 	/* seek to the position */
@@ -533,7 +535,7 @@ void SCSI_Inquiry (Uint8 *cdb) {
         inquiry_bytes[19] = 'R';
         inquiry_bytes[20] = 'O';
         inquiry_bytes[21] = 'M';
-        Log_Printf(LOG_WARN, "Disk is CD-ROM\n");
+        Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Disk is CD-ROM\n");
     } else {
         inquiry_bytes[0] = DEVTYPE_DISK;
         inquiry_bytes[1] &= ~0x80;
@@ -542,7 +544,7 @@ void SCSI_Inquiry (Uint8 *cdb) {
         inquiry_bytes[19] = ' ';
         inquiry_bytes[20] = ' ';
         inquiry_bytes[21] = ' ';
-        Log_Printf(LOG_WARN, "Disk is HDD\n");
+        Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Disk is HDD\n");
     }
     
     if (SCSIdisk.lun!=LUN_DISC) {
@@ -554,11 +556,11 @@ void SCSI_Inquiry (Uint8 *cdb) {
     if (transfer_lenght > (int)sizeof(inquiry_bytes))
 		transfer_lenght = sizeof(inquiry_bytes);
 
-    Log_Printf(LOG_WARN, "return length: %d", transfer_lenght);
+    Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Inquiry data length: %d", transfer_lenght);
     
     SCSI_fill_data_buffer(inquiry_bytes, transfer_lenght, false);
     
-    Log_Printf(LOG_WARN, "Inquiry Data: %c,%c,%c,%c,%c,%c,%c,%c\n",SCSIdata.buffer[8],
+    Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Inquiry Data: %c,%c,%c,%c,%c,%c,%c,%c\n",SCSIdata.buffer[8],
                SCSIdata.buffer[9],SCSIdata.buffer[10],SCSIdata.buffer[11],SCSIdata.buffer[12],
                SCSIdata.buffer[13],SCSIdata.buffer[14],SCSIdata.buffer[15]);
                     
@@ -586,7 +588,7 @@ void SCSI_RequestSense(Uint8 *cdb) {
     
 	if ((nRetLen < 4 && nRetLen != 0) || nRetLen > 22)
 	{
-		Log_Printf(LOG_WARN, "SCSI: *** Strange REQUEST SENSE *** len=%d!",nRetLen);
+		Log_Printf(LOG_WARN, "[SCSI] *** Strange REQUEST SENSE *** len=%d!",nRetLen);
 	}
     
 	/* Limit to sane length */
@@ -658,7 +660,7 @@ void SCSI_ModeSense(Uint8 *cdb) {
     Uint8 pagecode = cdb[2] & 0x3F;
     Uint8 dbd = cdb[1] & 0x08; // disable block descriptor
         
-    Log_Printf(LOG_WARN, "Mode Sense: page = %02x, page_control = %i, %s\n", pagecode, pagecontrol, dbd == 0x08 ? "block descriptor disabled" : "block descriptor enabled");
+    Log_Printf(LOG_WARN, "[SCSI] Mode Sense: page = %02x, page_control = %i, %s\n", pagecode, pagecontrol, dbd == 0x08 ? "block descriptor disabled" : "block descriptor enabled");
     
     /* Header */
     retbuf[0] = 0x00; // length of following data
@@ -678,7 +680,7 @@ void SCSI_ModeSense(Uint8 *cdb) {
         retbuf[10] = (BLOCKSIZE >> 8) & 0xFF;     // Block size in bytes, med
         retbuf[11] = BLOCKSIZE & 0xFF;     // Block size in bytes, low
         header_size = 12;
-        Log_Printf(LOG_WARN, "Mode Sense: Block descriptor data: %s, size = %i blocks, blocksize = %i byte\n",
+        Log_Printf(LOG_WARN, "[SCSI] Mode Sense: Block descriptor data: %s, size = %i blocks, blocksize = %i byte\n",
                    SCSIdisk.cdrom == true ? "disk is read-only" : "disk is read/write" , sectors, BLOCKSIZE);
     }
     retbuf[0] = header_size - 1;

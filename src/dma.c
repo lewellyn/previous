@@ -80,21 +80,21 @@ int get_channel(Uint32 address) {
     int channel = address&IO_SEG_MASK;
 
     switch (channel) {
-        case 0x010: printf("channel SCSI:\n"); return CHANNEL_SCSI; break;
-        case 0x040: printf("channel Sound Out:\n"); return CHANNEL_SOUNDOUT; break;
-        case 0x050: printf("channel MO Disk:\n"); return CHANNEL_DISK; break;
-        case 0x080: printf("channel Sound in:\n"); return CHANNEL_SOUNDIN; break;
-        case 0x090: printf("channel Printer:\n"); return CHANNEL_PRINTER; break;
-        case 0x0c0: printf("channel SCC:\n"); return CHANNEL_SCC; break;
-        case 0x0d0: printf("channel DSP:\n"); return CHANNEL_DSP; break;
-        case 0x110: printf("channel Ethernet Tx:\n"); return CHANNEL_EN_TX; break;
-        case 0x150: printf("channel Ethernet Rx:\n"); return CHANNEL_EN_RX; break;
-        case 0x180: printf("channel Video:\n"); return CHANNEL_VIDEO; break;
-        case 0x1d0: printf("channel M2R:\n"); return CHANNEL_M2R; break;
-        case 0x1c0: printf("channel R2M:\n"); return CHANNEL_R2M; break;
+        case 0x010: Log_Printf(LOG_DMA_LEVEL,"channel SCSI:"); return CHANNEL_SCSI; break;
+        case 0x040: Log_Printf(LOG_DMA_LEVEL,"channel Sound Out:"); return CHANNEL_SOUNDOUT; break;
+        case 0x050: Log_Printf(LOG_DMA_LEVEL,"channel MO Disk:"); return CHANNEL_DISK; break;
+        case 0x080: Log_Printf(LOG_DMA_LEVEL,"channel Sound in:"); return CHANNEL_SOUNDIN; break;
+        case 0x090: Log_Printf(LOG_DMA_LEVEL,"channel Printer:"); return CHANNEL_PRINTER; break;
+        case 0x0c0: Log_Printf(LOG_DMA_LEVEL,"channel SCC:"); return CHANNEL_SCC; break;
+        case 0x0d0: Log_Printf(LOG_DMA_LEVEL,"channel DSP:"); return CHANNEL_DSP; break;
+        case 0x110: Log_Printf(LOG_DMA_LEVEL,"channel Ethernet Tx:"); return CHANNEL_EN_TX; break;
+        case 0x150: Log_Printf(LOG_DMA_LEVEL,"channel Ethernet Rx:"); return CHANNEL_EN_RX; break;
+        case 0x180: Log_Printf(LOG_DMA_LEVEL,"channel Video:"); return CHANNEL_VIDEO; break;
+        case 0x1d0: Log_Printf(LOG_DMA_LEVEL,"channel M2R:"); return CHANNEL_M2R; break;
+        case 0x1c0: Log_Printf(LOG_DMA_LEVEL,"channel R2M:"); return CHANNEL_R2M; break;
             
         default:
-            Log_Printf(LOG_DMA_LEVEL, "Unknown DMA channel!\n");
+            Log_Printf(LOG_WARN, "Unknown DMA channel!\n");
             return -1;
             break;
     }
@@ -116,7 +116,7 @@ int get_interrupt_type(int channel) {
         case CHANNEL_R2M: return INT_R2M_DMA; break;
                         
         default:
-            Log_Printf(LOG_DMA_LEVEL, "Unknown DMA interrupt!\n");
+            Log_Printf(LOG_WARN, "Unknown DMA interrupt!\n");
             return 0;
             break;
     }
@@ -197,7 +197,10 @@ void DMA_CSR_Write(void) {
         switch (channel) {
             case CHANNEL_M2R:
             case CHANNEL_R2M:
-                if ((dma[CHANNEL_R2M].csr&DMA_ENABLE)&&(dma[CHANNEL_M2R].csr&DMA_ENABLE)) {
+                if (dma[channel].next==dma[channel].limit) {
+                    dma[channel].csr&= ~DMA_ENABLE;
+                }
+                if ((dma[CHANNEL_M2R].csr&DMA_ENABLE)&&(dma[CHANNEL_R2M].csr&DMA_ENABLE)) {
                     /* Enable Memory to Memory DMA, if read and write channels are enabled */
                     dma_m2m_write_memory();
                 }
@@ -367,6 +370,8 @@ void dma_interrupt(channel) {
             dma[channel].csr &= ~DMA_ENABLE; /* all done */
         }
         set_interrupt(interrupt, SET_INT);
+    } else if (dma[channel].csr&DMA_BUSEXC) {
+        set_interrupt(interrupt, SET_INT);
     }
 }
 
@@ -400,14 +405,15 @@ void R2MDMA_InterruptHandler(void) {
 #define DMAESP_DELAY 100 /* Delay for interrupt in microseconds */
 
 void dma_esp_write_memory(void) {
-    Log_Printf(LOG_WARN, "[DMA] Write to memory at $%08x, %i bytes",dma[CHANNEL_SCSI].next,esp_counter);
+    Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Write to memory at $%08x, %i bytes (ESP counter %i)",
+               dma[CHANNEL_SCSI].next,dma[CHANNEL_SCSI].limit-dma[CHANNEL_SCSI].next,esp_counter);
 
     if (!(dma[CHANNEL_SCSI].csr&DMA_ENABLE)) {
-        Log_Printf(LOG_WARN, "[DMA] Error! DMA not enabled!");
+        Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Error! DMA not enabled!");
         return;
     }
     if ((dma[CHANNEL_SCSI].limit%DMA_BURST_SIZE) || (dma[CHANNEL_SCSI].next%4)) {
-        Log_Printf(LOG_WARN, "[DMA] Error! Bad alignment! (Next: $%08X, Limit: $%08X)",
+        Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Error! Bad alignment! (Next: $%08X, Limit: $%08X)",
                    dma[CHANNEL_SCSI].next, dma[CHANNEL_SCSI].limit);
         abort();
     }
@@ -418,7 +424,7 @@ void dma_esp_write_memory(void) {
     TRY(prb) {
         /* This is a hack to handle non-burstsize-aligned DMA start */
         if (dma[CHANNEL_SCSI].next%DMA_BURST_SIZE) {
-            Log_Printf(LOG_WARN, "[DMA] Start memory address is not 16 byte aligned ($%08X).",
+            Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Start memory address is not 16 byte aligned ($%08X).",
                        dma[CHANNEL_SCSI].next);
             while ((dma[CHANNEL_SCSI].next+act_buf_size)%DMA_BURST_SIZE && esp_counter>0 && scsi_phase==STAT_DI) {
                 esp_counter--;
@@ -441,7 +447,7 @@ void dma_esp_write_memory(void) {
             }
             ESP_DMA_set_status();
             
-            //Log_Printf(LOG_WARN, "[DMA] Internal buffer size: %i bytes",act_buf_size);
+            //Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Internal buffer size: %i bytes",act_buf_size);
             
             /* If buffer is full, burst write to memory */
             if (act_buf_size==DMA_BURST_SIZE && dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit) {
@@ -451,12 +457,12 @@ void dma_esp_write_memory(void) {
                     act_buf_size-=4;
                 }
             } else { /* else do not write the bytes to memory but keep them inside the buffer */ 
-                Log_Printf(LOG_WARN, "[DMA] Residual bytes in DMA buffer: %i bytes",act_buf_size);
+                Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Residual bytes in DMA buffer: %i bytes",act_buf_size);
                 break;
             }
         }
     } CATCH(prb) {
-        Log_Printf(LOG_WARN, "[DMA] Bus error while writing to %08x",dma[CHANNEL_SCSI].next);
+        Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Bus error while writing to %08x",dma[CHANNEL_SCSI].next);
         dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE;
         dma[CHANNEL_SCSI].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
@@ -475,7 +481,7 @@ void dma_esp_flush_buffer(void) {
 
     TRY(prb) {
         if (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit) {
-            Log_Printf(LOG_WARN, "[DMA] Flush buffer to memory at $%08x, 4 bytes",dma[CHANNEL_SCSI].next);
+            Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Flush buffer to memory at $%08x, 4 bytes",dma[CHANNEL_SCSI].next);
 
             /* Write one long word to memory */
             NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next, dma_getlong(SCSIdata.buffer, SCSIdata.rpos-act_buf_size));
@@ -496,14 +502,15 @@ void dma_esp_flush_buffer(void) {
 }
 
 void dma_esp_read_memory(void) {    
-    Log_Printf(LOG_WARN, "[DMA] Read from memory at $%08x, %i bytes",dma[CHANNEL_SCSI].next,esp_counter);
+    Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Read from memory at $%08x, %i bytes (ESP counter %i)",
+               dma[CHANNEL_SCSI].next,dma[CHANNEL_SCSI].limit-dma[CHANNEL_SCSI].next,esp_counter);
     
     if (!(dma[CHANNEL_SCSI].csr&DMA_ENABLE)) {
-        Log_Printf(LOG_WARN, "[DMA] Error! DMA not enabled!");
+        Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Error! DMA not enabled!");
         return;
     }
     if ((dma[CHANNEL_SCSI].limit%DMA_BURST_SIZE) || (dma[CHANNEL_SCSI].next%4)) {
-        Log_Printf(LOG_WARN, "[DMA] Error! Bad alignment! (Next: $%08X, Limit: $%08X)",
+        Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Error! Bad alignment! (Next: $%08X, Limit: $%08X)",
                    dma[CHANNEL_SCSI].next, dma[CHANNEL_SCSI].limit);
         abort();
     }
@@ -514,7 +521,7 @@ void dma_esp_read_memory(void) {
     TRY(prb) {
         /* This is a hack to handle non-burstsize-aligned DMA start */
         if (dma[CHANNEL_SCSI].next%DMA_BURST_SIZE) {
-            Log_Printf(LOG_WARN, "[DMA] Start memory address is not 16 byte aligned ($%08X).",
+            Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Start memory address is not 16 byte aligned ($%08X).",
                        dma[CHANNEL_SCSI].next);
             while (dma[CHANNEL_SCSI].next%DMA_BURST_SIZE) {
                 dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_SCSI].next), SCSIdata.buffer, SCSIdata.rpos+act_buf_size);
@@ -545,16 +552,16 @@ void dma_esp_read_memory(void) {
             ESP_DMA_set_status();
         }
     } CATCH(prb) {
-        Log_Printf(LOG_WARN, "[DMA] Bus error while writing to %08x",dma[CHANNEL_SCSI].next+act_buf_size);
+        Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Bus error while writing to %08x",dma[CHANNEL_SCSI].next+act_buf_size);
         dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE;
         dma[CHANNEL_SCSI].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
     if (act_buf_size!=0) {
-        Log_Printf(LOG_WARN, "[DMA] Residual bytes in DMA buffer: %i bytes",act_buf_size);
+        Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Residual bytes in DMA buffer: %i bytes",act_buf_size);
     }
     if (scsi_phase==STAT_DO) {
-        Log_Printf(LOG_WARN, "[DMA] Warning! Data not yet written to disk.");
+        Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Warning! Data not yet written to disk.");
     }
     
 #if DMAESP_DELAY > 0
@@ -569,6 +576,7 @@ void dma_esp_read_memory(void) {
 
 
 /* Memory to Memory */
+#define DMA_M2M_CYCLES    ((DMA_BURST_SIZE * 3) / 4)
 
 void dma_m2m_write_memory(void) {
     int i;
@@ -577,28 +585,44 @@ void dma_m2m_write_memory(void) {
     
     if (((dma[CHANNEL_R2M].limit-dma[CHANNEL_R2M].next)%DMA_BURST_SIZE) ||
         ((dma[CHANNEL_M2R].limit-dma[CHANNEL_M2R].next)%DMA_BURST_SIZE)) {
-        Log_Printf(LOG_WARN, "[DMA] Error! Memory to Memory DMA not burst size aligned!");
+        Log_Printf(LOG_WARN, "[DMA] Channel M2M: Error! Memory not burst size aligned!");
     }
-
-    Log_Printf(LOG_WARN, "[DMA] Copying %i bytes from $%08X to $%08X.",
+    
+    Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel M2M: Copying %i bytes from $%08X to $%08X.",
                dma[CHANNEL_R2M].limit-dma[CHANNEL_R2M].next,dma[CHANNEL_M2R].next,dma[CHANNEL_R2M].next);
     
     while (dma[CHANNEL_R2M].next<dma[CHANNEL_R2M].limit) {
+        time+=DMA_M2M_CYCLES;
+
         if (dma[CHANNEL_M2R].next<dma[CHANNEL_M2R].limit) {
-            /* Refill the buffer, if there is still data to read */
-            for (i=0; i<DMA_BURST_SIZE; i+=4) {
-                m2m_buffer[i/4]=NEXTMemory_ReadLong(dma[CHANNEL_M2R].next+i);
+            TRY(prb) {
+                /* (Re)fill the buffer, if there is still data to read */
+                for (i=0; i<DMA_BURST_SIZE; i+=4) {
+                    m2m_buffer[i/4]=NEXTMemory_ReadLong(dma[CHANNEL_M2R].next+i);
+                }
+                dma[CHANNEL_M2R].next+=DMA_BURST_SIZE;
+            } CATCH(prb) {
+                Log_Printf(LOG_WARN, "[DMA] Channel M2M: Bus error while reading from %08x",dma[CHANNEL_M2R].next+i);
+                dma[CHANNEL_M2R].csr &= ~DMA_ENABLE;
+                dma[CHANNEL_M2R].csr |= (DMA_COMPLETE|DMA_BUSEXC);
+            } ENDTRY
+            
+            if ((dma[CHANNEL_M2R].next==dma[CHANNEL_M2R].limit)||(dma[CHANNEL_M2R].csr&DMA_BUSEXC)) {
+                CycInt_AddRelativeInterrupt(time, INT_CPU_CYCLE, INTERRUPT_M2R);
             }
-            dma[CHANNEL_M2R].next+=DMA_BURST_SIZE;
-            time+=(DMA_BURST_SIZE*3)/4;
         }
-        /* Write the contents of the buffer to memory */
-        for (i=0; i<DMA_BURST_SIZE; i+=4) {
-            NEXTMemory_WriteLong(dma[CHANNEL_R2M].next+i, m2m_buffer[i/4]);
-        }
-        dma[CHANNEL_R2M].next+=DMA_BURST_SIZE;
-        time+=(DMA_BURST_SIZE*3)/4;
+        
+        TRY(prb) {
+            /* Write the contents of the buffer to memory */
+            for (i=0; i<DMA_BURST_SIZE; i+=4) {
+                NEXTMemory_WriteLong(dma[CHANNEL_R2M].next+i, m2m_buffer[i/4]);
+            }
+            dma[CHANNEL_R2M].next+=DMA_BURST_SIZE;
+        } CATCH(prb) {
+            Log_Printf(LOG_WARN, "[DMA] Channel M2M: Bus error while writing to %08x",dma[CHANNEL_R2M].next+i);
+            dma[CHANNEL_R2M].csr &= ~DMA_ENABLE;
+            dma[CHANNEL_R2M].csr |= (DMA_COMPLETE|DMA_BUSEXC);
+        } ENDTRY
     }
-    CycInt_AddRelativeInterrupt(time, INT_CPU_CYCLE, INTERRUPT_M2R);
     CycInt_AddRelativeInterrupt(time, INT_CPU_CYCLE, INTERRUPT_R2M);
 }
