@@ -1,5 +1,18 @@
 /* SCSI Bus and Disk emulation */
 
+/* SCSI phase */
+#define PHASE_DO      0x00 /* data out */
+#define PHASE_DI      0x01 /* data in */
+#define PHASE_CD      0x02 /* command */
+#define PHASE_ST      0x03 /* status */
+#define PHASE_MO      0x06 /* message out */
+#define PHASE_MI      0x07 /* message in */
+
+struct {
+    Uint8 target;
+    Uint8 phase;
+} SCSIbus;
+
 
 /* Opcodes */
 /* The following are multi-sector transfers with seek implied */
@@ -102,18 +115,8 @@ struct {
     Uint32 rpos; /* actual read pointer */
 } SCSIdata;
 
-int SCSI_fill_data_buffer(void *buf, Uint32 size, bool disk);
+int SCSI_FillDataBuffer(void *buf, Uint32 size, bool disk);
 void SCSI_WriteFromBuffer(Uint8 *buf, Uint32 size);
-
-
-struct {
-    Uint8 target;
-//    Uint8 phase;
-} SCSIbus;
-
-
-/* SCSI phase */
-Uint8 scsi_phase;
 
 void SCSI_Init(void);
 void SCSI_Uninit(void);
@@ -128,6 +131,7 @@ void SCSIdisk_Receive_Command(Uint8 *commandbuf, Uint8 identify);
 
 
 /* Helpers */
+int SCSI_GetCommandLength(Uint8 opcode);
 int SCSI_GetTransferLength(Uint8 opcode, Uint8 *cdb);
 unsigned long SCSI_GetOffset(Uint8 opcode, Uint8 *cdb);
 int SCSI_GetCount(Uint8 opcode, Uint8 *cdb);

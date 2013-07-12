@@ -14,6 +14,7 @@
 #define LOG_ESPDMA_LEVEL    LOG_DEBUG   /* Print debugging messages for ESP DMA registers */
 #define LOG_ESPCMD_LEVEL    LOG_WARN    /* Print debugging messages for ESP commands */
 #define LOG_ESPREG_LEVEL    LOG_DEBUG   /* Print debugging messages for ESP registers */
+#define LOG_ESPFIFO_LEVEL   LOG_DEBUG   /* Print debugging messages for ESP FIFO */
 
 
 #define IO_SEG_MASK	0x1FFFF
@@ -27,10 +28,17 @@ typedef enum {
 SCSI_STATE esp_state;
 
 
+/* ESP FIFO */
+#define ESP_FIFO_SIZE 16
+
+Uint8 esp_fifo_read(void);
+void esp_fifo_write(Uint8 val);
+
+
 /* ESP Registers */
 Uint8 writetranscountl;
 Uint8 writetranscounth;
-Uint8 fifo;
+Uint8 fifo[ESP_FIFO_SIZE];
 Uint8 command;
 Uint8 status;
 Uint8 selectbusid;
@@ -46,15 +54,82 @@ Uint8 esptest;
 
 Uint32 esp_counter;
 
-/* ESP Status Variables */
-Uint8 irq_status;
-Uint8 mode_dma;
 
-/* ESP FIFO */
-#define ESP_FIFO_SIZE 16
-Uint8 esp_fifo[ESP_FIFO_SIZE];
-Uint8 fifo_read_ptr;
-Uint8 fifo_write_ptr;
+/* Command Register */
+#define CMD_DMA      0x80
+#define CMD_CMD      0x7f
+
+#define CMD_TYP_MASK 0x70
+#define CMD_TYP_MSC  0x00
+#define CMD_TYP_TGT  0x20
+#define CMD_TYP_INR  0x10
+#define CMD_TYP_DIS  0x40
+
+/* Miscellaneous Commands */
+#define CMD_NOP      0x00
+#define CMD_FLUSH    0x01
+#define CMD_RESET    0x02
+#define CMD_BUSRESET 0x03
+/* Initiator Commands */
+#define CMD_TI       0x10
+#define CMD_ICCS     0x11
+#define CMD_MSGACC   0x12
+#define CMD_PAD      0x18
+#define CMD_SATN     0x1a
+/* Disconnected Commands */
+#define CMD_RESEL    0x40
+#define CMD_SEL      0x41
+#define CMD_SELATN   0x42
+#define CMD_SELATNS  0x43
+#define CMD_ENSEL    0x44
+#define CMD_DISSEL   0x45
+/* Target Commands */
+#define CMD_SEMSG    0x20
+#define CMD_SESTAT   0x21
+#define CMD_SEDAT    0x22
+#define CMD_DISSEQ   0x23
+#define CMD_TERMSEQ  0x24
+#define CMD_TCCS     0x25
+#define CMD_DIS      0x27
+#define CMD_RMSGSEQ  0x28
+#define CMD_RCOMM    0x29
+#define CMD_RDATA    0x2A
+#define CMD_RCSEQ    0x2B
+
+/* Status Register */
+#define STAT_MASK    0xF8
+#define STAT_PHASE   0x07
+
+#define STAT_VGC     0x08
+#define STAT_TC      0x10
+#define STAT_PE      0x20
+#define STAT_GE      0x40
+#define STAT_INT     0x80
+
+/* Bus ID Register */
+#define BUSID_DID    0x07
+
+/* Interrupt Status Register */
+#define INTR_SEL     0x01
+#define INTR_SELATN  0x02
+#define INTR_RESEL   0x04
+#define INTR_FC      0x08
+#define INTR_BS      0x10
+#define INTR_DC      0x20
+#define INTR_ILL     0x40
+#define INTR_RST     0x80
+
+/* Sequence Step Register */
+#define SEQ_0        0x00
+#define SEQ_SELTIMEOUT 0x02
+#define SEQ_CD       0x04
+
+/* Configuration Register */
+#define CFG1_RESREPT 0x40
+
+
+/* ESP Status Variables */
+Uint8 mode_dma;
 
 /* Experimental */
 #define ESP_CLOCK_FREQ  20 /* ESP is clocked at 20 MHz */
@@ -158,29 +233,13 @@ void ESP_TransCountH_Write(void) {
 }
 
 void ESP_FIFO_Read(void) { // 0x02014002
-    if ((fifo_write_ptr - fifo_read_ptr) > 0) {
-        IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = esp_fifo[fifo_read_ptr];
-        Log_Printf(LOG_ESPREG_LEVEL,"ESP FIFO read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-        Log_Printf(LOG_ESPCMD_LEVEL,"ESP FIFO Read, size = %i, val=%02x", fifo_write_ptr - fifo_read_ptr, IoMem[IoAccessCurrentAddress & IO_SEG_MASK]);
-        fifo_read_ptr++;
-        fifoflags = fifoflags - 1;
-    } else {
-        IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = 0x00;
-        Log_Printf(LOG_WARN, "ESP FIFO is empty!\n");
-    } 
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = esp_fifo_read();
+    Log_Printf(LOG_ESPREG_LEVEL,"ESP FIFO read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void ESP_FIFO_Write(void) {
-    esp_fifo[fifo_write_ptr] = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
-    fifo_write_ptr++;
-    fifoflags = fifoflags + 1;
+    esp_fifo_write(IoMem[IoAccessCurrentAddress & IO_SEG_MASK]);
     Log_Printf(LOG_ESPREG_LEVEL,"ESP FIFO write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-    
-    if (fifo_write_ptr > (ESP_FIFO_SIZE - 1)) {
-        Log_Printf(LOG_WARN, "ESP FIFO overflow! Resetting FIFO!\n");
-        esp_flush_fifo();
-    }
-    Log_Printf(LOG_ESPREG_LEVEL,"ESP FIFO size = %i", fifo_write_ptr - fifo_read_ptr);
 }
 
 void ESP_Command_Read(void) { // 0x02014003
@@ -194,10 +253,11 @@ void ESP_Command_Write(void) {
         
     /* Check if command is valid for actual state */
     if ((command&CMD_TYP_MASK)!=CMD_TYP_MSC) {
-        if ((esp_state==TARGET && !command&CMD_TYP_TGT) ||
-            (esp_state==INITIATOR && !command&CMD_TYP_INR) ||
-            (esp_state==DISCONNECTED && !command&CMD_TYP_DIS)) {
-            Log_Printf(LOG_WARN, "ESP Command: Illegal command for actual ESP state!\n");
+        if ((esp_state==TARGET && !(command&CMD_TYP_TGT)) ||
+            (esp_state==INITIATOR && !(command&CMD_TYP_INR)) ||
+            (esp_state==DISCONNECTED && !(command&CMD_TYP_DIS))) {
+            Log_Printf(LOG_WARN, "ESP Command: Illegal command for actual ESP state ($%02X)!\n",command);
+            command = 0x00;
             intstatus |= INTR_ILL;
             esp_raise_irq();
             return;
@@ -217,9 +277,6 @@ void ESP_Command_Write(void) {
         mode_dma = 0;
     }
     
-    if ((command & CMD_CMD) != CMD_NOP)
-    	status = (status&STAT_MASK)|STAT_CD;
-    
     switch (command & CMD_CMD) {
             /* Miscellaneous */
         case CMD_NOP:
@@ -228,7 +285,6 @@ void ESP_Command_Write(void) {
         case CMD_FLUSH:
             Log_Printf(LOG_ESPCMD_LEVEL,"ESP Command: flush FIFO\n");
             esp_flush_fifo();
-    	    status = (status&STAT_MASK)|STAT_ST;
             break;
         case CMD_RESET:
             Log_Printf(LOG_ESPCMD_LEVEL,"ESP Command: reset chip\n");
@@ -298,16 +354,11 @@ void ESP_Command_Write(void) {
         case CMD_RCSEQ:
             Log_Printf(LOG_WARN, "ESP Command: Target commands not emulated!\n");
             abort();
-            status = (status&STAT_MASK)|STAT_ST;	   
-            intstatus = INTR_ILL;
-            seqstep = SEQ_0;
-            fifoflags = 0x00;
-            esp_raise_irq();
             break;
         case CMD_DIS:
             Log_Printf(LOG_WARN, "ESP Command: DISCONNECT not emulated!\n");
             abort();
-            status = (status&STAT_MASK)|STAT_ST;	   
+            SCSIbus.phase = PHASE_ST;
             intstatus = INTR_DC; 
             seqstep = SEQ_0;
             break;
@@ -315,6 +366,7 @@ void ESP_Command_Write(void) {
             
         default:
             Log_Printf(LOG_WARN, "ESP Command: Illegal command!\n");
+            command = 0x00;
             intstatus |= INTR_ILL;
             esp_raise_irq();
             break;
@@ -322,7 +374,7 @@ void ESP_Command_Write(void) {
 }
 
 void ESP_Status_Read(void) { // 0x02014004
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=status;
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=(status&STAT_MASK)|(SCSIbus.phase&STAT_PHASE);
  	Log_Printf(LOG_ESPREG_LEVEL,"ESP Status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
@@ -335,10 +387,10 @@ void ESP_IntStatus_Read(void) { // 0x02014005
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=intstatus;
     Log_Printf(LOG_ESPREG_LEVEL,"ESP IntStatus read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     
-    if (irq_status == 1) {
+    if (status&STAT_INT) {
             intstatus = 0x00;
-            status &= ~(STAT_VGC | STAT_PE | STAT_GE );
-            seqstep = SEQ_0;
+            status &= ~(STAT_VGC | STAT_PE | STAT_GE);
+            seqstep = 0;
             esp_lower_irq();
     }
 }
@@ -400,6 +452,38 @@ void ESP_Conf2_Read(void) { // 0x0201400b
 
 /* Helper functions */
 
+/* Functions for reading and writing ESP FIFO */
+Uint8 esp_fifo_read(void) {
+    int i;
+    Uint8 val;
+    
+    if (fifoflags > 0) {
+        val = fifo[0];
+        for (i=0; i<(ESP_FIFO_SIZE-1); i++)
+            fifo[i]=fifo[i+1];
+        fifo[ESP_FIFO_SIZE-1] = 0x00;
+        fifoflags--;
+        Log_Printf(LOG_ESPFIFO_LEVEL,"ESP FIFO: Reading byte, val=%02x, size = %i", val, fifoflags);
+    } else {
+        val = 0x00;
+        Log_Printf(LOG_WARN, "ESP FIFO read: FIFO is empty!\n");
+    }
+    return val;
+}
+
+void esp_fifo_write(Uint8 val) {
+    if (fifoflags==ESP_FIFO_SIZE) {
+        Log_Printf(LOG_WARN, "ESP FIFO write: FIFO overflow! Top of FIFO overwritten\n");
+        fifo[fifoflags-1] = val;
+        status |= STAT_GE;
+    } else {
+        fifoflags++;
+        fifo[fifoflags-1] = val;
+        Log_Printf(LOG_ESPFIFO_LEVEL,"ESP FIFO: Writing byte %i, val=%02x", fifoflags-1, fifo[fifoflags-1]);
+    }
+}
+
+
 /* This is the handler function for ESP delayed interrupts */
 void ESP_InterruptHandler(void) {
 	CycInt_AcknowledgeInterrupt();
@@ -410,7 +494,6 @@ void ESP_InterruptHandler(void) {
 void esp_raise_irq(void) {
     if(!(status & STAT_INT)) {
         status |= STAT_INT;
-        irq_status = 1;
         
         if (esp_dma.control&ESPCTRL_ENABLE_INT) {
             set_interrupt(INT_SCSI, SET_INT);
@@ -425,13 +508,13 @@ void esp_raise_irq(void) {
                 default: printf("unknown"); break;
             }
             printf(", phase=");
-            switch (status&STAT_MI) {
-                case STAT_DO: printf("data out"); break;
-                case STAT_DI: printf("data in"); break;
-                case STAT_CD: printf("command"); break;
-                case STAT_ST: printf("status"); break;
-                case STAT_MI: printf("msg in"); break;
-                case STAT_MO: printf("msg out"); break;
+            switch (SCSIbus.phase&STAT_PHASE) {
+                case PHASE_DO: printf("data out"); break;
+                case PHASE_DI: printf("data in"); break;
+                case PHASE_CD: printf("command"); break;
+                case PHASE_ST: printf("status"); break;
+                case PHASE_MI: printf("msg in"); break;
+                case PHASE_MO: printf("msg out"); break;
                 default: printf("unknown"); break;
             }
             if (status&STAT_TC) {
@@ -456,7 +539,6 @@ void esp_raise_irq(void) {
 void esp_lower_irq(void) {
     if (status & STAT_INT) {
         status &= ~STAT_INT;
-        irq_status = 0;
         
         set_interrupt(INT_SCSI, RELEASE_INT);
         
@@ -506,7 +588,7 @@ void esp_bus_reset(void) {
     esp_reset_soft();
     if (!(configuration & CFG1_RESREPT)) {
         intstatus = INTR_RST;
-        status = (status&STAT_MASK)|STAT_MI; /* CHECK: why message in phase? */
+        SCSIbus.phase = PHASE_MI; /* CHECK: why message in phase? */
         Log_Printf(LOG_ESPCMD_LEVEL,"[ESP] SCSI bus reset raising IRQ (configuration=$%02X)\n",configuration);
         CycInt_AddRelativeInterrupt(50*33, INT_CPU_CYCLE, INTERRUPT_ESP); /* TODO: find correct timing, use actual cpu clock from preferences */
     } else
@@ -516,9 +598,10 @@ void esp_bus_reset(void) {
 
 /* Flush FIFO */
 void esp_flush_fifo(void) {
-    fifo_read_ptr = 0;
-    fifo_write_ptr = 0;
-    esp_fifo[0] = 0;
+    int i;
+    for (i=0; i<ESP_FIFO_SIZE; i++) {
+        fifo[i] = 0;
+    }
     fifoflags &= 0xE0;
 }
 
@@ -536,11 +619,11 @@ void esp_select(bool atn) {
     bool timeout = SCSIdisk_Select(target);
     if (timeout) {
         /* If a timeout occurs, generate disconnect interrupt */
+        command = 0x00;
         intstatus = INTR_DC;
-        status = (status&STAT_MASK)|scsi_phase; /* check status */
         esp_state = DISCONNECTED;
         int seltout = (selecttimeout * 8192 * clockconv) / ESP_CLOCK_FREQ; /* timeout in microseconds */
-        Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Timeout after %i microseconds",seltout);
+        Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Target %i, timeout after %i microseconds",target,seltout);
         CycInt_AddRelativeInterrupt(seltout*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_ESP);
         return;
     }
@@ -553,18 +636,18 @@ void esp_select(bool atn) {
         abort();
     } else {
         if (atn) { /* Read identify message from FIFO */
-            scsi_phase = STAT_MO;
+            SCSIbus.phase = PHASE_MO;
             seqstep = 1;
-            identify_msg = esp_fifo[fifo_read_ptr];
-            fifo_read_ptr++;
+            identify_msg = esp_fifo_read();
+            Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Reading message from FIFO");
+            Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Identify Message: $%02X",identify_msg);
         }
         
         /* Read command from FIFO */
-        scsi_phase = STAT_CD;
+        SCSIbus.phase = PHASE_CD;
         seqstep = 3;
-        for (cmd_size = 0; cmd_size < SCSI_CDB_MAX_SIZE && fifo_read_ptr<fifo_write_ptr; cmd_size++) {
-            commandbuf[cmd_size] = esp_fifo[fifo_read_ptr];
-            fifo_read_ptr++;
+        for (cmd_size = 0; cmd_size < SCSI_CDB_MAX_SIZE && fifoflags > 0; cmd_size++) {
+            commandbuf[cmd_size] = esp_fifo_read();
         }
 
         Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Reading command from FIFO, size: %i byte",cmd_size);
@@ -572,13 +655,12 @@ void esp_select(bool atn) {
         esp_flush_fifo();
     }
     
-    Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Identify Message: $%02X",identify_msg);
     Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Target: %i, Lun: %i",target,identify_msg&0x07);
 
     SCSIdisk_Receive_Command(commandbuf, identify_msg);
     seqstep = 4;
+    command = 0x00;
 
-    status = (status&STAT_MASK)|scsi_phase;
     intstatus = INTR_BS | INTR_FC;
     
     esp_state = INITIATOR;
@@ -592,13 +674,12 @@ void esp_dma_done(bool write) {
     Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] DMA transfer done: ESP counter = %i, SCSI residual bytes: %i",
                esp_counter,SCSIdata.size-SCSIdata.rpos);
     
-    status = (status&STAT_MASK)|scsi_phase;
-
     if (esp_counter == 0) { /* Transfer done */
         intstatus = INTR_FC;
         status |= STAT_TC;
         esp_raise_irq();
-    } else if ((write && scsi_phase!=STAT_DI) || (!write && scsi_phase!=STAT_DO)) { /* Phase change detected */
+    } else if ((write && SCSIbus.phase!=PHASE_DI) || (!write && SCSIbus.phase!=PHASE_DO)) { /* Phase change detected */
+        command = 0x00;
         intstatus = INTR_BS;
         esp_raise_irq();
     } /* else continue transfering data using DMA, no interrupt */
@@ -610,12 +691,12 @@ void esp_transfer_info(void) {
     if(mode_dma) {
         status &= ~STAT_TC;
         
-        switch (scsi_phase) {
-            case STAT_DI:
+        switch (SCSIbus.phase) {
+            case PHASE_DI:
                 Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] start DMA transfer from device to memory: ESP counter = %i\n", esp_counter);
                 dma_esp_write_memory();
                 break;
-            case STAT_DO:
+            case PHASE_DO:
                 Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] start DMA transfer from memory to device: ESP counter = %i\n", esp_counter);
                 dma_esp_read_memory();
                 break;
@@ -637,16 +718,16 @@ void esp_transfer_pad(void) {
     Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Transfer padding, ESP counter: %i bytes, SCSI resid: %i bytes\n",
                esp_counter, SCSIdata.size-SCSIdata.rpos);
     
-    switch (scsi_phase) {
-        case STAT_DI:
-            while (scsi_phase==STAT_DI && esp_counter>0) {
+    switch (SCSIbus.phase) {
+        case PHASE_DI:
+            while (SCSIbus.phase==PHASE_DI && esp_counter>0) {
                 SCSIdisk_Send_Data();
                 esp_counter--;
             }
             esp_dma_done(true);
             break;
-        case STAT_DO:
-            while (scsi_phase==STAT_DO && esp_counter>0) {
+        case PHASE_DO:
+            while (SCSIbus.phase==PHASE_DO && esp_counter>0) {
                 SCSIdisk_Receive_Data();
                 esp_counter--;
             }
@@ -666,33 +747,31 @@ void esp_initiator_command_complete(void) {
     if(mode_dma == 1) {
         Log_Printf(LOG_WARN, "ESP initiator command complete via DMA not implemented!");
         abort();
-        //esp_fifo[0] = SCSIdisk_Send_Status(); // status
-        //esp_fifo[1] = SCSIdisk_Send_Message(); // message
-        //dma_memory_write(esp_fifo, 2, CHANNEL_SCSI);
     } else {
         /* Receive status byte */
-        esp_fifo[fifo_write_ptr] = SCSIdisk_Send_Status();
-        fifo_write_ptr++;
-        fifoflags = (fifoflags & 0xE0) | fifo_write_ptr;
-        scsi_phase = STAT_MI;
+        esp_fifo_write(SCSIdisk_Send_Status()); /* Disk sets phase to msg in after status send */
 
+        if (SCSIbus.phase!=PHASE_MI) { /* Stop sequence if no phase change to msg in occured */
+            command = 0x00;
+            intstatus = INTR_BS;
+            esp_raise_irq();
+            return;
+        }
+        
         /* Receive message byte */
-        esp_fifo[fifo_write_ptr] = SCSIdisk_Send_Message(); /* 0x00 = command complete */
-        fifo_write_ptr++;
-        fifoflags = (fifoflags & 0xE0) | fifo_write_ptr;
+        esp_fifo_write(SCSIdisk_Send_Message()); /* 0x00 = command complete */
     }
 
     intstatus = INTR_FC;
-    status = (status&STAT_MASK)|scsi_phase;
     esp_raise_irq();
 }
 
 
 /* Message accepted */
 void esp_message_accepted(void) {
-    scsi_phase = STAT_ST; /* set at the end of iccs? */
-    status = (status&STAT_MASK)|scsi_phase;
+    SCSIbus.phase = PHASE_ST; /* set at the end of iccs? */
     intstatus = INTR_BS;
+    esp_state = DISCONNECTED; /* CHECK: only disconnected if message was cmd complete? */
     esp_raise_irq();
 }
 

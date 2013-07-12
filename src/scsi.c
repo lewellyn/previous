@@ -114,6 +114,7 @@ static unsigned char inquiry_bytes[] =
 
 
 Uint8 SCSIdisk_Send_Status(void) {
+    SCSIbus.phase = PHASE_MI;
     return SCSIdisk.status;
 }
 
@@ -125,7 +126,7 @@ void SCSIdisk_Send_Data(void) {
     /* Send one byte. If the transfer is complete, set status phase */
     SCSIdata.rpos++;
     if (SCSIdata.rpos==SCSIdata.size) {
-        scsi_phase = STAT_ST;
+        SCSIbus.phase = PHASE_ST;
     }
 }
 
@@ -134,7 +135,7 @@ void SCSIdisk_Receive_Data(void) {
      * and write the buffer contents to the disk. */
     SCSIdata.rpos++;
     if (SCSIdata.rpos==SCSIdata.size) {
-        scsi_phase = STAT_ST;
+        SCSIbus.phase = PHASE_ST;
         SCSI_WriteFromBuffer(*SCSIdata.buffer, SCSIdata.size); /* write to disk */
     }
 }
@@ -146,7 +147,7 @@ bool SCSIdisk_Select(Uint8 target) {
     /* If there is no disk present, return timeout true */
     if (SCSIdisk.dsk==NULL) {
         Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Selection timeout, target = %i", target);
-        scsi_phase = STAT_ST; /* TODO: Check what's the correct phase */
+        SCSIbus.phase = PHASE_ST; /* TODO: Check what's the correct phase */
         return true;
     } else {
         SCSIbus.target = target;
@@ -173,7 +174,7 @@ void SCSIdisk_Receive_Command(Uint8 *cdb, Uint8 identify) {
     }
 
     if (lun!=0 && opcode!=HD_REQ_SENSE && opcode!=HD_INQUIRY) {
-        scsi_phase = STAT_ST;
+        SCSIbus.phase = PHASE_ST;
         SCSIdisk.status = STAT_CHECK_COND; /* status: check condition */
         nLastError = HD_REQSENS_NODRIVE;
         return;
@@ -279,7 +280,7 @@ void SCSI_Emulate_Command(Uint8 opcode, Uint8 *cdb)
 
 
 /* Helpers */
-int SCSI_fill_data_buffer(void *buf, Uint32 size, bool disk) {
+int SCSI_FillDataBuffer(void *buf, Uint32 size, bool disk) {
     Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Filling buffer with %i bytes", size);
     memset(SCSIdata.buffer, 0, SCSI_BUFFER_SIZE); /* first clear buffer */
     SCSIdata.rpos = 0;
@@ -290,6 +291,18 @@ int SCSI_fill_data_buffer(void *buf, Uint32 size, bool disk) {
     } else {
         memcpy(SCSIdata.buffer, (Uint8 *)buf, size);
         return 0;
+    }
+}
+
+int SCSI_GetCommandLength(Uint8 opcode) {
+    Uint8 group_code = (opcode&0xE0)>>5;
+    switch (group_code) {
+        case 0: return 6;
+        case 1: return 10;
+        case 5: return 12;
+        default:
+            Log_Printf(LOG_WARN, "[SCSI] Unimplemented Group Code!");
+            return 6;
     }
 }
 
@@ -411,7 +424,7 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
 void SCSI_TestUnitReady(Uint8 *cdb)
 {
 	SCSIdisk.status = STAT_GOOD;
-    scsi_phase = STAT_ST;
+    SCSIbus.phase = PHASE_ST;
 }
 
 
@@ -434,10 +447,10 @@ void SCSI_ReadCapacity(Uint8 *cdb)
     
     int transfer_length = 8;
     
-    SCSI_fill_data_buffer(scsi_disksize, transfer_length, false);
+    SCSI_FillDataBuffer(scsi_disksize, transfer_length, false);
     
     SCSIdisk.status = STAT_GOOD;
-    scsi_phase = STAT_DI;
+    SCSIbus.phase = PHASE_DI;
     nLastError = HD_REQSENS_OK;
     
 	bSetLastBlockAddr = false;
@@ -459,11 +472,11 @@ void SCSI_WriteSector(Uint8 *cdb) {
     /* seek to the position */
     if ((SCSIdisk.dsk==NULL) || (fseek(SCSIdisk.dsk, nLastBlockAddr, SEEK_SET) != 0)) {
         SCSIdisk.status = STAT_CHECK_COND;
-        scsi_phase = STAT_ST;
+        SCSIbus.phase = PHASE_ST;
         nLastError = HD_REQSENS_INVADDR;
     } else {
         SCSIdisk.status = STAT_GOOD;
-        scsi_phase = STAT_DO;
+        SCSIbus.phase = PHASE_DO;
         nLastError = HD_REQSENS_OK;
     }
     /* Continued in SCSI_WriteFromBuffer() */
@@ -486,7 +499,7 @@ void SCSI_WriteFromBuffer(Uint8 *buf, Uint32 size) {
         nLastError = HD_REQSENS_OK;
     } else {
         SCSIdisk.status = STAT_CHECK_COND;
-        scsi_phase = STAT_ST;
+        SCSIbus.phase = PHASE_ST;
         nLastError = HD_REQSENS_NOSECTOR;
     }
 }
@@ -504,19 +517,19 @@ void SCSI_ReadSector(Uint8 *cdb)
 	/* seek to the position */
 	if ((SCSIdisk.dsk==NULL) || (fseek(SCSIdisk.dsk, nLastBlockAddr, SEEK_SET) != 0)) {
         SCSIdisk.status = STAT_CHECK_COND;
-        scsi_phase = STAT_ST;
+        SCSIbus.phase = PHASE_ST;
         nLastError = HD_REQSENS_INVADDR;
 	} else {
-        n = SCSI_fill_data_buffer(SCSIdisk.dsk, transfer_length, true);
+        n = SCSI_FillDataBuffer(SCSIdisk.dsk, transfer_length, true);
     }
 
     if (n == 1) {
         SCSIdisk.status = STAT_GOOD;
-        scsi_phase = STAT_DI;
+        SCSIbus.phase = PHASE_DI;
         nLastError = HD_REQSENS_OK;
     } else {
         SCSIdisk.status = STAT_CHECK_COND;
-        scsi_phase = STAT_ST;
+        SCSIbus.phase = PHASE_ST;
         nLastError = HD_REQSENS_NOSECTOR;
     }
     
@@ -558,14 +571,14 @@ void SCSI_Inquiry (Uint8 *cdb) {
 
     Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Inquiry data length: %d", transfer_lenght);
     
-    SCSI_fill_data_buffer(inquiry_bytes, transfer_lenght, false);
+    SCSI_FillDataBuffer(inquiry_bytes, transfer_lenght, false);
     
     Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Inquiry Data: %c,%c,%c,%c,%c,%c,%c,%c\n",SCSIdata.buffer[8],
                SCSIdata.buffer[9],SCSIdata.buffer[10],SCSIdata.buffer[11],SCSIdata.buffer[12],
                SCSIdata.buffer[13],SCSIdata.buffer[14],SCSIdata.buffer[15]);
                     
     SCSIdisk.status = STAT_GOOD;
-    scsi_phase = STAT_DI;
+    SCSIbus.phase = PHASE_DI;
 	nLastError = HD_REQSENS_OK;
 	bSetLastBlockAddr = false;
 }
@@ -573,7 +586,7 @@ void SCSI_Inquiry (Uint8 *cdb) {
 
 void SCSI_StartStop(Uint8 *cdb) {
     SCSIdisk.status = STAT_GOOD;
-    scsi_phase = STAT_ST;
+    SCSIbus.phase = PHASE_ST;
 }
 
 
@@ -582,7 +595,7 @@ void SCSI_RequestSense(Uint8 *cdb) {
 	Uint8 retbuf[22];
 
     SCSIdisk.status = STAT_GOOD;
-    scsi_phase = STAT_DI;
+    SCSIbus.phase = PHASE_DI;
         
 	nRetLen = SCSI_GetCount(cdb[0], cdb);
     
@@ -644,7 +657,7 @@ void SCSI_RequestSense(Uint8 *cdb) {
     
     int transfer_length = nRetLen;
     
-    SCSI_fill_data_buffer(retbuf, transfer_length, false);
+    SCSI_FillDataBuffer(retbuf, transfer_length, false);
 
     SCSIdisk.status = STAT_GOOD;
 }
@@ -763,10 +776,10 @@ void SCSI_ModeSense(Uint8 *cdb) {
     if (transfer_length > SCSI_GetTransferLength(cdb[0], cdb))
         transfer_length = SCSI_GetTransferLength(cdb[0], cdb);
     
-    SCSI_fill_data_buffer(retbuf, transfer_length, false);
+    SCSI_FillDataBuffer(retbuf, transfer_length, false);
     
     SCSIdisk.status = STAT_GOOD;
-    scsi_phase = STAT_DI;
+    SCSIbus.phase = PHASE_DI;
     nLastError = HD_REQSENS_OK;
     
 	bSetLastBlockAddr = false;

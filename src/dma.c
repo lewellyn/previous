@@ -426,7 +426,7 @@ void dma_esp_write_memory(void) {
         if (dma[CHANNEL_SCSI].next%DMA_BURST_SIZE) {
             Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Start memory address is not 16 byte aligned ($%08X).",
                        dma[CHANNEL_SCSI].next);
-            while ((dma[CHANNEL_SCSI].next+act_buf_size)%DMA_BURST_SIZE && esp_counter>0 && scsi_phase==STAT_DI) {
+            while ((dma[CHANNEL_SCSI].next+act_buf_size)%DMA_BURST_SIZE && esp_counter>0 && SCSIbus.phase==PHASE_DI) {
                 esp_counter--;
                 SCSIdisk_Send_Data();
                 act_buf_size++;
@@ -440,7 +440,7 @@ void dma_esp_write_memory(void) {
 
         while (dma[CHANNEL_SCSI].next<=dma[CHANNEL_SCSI].limit && act_buf_size==0) {
             /* Fill DMA internal buffer (no real buffer, we use an imaginary one) */
-            while (act_buf_size<DMA_BURST_SIZE && esp_counter>0 && scsi_phase==STAT_DI) {
+            while (act_buf_size<DMA_BURST_SIZE && esp_counter>0 && SCSIbus.phase==PHASE_DI) {
                 esp_counter--;
                 SCSIdisk_Send_Data();
                 act_buf_size++;
@@ -528,7 +528,7 @@ void dma_esp_read_memory(void) {
                 dma[CHANNEL_SCSI].next+=4;
                 act_buf_size+=4;
             }
-            while (act_buf_size>0 && esp_counter>0 && scsi_phase==STAT_DO) {
+            while (act_buf_size>0 && esp_counter>0 && SCSIbus.phase==PHASE_DO) {
                 esp_counter--;
                 SCSIdisk_Receive_Data();
                 act_buf_size--;
@@ -543,7 +543,7 @@ void dma_esp_read_memory(void) {
             dma[CHANNEL_SCSI].next+=DMA_BURST_SIZE;
             
             /* Empty DMA internal buffer */
-            while (act_buf_size>0 && esp_counter>0 && scsi_phase==STAT_DO) {
+            while (act_buf_size>0 && esp_counter>0 && SCSIbus.phase==PHASE_DO) {
                 esp_counter--;
                 SCSIdisk_Receive_Data();
                 act_buf_size--;
@@ -560,8 +560,9 @@ void dma_esp_read_memory(void) {
     if (act_buf_size!=0) {
         Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Residual bytes in DMA buffer: %i bytes",act_buf_size);
     }
-    if (scsi_phase==STAT_DO) {
+    if (SCSIbus.phase==PHASE_DO) {
         Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Warning! Data not yet written to disk.");
+        abort(); /* This should not happen */
     }
     
 #if DMAESP_DELAY > 0
