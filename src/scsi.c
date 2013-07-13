@@ -173,7 +173,10 @@ void SCSIdisk_Receive_Command(Uint8 *cdb, Uint8 identify) {
         lun = (cdb[1]&0xE0)>>5; /* use lun specified in CDB */
     }
 
+    Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Opcode = $%02x, target = %i, lun = %i\n", opcode, SCSIbus.target,lun);
+
     if (lun!=0 && opcode!=HD_REQ_SENSE && opcode!=HD_INQUIRY) {
+        Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Invalid lun! Check condition.\n");
         SCSIbus.phase = PHASE_ST;
         SCSIdisk.status = STAT_CHECK_COND; /* status: check condition */
         nLastError = HD_REQSENS_NODRIVE;
@@ -181,9 +184,7 @@ void SCSIdisk_Receive_Command(Uint8 *cdb, Uint8 identify) {
     }
     
     SCSIdisk.lun = lun;
-    
-    Log_Printf(LOG_SCSI_LEVEL, "SCSI command: Opcode = $%02x, target = %i, lun=%i\n", opcode, SCSIbus.target,SCSIdisk.lun);
-    
+        
     SCSI_Emulate_Command(opcode, cdb);
 }
 

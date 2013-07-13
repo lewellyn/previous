@@ -301,7 +301,7 @@ void ESP_Command_Write(void) {
             break;
         case CMD_SEL:
             Log_Printf(LOG_WARN, "ESP Command: select without ATN sequence\n");
-            abort();
+            esp_select(false);
             break;
         case CMD_SELATN:
             Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: select with ATN sequence\n");
@@ -423,7 +423,6 @@ void ESP_SyncOffset_Write(void) {
 void ESP_Configuration_Read(void) { // 0x02014008
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=configuration;
  	Log_Printf(LOG_ESPREG_LEVEL,"ESP Configuration read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-    //esp_raise_irq(); // experimental!
 }
 
 void ESP_Configuration_Write(void) {
@@ -590,7 +589,7 @@ void esp_bus_reset(void) {
         intstatus = INTR_RST;
         SCSIbus.phase = PHASE_MI; /* CHECK: why message in phase? */
         Log_Printf(LOG_ESPCMD_LEVEL,"[ESP] SCSI bus reset raising IRQ (configuration=$%02X)\n",configuration);
-        CycInt_AddRelativeInterrupt(50*33, INT_CPU_CYCLE, INTERRUPT_ESP); /* TODO: find correct timing, use actual cpu clock from preferences */
+        CycInt_AddRelativeInterrupt(5440*(32/ConfigureParams.System.nCpuFreq), INT_CPU_CYCLE, INTERRUPT_ESP); /* CHECK: how is this delay defined? */
     } else
         Log_Printf(LOG_ESPCMD_LEVEL,"[ESP] SCSI bus reset not interrupting (configuration=$%02X)\n",configuration);
 }
@@ -632,7 +631,6 @@ void esp_select(bool atn) {
     if(mode_dma == 1) {
         cmd_size = esp_counter;
         Log_Printf(LOG_WARN, "[ESP] Select: Reading command using DMA, size %i byte (not implemented!)",cmd_size);
-        //memcpy(commandbuf, dma_read_buffer, cmd_size); /* add DMA function here */
         abort();
     } else {
         if (atn) { /* Read identify message from FIFO */
@@ -655,7 +653,7 @@ void esp_select(bool atn) {
         esp_flush_fifo();
     }
     
-    Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Target: %i, Lun: %i",target,identify_msg&0x07);
+    Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Target: %i",target);
 
     SCSIdisk_Receive_Command(commandbuf, identify_msg);
     seqstep = 4;
