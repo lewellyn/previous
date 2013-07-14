@@ -402,7 +402,7 @@ void R2MDMA_InterruptHandler(void) {
 /* DMA Read and Write Memory Functions */
 
 /* Channel SCSI */
-#define DMAESP_DELAY 100 /* Delay for interrupt in microseconds */
+#define DMAESP_DELAY 5000 /* Delay for interrupt in microseconds */
 
 void dma_esp_write_memory(void) {
     Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Write to memory at $%08x, %i bytes (ESP counter %i)",

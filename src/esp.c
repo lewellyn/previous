@@ -34,12 +34,21 @@ SCSI_STATE esp_state;
 Uint8 esp_fifo_read(void);
 void esp_fifo_write(Uint8 val);
 
+/* ESP Command Register */
+Uint8 esp_cmd_state;
+#define ESP_CMD_INPROGRESS  0x01
+#define ESP_CMD_WAITING     0x02
+#define ESP_CMD_STATEMASK   0x03
+void esp_start_command(void);
+void esp_finish_command(void);
+void esp_command_clear(void);
+void esp_command_write(Uint8 cmd);
 
 /* ESP Registers */
 Uint8 writetranscountl;
 Uint8 writetranscounth;
 Uint8 fifo[ESP_FIFO_SIZE];
-Uint8 command;
+Uint8 command[2];
 Uint8 status;
 Uint8 selectbusid;
 Uint8 intstatus;
@@ -132,7 +141,8 @@ Uint32 esp_counter;
 Uint8 mode_dma;
 
 /* Experimental */
-#define ESP_CLOCK_FREQ  20 /* ESP is clocked at 20 MHz */
+#define ESP_CLOCK_FREQ  20      /* ESP is clocked at 20 MHz */
+#define ESP_DELAY       330000  /* Standard wait time for ESP interrupt (except bus reset and selection timeout) */
 
 
 /* ESP DMA control and status registers */
@@ -243,134 +253,13 @@ void ESP_FIFO_Write(void) {
 }
 
 void ESP_Command_Read(void) { // 0x02014003
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=command;
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK]=command[0];
  	Log_Printf(LOG_ESPREG_LEVEL,"ESP Command read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void ESP_Command_Write(void) {
-    command=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+    esp_command_write(IoMem[IoAccessCurrentAddress & IO_SEG_MASK]);
  	Log_Printf(LOG_ESPREG_LEVEL,"ESP Command write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-        
-    /* Check if command is valid for actual state */
-    if ((command&CMD_TYP_MASK)!=CMD_TYP_MSC) {
-        if ((esp_state==TARGET && !(command&CMD_TYP_TGT)) ||
-            (esp_state==INITIATOR && !(command&CMD_TYP_INR)) ||
-            (esp_state==DISCONNECTED && !(command&CMD_TYP_DIS))) {
-            Log_Printf(LOG_WARN, "ESP Command: Illegal command for actual ESP state ($%02X)!\n",command);
-            command = 0x00;
-            intstatus |= INTR_ILL;
-            esp_raise_irq();
-            return;
-        }
-    }
-    
-    /* Check if the command is a DMA command */
-    if (command & CMD_DMA) {
-        /* Load the internal counter on every DMA command, do not decrement actual registers! */
-        esp_counter = writetranscountl | (writetranscounth << 8);
-        if (esp_counter == 0) { /* 0 means maximum value */
-            esp_counter = 0x10000;
-        }
-        status &= ~STAT_TC;
-        mode_dma = 1;
-    } else {
-        mode_dma = 0;
-    }
-    
-    switch (command & CMD_CMD) {
-            /* Miscellaneous */
-        case CMD_NOP:
-            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: NOP\n");
-            break;
-        case CMD_FLUSH:
-            Log_Printf(LOG_ESPCMD_LEVEL,"ESP Command: flush FIFO\n");
-            esp_flush_fifo();
-            break;
-        case CMD_RESET:
-            Log_Printf(LOG_ESPCMD_LEVEL,"ESP Command: reset chip\n");
-            esp_reset_hard();
-            break;
-        case CMD_BUSRESET:
-            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: reset SCSI bus\n");
-            esp_bus_reset();
-            break;
-            /* Disconnected */
-        case CMD_RESEL:
-            Log_Printf(LOG_WARN, "ESP Command: reselect sequence\n");
-            abort();
-            break;
-        case CMD_SEL:
-            Log_Printf(LOG_WARN, "ESP Command: select without ATN sequence\n");
-            esp_select(false);
-            break;
-        case CMD_SELATN:
-            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: select with ATN sequence\n");
-            esp_select(true);
-            break;
-        case CMD_SELATNS:
-            Log_Printf(LOG_WARN, "ESP Command: select with ATN and stop sequence\n");
-            abort();
-            break;
-        case CMD_ENSEL:
-            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: enable selection/reselection\n");
-            /* Our disk doesn't do reselections */
-            break;
-        case CMD_DISSEL:
-            Log_Printf(LOG_WARN, "ESP Command: disable selection/reselection\n");
-            intstatus = INTR_FC;
-            abort();
-            esp_raise_irq();
-            break;
-            /* Initiator */
-        case CMD_TI:
-            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: transfer information\n");
-            esp_transfer_info();
-            break;
-        case CMD_ICCS:
-            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: initiator command complete sequence\n");
-            esp_initiator_command_complete();
-            break;
-        case CMD_MSGACC:
-            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: message accepted\n");
-            esp_message_accepted();
-            break;            
-        case CMD_PAD:
-            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: transfer pad\n");
-            esp_transfer_pad();
-            break;
-        case CMD_SATN:
-            Log_Printf(LOG_WARN, "ESP Command: set ATN\n");
-            break;
-            /* Target */
-        case CMD_SEMSG:
-        case CMD_SESTAT:
-        case CMD_SEDAT:
-        case CMD_DISSEQ:
-        case CMD_TERMSEQ:
-        case CMD_TCCS:
-        case CMD_RMSGSEQ:
-        case CMD_RCOMM:
-        case CMD_RDATA:
-        case CMD_RCSEQ:
-            Log_Printf(LOG_WARN, "ESP Command: Target commands not emulated!\n");
-            abort();
-            break;
-        case CMD_DIS:
-            Log_Printf(LOG_WARN, "ESP Command: DISCONNECT not emulated!\n");
-            abort();
-            SCSIbus.phase = PHASE_ST;
-            intstatus = INTR_DC; 
-            seqstep = SEQ_0;
-            break;
-
-            
-        default:
-            Log_Printf(LOG_WARN, "ESP Command: Illegal command!\n");
-            command = 0x00;
-            intstatus |= INTR_ILL;
-            esp_raise_irq();
-            break;
-    }
 }
 
 void ESP_Status_Read(void) { // 0x02014004
@@ -482,6 +371,182 @@ void esp_fifo_write(Uint8 val) {
     }
 }
 
+/* Functions for handling dual ranked command register */
+void esp_command_write(Uint8 cmd) {
+    if ((command[0]&CMD_CMD)==CMD_RESET && (cmd&CMD_CMD)!=CMD_NOP) {
+        Log_Printf(LOG_WARN, "ESP command write: Chip reset in command register, not executing command.\n");
+        return;
+    }
+    
+    if ((cmd&CMD_CMD)==CMD_RESET || (cmd&CMD_CMD)==CMD_BUSRESET) {
+        command[0] = cmd;
+        esp_start_command();
+        return;
+    }
+    
+    switch (esp_cmd_state&ESP_CMD_STATEMASK) {
+        case 0:
+            command[0] = cmd;
+            esp_start_command();
+            break;
+        case (ESP_CMD_INPROGRESS|ESP_CMD_WAITING):
+        case ESP_CMD_WAITING: /* this should not happen */
+            Log_Printf(LOG_WARN, "ESP command write: Error! Top of command register overwritten.\n");
+            command[1] = cmd;
+            status |= STAT_GE;
+            break;
+        case ESP_CMD_INPROGRESS:
+            command[1] = cmd;
+            esp_cmd_state |= ESP_CMD_WAITING;
+            break;
+            
+        default: break;
+    }
+}
+
+void esp_command_clear(void) {
+    if ((command[0]&CMD_CMD)==CMD_RESET) {
+        command[1] = 0x00;
+        esp_cmd_state &= ~ESP_CMD_WAITING;
+    }
+    command[0] = command[1] = 0x00;
+    esp_cmd_state &= ~ESP_CMD_WAITING;
+}
+
+void esp_start_command(void) {
+    esp_cmd_state |= ESP_CMD_INPROGRESS;
+    
+    /* Check if command is valid for actual state */
+    if ((command[0]&CMD_TYP_MASK)!=CMD_TYP_MSC) {
+        if ((esp_state==TARGET && !(command[0]&CMD_TYP_TGT)) ||
+            (esp_state==INITIATOR && !(command[0]&CMD_TYP_INR)) ||
+            (esp_state==DISCONNECTED && !(command[0]&CMD_TYP_DIS))) {
+            Log_Printf(LOG_WARN, "ESP Command: Illegal command for actual ESP state ($%02X)!\n",command[0]);
+            esp_command_clear();
+            intstatus |= INTR_ILL;
+            CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
+            return;
+        }
+    }
+    
+    /* Check if the command is a DMA command */
+    if (command[0] & CMD_DMA) {
+        /* Load the internal counter on every DMA command, do not decrement actual registers! */
+        esp_counter = writetranscountl | (writetranscounth << 8);
+        if (esp_counter == 0) { /* 0 means maximum value */
+            esp_counter = 0x10000;
+        }
+        status &= ~STAT_TC;
+        mode_dma = 1;
+    } else {
+        mode_dma = 0;
+    }
+    
+    switch (command[0] & CMD_CMD) {
+            /* Miscellaneous */
+        case CMD_NOP:
+            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: NOP\n");
+            esp_finish_command();
+            break;
+        case CMD_FLUSH:
+            Log_Printf(LOG_ESPCMD_LEVEL,"ESP Command: flush FIFO\n");
+            esp_flush_fifo();
+            break;
+        case CMD_RESET:
+            Log_Printf(LOG_ESPCMD_LEVEL,"ESP Command: reset chip\n");
+            esp_reset_hard();
+            break;
+        case CMD_BUSRESET:
+            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: reset SCSI bus\n");
+            esp_bus_reset();
+            break;
+            /* Disconnected */
+        case CMD_RESEL:
+            Log_Printf(LOG_WARN, "ESP Command: reselect sequence\n");
+            abort();
+            break;
+        case CMD_SEL:
+            Log_Printf(LOG_WARN, "ESP Command: select without ATN sequence\n");
+            esp_select(false);
+            break;
+        case CMD_SELATN:
+            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: select with ATN sequence\n");
+            esp_select(true);
+            break;
+        case CMD_SELATNS:
+            Log_Printf(LOG_WARN, "ESP Command: select with ATN and stop sequence\n");
+            abort();
+            break;
+        case CMD_ENSEL:
+            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: enable selection/reselection\n");
+            esp_finish_command(); /* Our disk doesn't do reselections */
+            break;
+        case CMD_DISSEL:
+            Log_Printf(LOG_WARN, "ESP Command: disable selection/reselection\n");
+            abort();
+            break;
+            /* Initiator */
+        case CMD_TI:
+            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: transfer information\n");
+            esp_transfer_info();
+            break;
+        case CMD_ICCS:
+            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: initiator command complete sequence\n");
+            esp_initiator_command_complete();
+            break;
+        case CMD_MSGACC:
+            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: message accepted\n");
+            esp_message_accepted();
+            break;
+        case CMD_PAD:
+            Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: transfer pad\n");
+            esp_transfer_pad();
+            break;
+        case CMD_SATN:
+            Log_Printf(LOG_WARN, "ESP Command: set ATN\n");
+            abort();
+            break;
+            /* Target */
+        case CMD_SEMSG:
+        case CMD_SESTAT:
+        case CMD_SEDAT:
+        case CMD_DISSEQ:
+        case CMD_TERMSEQ:
+        case CMD_TCCS:
+        case CMD_RMSGSEQ:
+        case CMD_RCOMM:
+        case CMD_RDATA:
+        case CMD_RCSEQ:
+            Log_Printf(LOG_WARN, "ESP Command: Target commands not emulated!\n");
+            abort();
+            break;
+        case CMD_DIS:
+            Log_Printf(LOG_WARN, "ESP Command: DISCONNECT not emulated!\n");
+            abort();
+            SCSIbus.phase = PHASE_ST;
+            intstatus = INTR_DC;
+            seqstep = SEQ_0;
+            break;
+            
+        default:
+            Log_Printf(LOG_WARN, "ESP Command: Illegal command!\n");
+            esp_command_clear();
+            intstatus |= INTR_ILL;
+            CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
+            break;
+    }
+}
+
+void esp_finish_command(void) {
+    esp_cmd_state &= ~ESP_CMD_INPROGRESS;
+    if (esp_cmd_state&ESP_CMD_WAITING) {
+        command[0] = command[1];
+        command[1] = 0x00;
+        esp_cmd_state &= ~ESP_CMD_WAITING;
+        esp_start_command();
+    }
+}
+
 
 /* This is the handler function for ESP delayed interrupts */
 void ESP_InterruptHandler(void) {
@@ -542,6 +607,8 @@ void esp_lower_irq(void) {
         set_interrupt(INT_SCSI, RELEASE_INT);
         
         Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Lower IRQ\n");
+        
+        esp_finish_command();
     }
 }
 
@@ -576,7 +643,7 @@ void esp_reset_soft(void) {
     /* writetranscountl, writetranscounth, selectbusid, selecttimeout are not initialized by reset */
 
     /* This part is "disconnect reset" */
-    command = 0x00;
+    esp_command_clear();
     esp_state = DISCONNECTED;
 }
 
@@ -590,8 +657,10 @@ void esp_bus_reset(void) {
         SCSIbus.phase = PHASE_MI; /* CHECK: why message in phase? */
         Log_Printf(LOG_ESPCMD_LEVEL,"[ESP] SCSI bus reset raising IRQ (configuration=$%02X)\n",configuration);
         CycInt_AddRelativeInterrupt(5440*(32/ConfigureParams.System.nCpuFreq), INT_CPU_CYCLE, INTERRUPT_ESP); /* CHECK: how is this delay defined? */
-    } else
+    } else {
         Log_Printf(LOG_ESPCMD_LEVEL,"[ESP] SCSI bus reset not interrupting (configuration=$%02X)\n",configuration);
+        esp_finish_command();
+    }
 }
 
 
@@ -602,6 +671,7 @@ void esp_flush_fifo(void) {
         fifo[i] = 0;
     }
     fifoflags &= 0xE0;
+    esp_finish_command();
 }
 
 
@@ -618,8 +688,8 @@ void esp_select(bool atn) {
     bool timeout = SCSIdisk_Select(target);
     if (timeout) {
         /* If a timeout occurs, generate disconnect interrupt */
-        command = 0x00;
         intstatus = INTR_DC;
+        esp_command_clear();
         esp_state = DISCONNECTED;
         int seltout = (selecttimeout * 8192 * clockconv) / ESP_CLOCK_FREQ; /* timeout in microseconds */
         Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Target %i, timeout after %i microseconds",target,seltout);
@@ -657,12 +727,12 @@ void esp_select(bool atn) {
 
     SCSIdisk_Receive_Command(commandbuf, identify_msg);
     seqstep = 4;
-    command = 0x00;
+    esp_command_clear();
 
     intstatus = INTR_BS | INTR_FC;
     
     esp_state = INITIATOR;
-    esp_raise_irq();
+    CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
 }
 
 
@@ -675,11 +745,11 @@ void esp_dma_done(bool write) {
     if (esp_counter == 0) { /* Transfer done */
         intstatus = INTR_FC;
         status |= STAT_TC;
-        esp_raise_irq();
+        CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
     } else if ((write && SCSIbus.phase!=PHASE_DI) || (!write && SCSIbus.phase!=PHASE_DO)) { /* Phase change detected */
-        command = 0x00;
+        esp_command_clear();
         intstatus = INTR_BS;
-        esp_raise_irq();
+        CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
     } /* else continue transfering data using DMA, no interrupt */
 }
 
@@ -687,7 +757,6 @@ void esp_dma_done(bool write) {
 /* Transfer information */
 void esp_transfer_info(void) {
     if(mode_dma) {
-        status &= ~STAT_TC;
         
         switch (SCSIbus.phase) {
             case PHASE_DI:
@@ -750,9 +819,9 @@ void esp_initiator_command_complete(void) {
         esp_fifo_write(SCSIdisk_Send_Status()); /* Disk sets phase to msg in after status send */
 
         if (SCSIbus.phase!=PHASE_MI) { /* Stop sequence if no phase change to msg in occured */
-            command = 0x00;
+            esp_command_clear();
             intstatus = INTR_BS;
-            esp_raise_irq();
+            CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
             return;
         }
         
@@ -761,7 +830,7 @@ void esp_initiator_command_complete(void) {
     }
 
     intstatus = INTR_FC;
-    esp_raise_irq();
+    CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
 }
 
 
@@ -770,7 +839,7 @@ void esp_message_accepted(void) {
     SCSIbus.phase = PHASE_ST; /* set at the end of iccs? */
     intstatus = INTR_BS;
     esp_state = DISCONNECTED; /* CHECK: only disconnected if message was cmd complete? */
-    esp_raise_irq();
+    CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
 }
 
 
