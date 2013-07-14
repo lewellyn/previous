@@ -38,8 +38,7 @@ void esp_fifo_write(Uint8 val);
 Uint8 esp_cmd_state;
 #define ESP_CMD_INPROGRESS  0x01
 #define ESP_CMD_WAITING     0x02
-#define ESP_CMD_STATEMASK   0x03
-void esp_start_command(void);
+void esp_start_command(Uint8 cmd);
 void esp_finish_command(void);
 void esp_command_clear(void);
 void esp_command_write(Uint8 cmd);
@@ -373,55 +372,58 @@ void esp_fifo_write(Uint8 val) {
 
 /* Functions for handling dual ranked command register */
 void esp_command_write(Uint8 cmd) {
-    if ((command[0]&CMD_CMD)==CMD_RESET && (cmd&CMD_CMD)!=CMD_NOP) {
+    if ((command[1]&CMD_CMD)==CMD_RESET && (cmd&CMD_CMD)!=CMD_NOP) {
         Log_Printf(LOG_WARN, "ESP command write: Chip reset in command register, not executing command.\n");
-        return;
-    }
-    
-    if ((cmd&CMD_CMD)==CMD_RESET || (cmd&CMD_CMD)==CMD_BUSRESET) {
-        command[0] = cmd;
-        esp_start_command();
-        return;
-    }
-    
-    switch (esp_cmd_state&ESP_CMD_STATEMASK) {
-        case 0:
-            command[0] = cmd;
-            esp_start_command();
-            break;
-        case (ESP_CMD_INPROGRESS|ESP_CMD_WAITING):
-        case ESP_CMD_WAITING: /* this should not happen */
+    } else {
+        command[1] = cmd;
+        
+        if (esp_cmd_state&ESP_CMD_WAITING) {
             Log_Printf(LOG_WARN, "ESP command write: Error! Top of command register overwritten.\n");
-            command[1] = cmd;
             status |= STAT_GE;
-            break;
-        case ESP_CMD_INPROGRESS:
-            command[1] = cmd;
-            esp_cmd_state |= ESP_CMD_WAITING;
-            break;
-            
-        default: break;
+        }
+    }
+    
+    if ((command[1]&CMD_CMD)==CMD_RESET || (command[1]&CMD_CMD)==CMD_BUSRESET) {
+        esp_start_command(command[1]);
+        return;
+    }
+    
+    if (esp_cmd_state&ESP_CMD_INPROGRESS) {
+        esp_cmd_state |= ESP_CMD_WAITING;
+    } else {
+        command[0] = command[1];
+        command[1] = 0x00;
+        esp_start_command(command[0]);
     }
 }
 
 void esp_command_clear(void) {
-    if ((command[0]&CMD_CMD)==CMD_RESET) {
+    command[0] = 0x00;
+    if ((command[1]&CMD_CMD)!=CMD_RESET) {
         command[1] = 0x00;
         esp_cmd_state &= ~ESP_CMD_WAITING;
     }
-    command[0] = command[1] = 0x00;
-    esp_cmd_state &= ~ESP_CMD_WAITING;
 }
 
-void esp_start_command(void) {
+void esp_finish_command(void) {
+    esp_cmd_state &= ~ESP_CMD_INPROGRESS;
+    if (esp_cmd_state&ESP_CMD_WAITING) {
+        command[0] = command[1];
+        command[1] = 0x00;
+        esp_cmd_state &= ~ESP_CMD_WAITING;
+        esp_start_command(command[0]);
+    }
+}
+
+void esp_start_command(Uint8 cmd) {
     esp_cmd_state |= ESP_CMD_INPROGRESS;
     
     /* Check if command is valid for actual state */
-    if ((command[0]&CMD_TYP_MASK)!=CMD_TYP_MSC) {
-        if ((esp_state==TARGET && !(command[0]&CMD_TYP_TGT)) ||
-            (esp_state==INITIATOR && !(command[0]&CMD_TYP_INR)) ||
-            (esp_state==DISCONNECTED && !(command[0]&CMD_TYP_DIS))) {
-            Log_Printf(LOG_WARN, "ESP Command: Illegal command for actual ESP state ($%02X)!\n",command[0]);
+    if ((cmd&CMD_TYP_MASK)!=CMD_TYP_MSC) {
+        if ((esp_state==TARGET && !(cmd&CMD_TYP_TGT)) ||
+            (esp_state==INITIATOR && !(cmd&CMD_TYP_INR)) ||
+            (esp_state==DISCONNECTED && !(cmd&CMD_TYP_DIS))) {
+            Log_Printf(LOG_WARN, "ESP Command: Illegal command for actual ESP state ($%02X)!\n",cmd);
             esp_command_clear();
             intstatus |= INTR_ILL;
             CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
@@ -430,7 +432,7 @@ void esp_start_command(void) {
     }
     
     /* Check if the command is a DMA command */
-    if (command[0] & CMD_DMA) {
+    if (cmd & CMD_DMA) {
         /* Load the internal counter on every DMA command, do not decrement actual registers! */
         esp_counter = writetranscountl | (writetranscounth << 8);
         if (esp_counter == 0) { /* 0 means maximum value */
@@ -442,7 +444,7 @@ void esp_start_command(void) {
         mode_dma = 0;
     }
     
-    switch (command[0] & CMD_CMD) {
+    switch (cmd & CMD_CMD) {
             /* Miscellaneous */
         case CMD_NOP:
             Log_Printf(LOG_ESPCMD_LEVEL, "ESP Command: NOP\n");
@@ -537,16 +539,6 @@ void esp_start_command(void) {
     }
 }
 
-void esp_finish_command(void) {
-    esp_cmd_state &= ~ESP_CMD_INPROGRESS;
-    if (esp_cmd_state&ESP_CMD_WAITING) {
-        command[0] = command[1];
-        command[1] = 0x00;
-        esp_cmd_state &= ~ESP_CMD_WAITING;
-        esp_start_command();
-    }
-}
-
 
 /* This is the handler function for ESP delayed interrupts */
 void ESP_InterruptHandler(void) {
@@ -627,6 +619,7 @@ void esp_reset_hard(void) {
     intstatus = 0x00;
     status &= ~(STAT_VGC | STAT_PE | STAT_GE); // need valid group code bit? clear transfer complete aka valid group code, parity error, gross error
     esp_reset_soft();
+    esp_finish_command();
 }
 
 
