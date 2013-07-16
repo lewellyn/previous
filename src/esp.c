@@ -30,9 +30,9 @@ SCSI_STATE esp_state;
 
 /* ESP FIFO */
 #define ESP_FIFO_SIZE 16
-
 Uint8 esp_fifo_read(void);
 void esp_fifo_write(Uint8 val);
+void esp_fifo_clear(void);
 
 /* ESP Command Register */
 Uint8 esp_cmd_state;
@@ -370,6 +370,14 @@ void esp_fifo_write(Uint8 val) {
     }
 }
 
+void esp_fifo_clear(void) {
+    int i;
+    for (i=0; i<ESP_FIFO_SIZE; i++) {
+        fifo[i] = 0;
+    }
+    fifoflags &= 0xE0;
+}
+
 /* Functions for handling dual ranked command register */
 void esp_command_write(Uint8 cmd) {
     if ((command[1]&CMD_CMD)==CMD_RESET && (cmd&CMD_CMD)!=CMD_NOP) {
@@ -612,12 +620,13 @@ void esp_reset_hard(void) {
 
     clockconv = 0x02;
     configuration &= ~0xF8; // clear chip test mode, parity enable, parity test, scsi request/int disable, slow cable mode
-    esp_flush_fifo();
+    esp_fifo_clear();
     syncperiod = 0x05;
     syncoffset = 0x00;
-    esp_lower_irq();
+    status &= ~STAT_INT; // release interrupt
+    set_interrupt(INT_SCSI, RELEASE_INT);
     intstatus = 0x00;
-    status &= ~(STAT_VGC | STAT_PE | STAT_GE); // need valid group code bit? clear transfer complete aka valid group code, parity error, gross error
+    status &= ~(STAT_VGC | STAT_PE | STAT_GE); // clear transfer complete aka valid group code, parity error, gross error
     esp_reset_soft();
     esp_finish_command();
 }
@@ -659,11 +668,7 @@ void esp_bus_reset(void) {
 
 /* Flush FIFO */
 void esp_flush_fifo(void) {
-    int i;
-    for (i=0; i<ESP_FIFO_SIZE; i++) {
-        fifo[i] = 0;
-    }
-    fifoflags &= 0xE0;
+    esp_fifo_clear();
     esp_finish_command();
 }
 
@@ -712,8 +717,6 @@ void esp_select(bool atn) {
         }
 
         Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Reading command from FIFO, size: %i byte",cmd_size);
-
-        esp_flush_fifo();
     }
     
     Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Select: Target: %i",target);
