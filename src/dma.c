@@ -27,39 +27,42 @@
 int act_buf_size = 0;
 
 
+/* Read and write CSR bits for 68030 based NeXT Computer. */
+
 /* read CSR bits */
-#define DMA_ENABLE      0x01000000 /* enable dma transfer */
-#define DMA_SUPDATE     0x02000000 /* single update */
-#define DMA_COMPLETE    0x08000000 /* current dma has completed */
-#define DMA_BUSEXC      0x10000000 /* bus exception occurred */
+#define DMA_ENABLE      0x01   /* enable dma transfer */
+#define DMA_SUPDATE     0x02   /* single update */
+#define DMA_COMPLETE    0x08   /* current dma has completed */
+#define DMA_BUSEXC      0x10   /* bus exception occurred */
 /* write CSR bits */
-#define DMA_SETENABLE   0x00010000 /* set enable */
-#define DMA_SETSUPDATE  0x00020000 /* set single update */
-#define DMA_M2DEV       0x00000000 /* dma from mem to dev */
-#define DMA_DEV2M       0x00040000 /* dma from dev to mem */
-#define DMA_CLRCOMPLETE 0x00080000 /* clear complete conditional */
-#define DMA_RESET       0x00100000 /* clr cmplt, sup, enable */
-#define DMA_INITBUF     0x00200000 /* initialize DMA buffers */
+#define DMA_SETENABLE   0x01   /* set enable */
+#define DMA_SETSUPDATE  0x02   /* set single update */
+#define DMA_M2DEV       0x00   /* dma from mem to dev */
+#define DMA_DEV2M       0x04   /* dma from dev to mem */
+#define DMA_CLRCOMPLETE 0x08   /* clear complete conditional */
+#define DMA_RESET       0x10   /* clr cmplt, sup, enable */
+#define DMA_INITBUF     0x20   /* initialize DMA buffers */
+
 /* CSR masks */
 #define DMA_CMD_MASK    (DMA_SETENABLE|DMA_SETSUPDATE|DMA_CLRCOMPLETE|DMA_RESET|DMA_INITBUF)
 #define DMA_STAT_MASK   (DMA_ENABLE|DMA_SUPDATE|DMA_COMPLETE|DMA_BUSEXC)
 
 
-/* Read and write CSR bits for 68030 based NeXT Computer.
- * We convert these to 68040 values before using in functions.
+/* Read and write CSR bits for 68040 based Machines.
+ * We convert these to 68030 values before using in functions.
  * read CSR bits *
- #define DMA_ENABLE      0x01
- #define DMA_SUPDATE     0x02
- #define DMA_COMPLETE    0x08
- #define DMA_BUSEXC      0x10
+ #define DMA_ENABLE      0x01000000
+ #define DMA_SUPDATE     0x02000000
+ #define DMA_COMPLETE    0x08000000
+ #define DMA_BUSEXC      0x10000000
  * write CSR bits *
- #define DMA_SETENABLE   0x01
- #define DMA_SETSUPDATE  0x02
- #define DMA_M2DEV       0x00
- #define DMA_DEV2M       0x04
- #define DMA_CLRCOMPLETE 0x08
- #define DMA_RESET       0x10
- #define DMA_INITBUF     0x20
+ #define DMA_SETENABLE   0x00010000
+ #define DMA_SETSUPDATE  0x00020000
+ #define DMA_M2DEV       0x00000000
+ #define DMA_DEV2M       0x00040000
+ #define DMA_CLRCOMPLETE 0x00080000
+ #define DMA_RESET       0x00100000
+ #define DMA_INITBUF     0x00200000
  */
 
 
@@ -124,31 +127,18 @@ int get_interrupt_type(int channel) {
 
 void DMA_CSR_Read(void) { // 0x02000010, length of register is byte on 68030 based NeXT Computer
     int channel = get_channel(IoAccessCurrentAddress);
-
-    if (ConfigureParams.System.nMachineType==NEXT_CUBE030) { // for 68030 based NeXT Computer
-        Uint8 csr030 = dma[channel].csr>>24;
-        IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = csr030;
-        IoMem[(IoAccessCurrentAddress+1) & IO_SEG_MASK] = IoMem[(IoAccessCurrentAddress+2) & IO_SEG_MASK] = IoMem[(IoAccessCurrentAddress+3) & IO_SEG_MASK] = 0x00; // just to be sure
-        Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, csr030, m68k_getpc());
-    } else {
-        IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].csr);
-        Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].csr, m68k_getpc());
-    }
+    
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = dma[channel].csr;
+    IoMem[(IoAccessCurrentAddress+1) & IO_SEG_MASK] = IoMem[(IoAccessCurrentAddress+2) & IO_SEG_MASK] = IoMem[(IoAccessCurrentAddress+3) & IO_SEG_MASK] = 0x00; // just to be sure
+    Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].csr, m68k_getpc());
 }
 
 void DMA_CSR_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress);
     int interrupt = get_interrupt_type(channel);
-    Uint32 writecsr;
+    Uint8 writecsr = IoMem[IoAccessCurrentAddress & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+1) & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+2) & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+3) & IO_SEG_MASK];
 
-    if (ConfigureParams.System.nMachineType==NEXT_CUBE030) { // for 68030 based NeXT Computer
-        Uint8 csr030 = IoMem[IoAccessCurrentAddress & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+1) & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+2) & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+3) & IO_SEG_MASK];
-        writecsr = csr030<<16;
-        Log_Printf(LOG_DMA_LEVEL,"DMA CSR write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, csr030, m68k_getpc());
-    } else {
-        writecsr = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-        Log_Printf(LOG_DMA_LEVEL,"DMA CSR write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, writecsr, m68k_getpc());
-    }
+    Log_Printf(LOG_DMA_LEVEL,"DMA CSR write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, writecsr, m68k_getpc());
     
     /* For debugging */
     if(writecsr&DMA_DEV2M)

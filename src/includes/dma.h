@@ -60,7 +60,7 @@ void R2MDMA_InterruptHandler(void);
 /* DMA registers */
 
 typedef struct {
-    Uint32 csr;
+    Uint8 csr;
     Uint32 saved_next;
     Uint32 saved_limit;
     Uint32 saved_start;
@@ -72,7 +72,7 @@ typedef struct {
     Uint32 init;
     Uint32 size;
     
-    Uint32 direction;
+    Uint8 direction;
 } DMA_CONTROL;
 
 DMA_CONTROL dma[16];
