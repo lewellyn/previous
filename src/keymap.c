@@ -187,11 +187,13 @@ void Keycode_Read(void) {
     //Log_Printf(LOG_WARN, "Keycode read at $%08x PC=$%08x\n", IoAccessCurrentAddress, m68k_getpc());
     //IoMem[0xe002]=0x93;
     monitor_csr.status_kbdmouse = DTX_PEND | CTX | RESET | TXLOOP;
-    IoMem[0xe008]=0x10;
+    IoMem[0xe008]=0x30;
     
     IoMem[0xe00a]=modkeys; // Set modifier Keys
     IoMem[0xe00b]=nextkeycode; // Press virtual Key
     nextkeycode=nextkeycode | 0x80; // Automatically release virtual Key
+    
+    /* TODO: reading here should clear interrupt */
 }
 
 
