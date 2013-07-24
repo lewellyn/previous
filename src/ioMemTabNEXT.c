@@ -24,6 +24,7 @@ const char IoMemTabST_fileid[] = "Previous ioMemTabST.c : " __DATE__ " " __TIME_
 #include "dma.h"
 #include "scc.h"
 #include "mo.h"
+#include "kms.h"
 
 
 
@@ -175,15 +176,12 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
 	{ 0x0200d003, SIZE_BYTE, SCR2_Read3, SCR2_Write3 },
 
  	/* Monitor Registers (Keyboard, Mouse, Sound) */
-    { 0x0200e000, SIZE_BYTE, Monitor_CSR_Read, Monitor_CSR_Write },
-	{ 0x0200e001, SIZE_BYTE, Monitor_CSR_Read, Monitor_CSR_Write },
-	{ 0x0200e002, SIZE_BYTE, Monitor_CSR_Read, Monitor_CSR_Write },
-    { 0x0200e003, SIZE_BYTE, Monitor_CSR_Read, Monitor_CSR_Write },
-	{ 0x0200e004, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
-	{ 0x0200e005, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
-	{ 0x0200e006, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
-	{ 0x0200e007, SIZE_BYTE, IoMem_ReadWithoutInterception, IoMem_WriteWithoutInterception },
-    { 0x0200e008, SIZE_LONG, Keycode_Read, IoMem_WriteWithoutInterceptionButTrace },
+    { 0x0200e000, SIZE_BYTE, KMS_Stat_Snd_Read, KMS_Ctrl_Snd_Write },
+    { 0x0200e001, SIZE_BYTE, KMS_Stat_KM_Read, KMS_Ctrl_KM_Write },
+    { 0x0200e002, SIZE_BYTE, KMS_Stat_TX_Read, KMS_Ctrl_TX_Write },
+    { 0x0200e003, SIZE_BYTE, KMS_Stat_Cmd_Read, KMS_Ctrl_Cmd_Write },
+    { 0x0200e004, SIZE_LONG, KMS_Data_Read, KMS_Data_Write },
+    { 0x0200e008, SIZE_LONG, KMS_KM_Data_Read, IoMem_WriteWithoutInterceptionButTrace },
 
     /* Printer Register */
     { 0x0200f000, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
