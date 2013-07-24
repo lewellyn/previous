@@ -658,7 +658,8 @@ void esp_bus_reset(void) {
         intstatus = INTR_RST;
         SCSIbus.phase = PHASE_MI; /* CHECK: why message in phase? */
         Log_Printf(LOG_ESPCMD_LEVEL,"[ESP] SCSI bus reset raising IRQ (configuration=$%02X)\n",configuration);
-        CycInt_AddRelativeInterrupt(5440*(32/ConfigureParams.System.nCpuFreq), INT_CPU_CYCLE, INTERRUPT_ESP); /* CHECK: how is this delay defined? */
+        int wait = (ConfigureParams.System.nCpuLevel==3)?400:5440;
+        CycInt_AddRelativeInterrupt(wait*(32/ConfigureParams.System.nCpuFreq), INT_CPU_CYCLE, INTERRUPT_ESP); /* CHECK: how is this delay defined? */
     } else {
         Log_Printf(LOG_ESPCMD_LEVEL,"[ESP] SCSI bus reset not interrupting (configuration=$%02X)\n",configuration);
         esp_finish_command();

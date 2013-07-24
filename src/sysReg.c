@@ -936,8 +936,8 @@ void set_interrupt(Uint32 interrupt_val, Uint8 int_set_release) {
             break;
     }
  
-    if ((interrupt_val & intMask)==0) {
-	Log_Printf(LOG_WARN,"[INT] interrupt is masked %04x mask %04x %s at %d",interrupt_val,intMask,__FILE__,__LINE__);
+    if (!(interrupt_val&intMask) && int_set_release==SET_INT) {
+	Log_Printf(LOG_WARN,"[INT] interrupt is masked %08X mask %08X %s at %d",interrupt_val,intMask,__FILE__,__LINE__);
 	return;
     }
    

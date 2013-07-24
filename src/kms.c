@@ -229,16 +229,16 @@ void KMS_KM_Data_Read(void) {
 }
 
 void kms_keydown(Uint8 modkeys, Uint8 keycode) {
-    if ((keycode==0x26)&&(modkeys&0x18)) { /* Tilde and one or both command keys */
+    if ((keycode==0x26)&&(modkeys&0x18)) { /* backquote and one or both command keys */
         set_interrupt(INT_NMI, SET_INT);
     }
     
-    if ((keycode==0x25)&&(modkeys==0x24)) {
+    if ((keycode==0x25)&&((modkeys&0x24)==0x24)) { /* asterisk and left alt and left command key */
         /* keyboard reset: now to? */
     }
     
     if (keycode==0x58) { /* Power key */
-        set_interrupt(INT_POWER, SET_INT);
+        set_interrupt(INT_POWER, SET_INT); /* TODO: how to release? */
     }
     
     kms.km_data = USER_POLL;

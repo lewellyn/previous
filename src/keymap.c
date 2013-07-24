@@ -18,15 +18,11 @@ const char Keymap_fileid[] = "Hatari keymap.c : " __DATE__ " " __TIME__;
 #include "screen.h"
 #include "debugui.h"
 #include "log.h"
-#include "ioMem.h"
 #include "m68000.h"
-#include "dma.h"
-#include "sysReg.h"
+#include "kms.h"
 
 #include "SDL.h"
 
-
-#define IO_SEG_MASK	0x1FFFF
 
 /*
  
@@ -67,136 +63,6 @@ Uint8 rshift;
 Uint8 lshift;
 Uint8 ctrl;
 
-/*--------------------------- Monitor, move to different place --------------------------*/
-#define LOG_MON_LEVEL LOG_DEBUG
-
-/* Monitor Register 0 */
-#define DMAOUT_ENABLE   0x80
-#define DMAOUT_DAV      0x40
-#define DMAOUT_OVR      0x20
-#define DMAIN_ENABLE    0x08
-#define DMAIN_DAV       0x04
-#define DMAIN_OVR       0x02
-
-/* Monitor Register 1 */
-#define KM_INT          0x80
-#define KM_DAV          0x40
-#define KM_OVR          0x20
-#define KM_CLR_NMI      0x10
-#define CONTROL_INT     0x08
-#define CONTROL_DAV     0x04
-#define CONTROL_OVR     0x02
-
-/* Monitor Register 2 */
-#define DTX_PEND        0x80
-#define DTX             0x40
-#define CTX_PEND        0x20
-#define CTX             0x10
-#define RTX_PEND        0x08
-#define RTX             0x04
-#define RESET           0x02
-#define TXLOOP          0x01
-
-/* Monitor Register 3 */
-
-
-struct {
-    Uint8 status_dma;
-    Uint8 status_kbdmouse;
-    Uint8 status_x;
-    Uint8 command;
-} monitor_csr;
-
-void Monitor_CSR_Read(void) {
-    Uint8 reg = IoAccessCurrentAddress&0x3;
-    Uint8 val;
-    
-    switch (reg) {
-        case 0:
-            Log_Printf(LOG_MON_LEVEL, "Monitor: DMA CSR read at $%08x PC=$%08x\n", IoAccessCurrentAddress, m68k_getpc());
-            val = monitor_csr.status_dma; //DMAOUT_ENABLE|DMAOUT_OVR; // 0xA0;
-            break;
-            
-        case 1:
-            //Log_Printf(LOG_MON_LEVEL, "Monitor: Keyboard status read at $%08x PC=$%08x\n", IoAccessCurrentAddress, m68k_getpc());
-            val = monitor_csr.status_kbdmouse|0xF0; //KM_INT|KM_DAV|KM_OVR|KM_CLR_NMI; // 0xF0;
-            break;
-            
-        case 2:
-            Log_Printf(LOG_MON_LEVEL, "Monitor: X status read at $%08x PC=$%08x\n", IoAccessCurrentAddress, m68k_getpc());
-            val = monitor_csr.status_x; //CTX|RESET|TXLOOP // 0x13;
-            break;
-            
-        case 3:
-            Log_Printf(LOG_MON_LEVEL, "Monitor: Command read at $%08x PC=$%08x\n", IoAccessCurrentAddress, m68k_getpc());
-            val = monitor_csr.command;
-            break;
-    }
-    IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = val;
-}
-
-void Monitor_CSR_Write(void) {
-    Uint8 reg = IoAccessCurrentAddress&0x3;
-    Uint8 val = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
-    Uint8 sound[32768];
-    Uint32 length;
-    
-    switch (reg) {
-        case 0:
-            Log_Printf(LOG_MON_LEVEL, "Monitor: DMA CSR write at $%08x, val = %02x, PC=$%08x\n",
-                       IoAccessCurrentAddress, val, m68k_getpc());
-            monitor_csr.status_dma = val;
-            if (monitor_csr.status_dma&DMAOUT_ENABLE) {
-                //dma_memory_read(sound, &length, CHANNEL_SOUNDOUT);
-                monitor_csr.status_dma |= DMAOUT_ENABLE;
-            }
-            break;
-            
-        case 1:
-            Log_Printf(LOG_MON_LEVEL, "Monitor: Keyboard status write at $%08x, val = %02x, PC=$%08x\n",
-                       IoAccessCurrentAddress, val, m68k_getpc());
-            monitor_csr.status_kbdmouse = val;
-            break;
-            
-        case 2:
-            Log_Printf(LOG_MON_LEVEL, "Monitor: X status write at $%08x, val = %02x, PC=$%08x\n",
-                       IoAccessCurrentAddress, val, m68k_getpc());
-            monitor_csr.status_x = val;
-            break;
-            
-        case 3:
-            Log_Printf(LOG_MON_LEVEL, "Monitor: Command write at $%08x, val = %02x, PC=$%08x\n",
-                       IoAccessCurrentAddress, val, m68k_getpc());
-            monitor_csr.command = val;
-            switch (monitor_csr.command) {
-                case 0xc4:
-                    set_interrupt(INT_SND_OUT_DMA, SET_INT);
-                    monitor_csr.status_dma = 0x00;
-                    break;
-                    
-                default:
-                    break;
-            }
-            break;
-    }
-}
-
-/*------------------------------ End of monitor code -------------------------------*/
-
-void Keycode_Read(void) {
-    //Log_Printf(LOG_WARN, "Keycode read at $%08x PC=$%08x\n", IoAccessCurrentAddress, m68k_getpc());
-    //IoMem[0xe002]=0x93;
-    monitor_csr.status_kbdmouse = DTX_PEND | CTX | RESET | TXLOOP;
-    IoMem[0xe008]=0x30;
-    
-    IoMem[0xe00a]=modkeys; // Set modifier Keys
-    IoMem[0xe00b]=nextkeycode; // Press virtual Key
-    nextkeycode=nextkeycode | 0x80; // Automatically release virtual Key
-    
-    /* TODO: reading here should clear interrupt */
-}
-
-
 void KeyTranslator(SDL_keysym *sdlkey) { // Translate SDL Keys to NeXT Keycodes
     Log_Printf(LOG_WARN, "Key pressed: %s\n", SDL_GetKeyName(sdlkey->sym));
 
@@ -204,8 +70,9 @@ void KeyTranslator(SDL_keysym *sdlkey) { // Translate SDL Keys to NeXT Keycodes
 	int modkey = sdlkey->mod;
     if (ShortCut_CheckKeys(modkey, symkey, 1)) // Check if we pressed a shortcut
         ShortCut_ActKey();
-    else
 
+    nextkeycode = 0x00;
+    
     switch (sdlkey->sym) {
         
         case SDLK_RIGHTBRACKET: nextkeycode = 0x04;
@@ -383,8 +250,10 @@ void KeyTranslator(SDL_keysym *sdlkey) { // Translate SDL Keys to NeXT Keycodes
 
         default: break;
     }
-    modkeys = 0x80 | ralt | lalt | rcom | lcom | rshift | lshift | ctrl;
+    modkeys = ralt | lalt | rcom | lcom | rshift | lshift | ctrl;
     Log_Printf(LOG_WARN, "Modkeys: $%02x\n", modkeys);
+    
+    kms_keydown(modkeys, nextkeycode);
 }
 
 
@@ -416,8 +285,10 @@ void KeyRelease(SDL_keysym *sdlkey) { //release modifier Keys
             break;
         default: break;
     }
-    modkeys = 0x80 | ralt | lalt | rcom | lcom | rshift | lshift | ctrl;
+    modkeys = ralt | lalt | rcom | lcom | rshift | lshift | ctrl;
     Log_Printf(LOG_WARN, "Modkeys: $%02x\n", modkeys);
+    
+    kms_keyup(modkeys, 0x00);
 }
 
 
