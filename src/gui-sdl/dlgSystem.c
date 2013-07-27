@@ -128,8 +128,8 @@ void print_system_overview(void) {
     switch (ConfigureParams.System.nRTC) {
         case MC68HC68T1:
             sprintf(rtc_chip, "MC68HC68T1"); break;
-        case MCS1850:
-            sprintf(rtc_chip, "MCS1850"); break;
+        case MCCS1850:
+            sprintf(rtc_chip, "MCCS1850"); break;
         default: break;
     }
     
@@ -153,15 +153,16 @@ void get_default_values(void) {
             break;
             
         case NEXT_STATION:
-            ConfigureParams.System.nMachineType = NEXT_STATION;
             ConfigureParams.System.nCpuLevel = 4;
-            if (ConfigureParams.System.bTurbo)
+            if (ConfigureParams.System.bTurbo) {
                 ConfigureParams.System.nCpuFreq = 33;
-            else
+                ConfigureParams.System.nRTC = MCCS1850;
+            } else {
                 ConfigureParams.System.nCpuFreq = 25;
+                ConfigureParams.System.nRTC = MC68HC68T1;
+            }
             ConfigureParams.System.n_FPUType = FPU_CPU;
             ConfigureParams.System.nSCSI = NCR53C90A;
-            ConfigureParams.System.nRTC = MCS1850;
             ConfigureParams.System.bADB = false;
             break;
         default:

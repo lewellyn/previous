@@ -280,7 +280,7 @@ typedef enum
 typedef enum
 {
   MC68HC68T1,
-  MCS1850
+  MCCS1850
 } RTCCHIP;
 
 typedef enum
