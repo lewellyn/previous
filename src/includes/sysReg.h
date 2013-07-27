@@ -37,7 +37,7 @@
 #define SET_INT         0x01
 #define RELEASE_INT     0x00
 
-Uint8 read_rtc_ram(Uint8 position);
+void set_interrupt(Uint32, Uint8);
 
 void SID_Read(void);
 
@@ -74,8 +74,3 @@ void HardclockWrite1(void);
 
 void HardclockWriteCSR(void);
 void HardclockReadCSR(void);
-
-void nvram_init(void);
-void rtc_checksum(int force);
-
-void set_interrupt(Uint32, Uint8);

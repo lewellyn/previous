@@ -20,6 +20,7 @@ const char Reset_fileid[] = "Hatari reset.c : " __DATE__ " " __TIME__;
 #include "debugcpu.h"
 #include "scsi.h"
 #include "sysReg.h"
+#include "rtcnvram.h"
 #include "scc.h"
 #include "ethernet.h"
 
