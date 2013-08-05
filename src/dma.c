@@ -567,7 +567,7 @@ void dma_esp_read_memory(void) {
 
 
 /* Memory to Memory */
-#define DMA_M2M_CYCLES    ((DMA_BURST_SIZE * 3) / 4)
+#define DMA_M2M_CYCLES    1//((DMA_BURST_SIZE * 3) / 4)
 
 void dma_m2m_write_memory(void) {
     int i;
@@ -599,7 +599,7 @@ void dma_m2m_write_memory(void) {
             } ENDTRY
             
             if ((dma[CHANNEL_M2R].next==dma[CHANNEL_M2R].limit)||(dma[CHANNEL_M2R].csr&DMA_BUSEXC)) {
-                CycInt_AddRelativeInterrupt(time, INT_CPU_CYCLE, INTERRUPT_M2R);
+                CycInt_AddRelativeInterrupt(time/4, INT_CPU_CYCLE, INTERRUPT_M2R);
             }
         }
         
@@ -615,5 +615,5 @@ void dma_m2m_write_memory(void) {
             dma[CHANNEL_R2M].csr |= (DMA_COMPLETE|DMA_BUSEXC);
         } ENDTRY
     }
-    CycInt_AddRelativeInterrupt(time, INT_CPU_CYCLE, INTERRUPT_R2M);
+    CycInt_AddRelativeInterrupt(time/4, INT_CPU_CYCLE, INTERRUPT_R2M);
 }

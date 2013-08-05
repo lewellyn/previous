@@ -1,4 +1,4 @@
-/*  Previous - mo.c
+/*  Previous - rtcnvram.c
  
  This file is distributed under the GNU Public License, version 2 or at
  your option any later version. Read the file gpl.txt for details.
@@ -47,6 +47,16 @@ void rtc_interface_reset(void) {
     rtc_addr = 0;
     rtc_val = 0;
     freeze = false;
+}
+
+
+/* RTC power down request */
+void newrtc_request_power_down(void);
+
+void rtc_request_power_down(void) {
+    if (ConfigureParams.System.nRTC==MCCS1850) {
+        newrtc_request_power_down();
+    }
 }
 
 
@@ -272,6 +282,10 @@ void rtc_put_clock(Uint8 addr, Uint8 val) {
             break;
         case 0x32: /* interrupt control register */
             rtc.intctrl = val;
+            if (rtc.intctrl&RTC_POWERDOWN) {
+                Log_Printf(LOG_WARN, "[RTC] Power down!");
+                M68000_Stop();
+            }
             break;
             
         default: break;
@@ -486,12 +500,19 @@ void newrtc_put_clock(Uint8 addr, Uint8 val) {
             if (newrtc.control&NRTC_CLRPDOWN) {
                 newrtc.status&= ~NRTC_INT_PDOWN;
             }
+            if (newrtc.control&NRTC_POWERDOWN) {
+                Log_Printf(LOG_WARN, "[newRTC] Power down!");
+                M68000_Stop();
+            }
             break;
             
         default: break;
     }
 }
 
+void newrtc_request_power_down(void) {
+    newrtc.status |= (NRTC_INT|NRTC_INT_PDOWN);
+}
 
 
 /* ---------------------- RTC NVRAM ---------------------- */
@@ -696,10 +717,10 @@ void nvram_init(void) {
     }
     
     /* Re-calculate checksum */
-    rtc_checksum(1);
+    nvram_checksum(1);
 }
 
-void rtc_checksum(int force) {
+void nvram_checksum(int force) {
 	int sum,i;
 	sum=0;
 	for (i=0;i<30;i+=2) {

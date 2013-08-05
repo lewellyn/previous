@@ -17,6 +17,7 @@
 #include "kms.h"
 #include "sysReg.h"
 #include "dma.h"
+#include "rtcnvram.h"
 
 #define LOG_KMS_LEVEL LOG_WARN
 #define IO_SEG_MASK	0x1FFFF
@@ -182,7 +183,7 @@ void KMS_Data_Read(void) {
  * -x-- ---- ---- ---- ---- ---- ---- ----  1 = no response error, 0 = normal event
  * --x- ---- ---- ---- ---- ---- ---- ----  1 = user poll, 0 = internal poll
  * ---x ---- ---- ---- ---- ---- ---- ----  1 = invalid/master, 0 = valid/slave (user/internal)
- * ---- xxxx ---- ---- ---- ---- ---- ----  1 = mouse, 0 = keyboard
+ * ---- xxxx ---- ---- ---- ---- ---- ----  device address (lowest bit 1 = mouse, 0 = keyboard)
  * ---- ---- xxxx xxxx ---- ---- ---- ----  chip revision: 0 = old, 1 = new, 2 = digital
  *
  * Mouse data:
@@ -209,7 +210,8 @@ void KMS_Data_Read(void) {
 #define INVALID         0x10000000
 #define MASTER          0x10000000
 
-#define DEVICE_MOUSE    0x08000000
+#define DEVICE_ADDR     0x0F000000
+#define DEVICE_MOUSE    0x01000000
 
 #define MOUSE_Y         0x0000FE00
 #define MOUSE_RIGT_UP   0x00000100
@@ -238,7 +240,8 @@ void kms_keydown(Uint8 modkeys, Uint8 keycode) {
     }
     
     if (keycode==0x58) { /* Power key */
-        set_interrupt(INT_POWER, SET_INT); /* TODO: how to release? */
+        rtc_request_power_down();
+        set_interrupt(INT_POWER, SET_INT);
     }
     
     kms.km_data = USER_POLL;
@@ -252,6 +255,9 @@ void kms_keydown(Uint8 modkeys, Uint8 keycode) {
 }
 
 void kms_keyup(Uint8 modkeys, Uint8 keycode) {
+    if (keycode==0x58) {
+        set_interrupt(INT_POWER, RELEASE_INT);
+    }
     kms.km_data = USER_POLL;
     kms.km_data |= (modkeys<<8)|keycode|KBD_KEY_VALID|KBD_KEY_UP;
 }

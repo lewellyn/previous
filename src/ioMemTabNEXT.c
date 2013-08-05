@@ -17,7 +17,6 @@ const char IoMemTabST_fileid[] = "Previous ioMemTabST.c : " __DATE__ " " __TIME_
 #include "configuration.h"
 #include "sysdeps.h"
 #include "m68000.h"
-#include "keymap.h"
 #include "esp.h"
 #include "ethernet.h"
 #include "sysReg.h"
