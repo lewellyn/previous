@@ -20,7 +20,7 @@ static Uint32 turboscr1=0x00000000;
 
 static Uint8 scr2_0=0x00;
 static Uint8 scr2_1=0x00;
-static Uint8 scr2_2=0x80;
+static Uint8 scr2_2=0x00;
 static Uint8 scr2_3=0x00;
 
 static Uint32 intStat=0x00000000;
@@ -85,7 +85,7 @@ void SID_Read(void) {
 void SCR_Reset(void) {
     scr2_0=0x00;
     scr2_1=0x00;
-    scr2_2=0x80;
+    scr2_2=0x00;
     scr2_3=0x00;
     
     intStat=0x00000000;
@@ -351,77 +351,42 @@ void IntRegStatWrite(void) {
     intStat = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
 }
 
-void set_interrupt(Uint32 interrupt_val, Uint8 int_set_release) {
-    
-    Uint8 interrupt_level;
-    
-    if(int_set_release == SET_INT) {
-        intStat = intStat | interrupt_val;
+void set_interrupt(Uint32 intr, Uint8 state) {
+    /* The interrupt gets polled by the cpu via intlev()
+     * --> see previous-glue.c
+     */
+    if (state==SET_INT) {
+        intStat |= intr;
     } else {
-        intStat = intStat & ~interrupt_val; 
+        intStat &= ~intr;
     }
-    
-    switch (interrupt_val) {
-        case INT_SOFT1: interrupt_level = 1;
-            break;
-        case INT_SOFT2: interrupt_level = 2;
-            break;
-        case INT_POWER:
-        case INT_KEYMOUSE:
-        case INT_MONITOR:
-        case INT_VIDEO:
-        case INT_DSP_L3:
-        case INT_PHONE:
-        case INT_SOUND_OVRUN:
-        case INT_EN_RX:
-        case INT_EN_TX:
-        case INT_PRINTER:
-        case INT_SCSI:
-        case INT_DISK: interrupt_level = 3;
-            break;
-        case INT_DSP_L4: interrupt_level = 4;
-            break;
-        case INT_BUS:
-        case INT_REMOTE:
-        case INT_SCC: interrupt_level = 5;
-            break;
-        case INT_R2M_DMA:
-        case INT_M2R_DMA:
-        case INT_DSP_DMA:
-        case INT_SCC_DMA:
-        case INT_SND_IN_DMA:
-        case INT_SND_OUT_DMA:
-        case INT_PRINTER_DMA:
-        case INT_DISK_DMA:
-        case INT_SCSI_DMA:
-        case INT_EN_RX_DMA:
-        case INT_EN_TX_DMA:
-			interrupt_level = 6;
-		break;
-        case INT_TIMER:
-		if (scr2_2&SCR2_TIMERIPL7)
-		 interrupt_level = 7;
-		else
-		 interrupt_level = 6;
-            break;
-        case INT_PFAIL:
-        case INT_NMI: interrupt_level = 7;
-            break;            
-        default: interrupt_level = 0;
-            break;
-    }
- 
-    if (!(interrupt_val&intMask) && int_set_release==SET_INT) {
-	Log_Printf(LOG_WARN,"[INT] interrupt is masked %08X mask %08X %s at %d",interrupt_val,intMask,__FILE__,__LINE__);
-	return;
-    }
-   
-    if(int_set_release == SET_INT) {
-        Log_Printf(LOG_DEBUG,"Interrupt Level: %i", interrupt_level);
-        M68000_Exception(((24+interrupt_level)*4), M68000_EXC_SRC_AUTOVEC);
+}
+
+int get_interrupt_level(void) {
+    Uint32 interrupt = intStat&intMask;
+        
+    if (interrupt&INT_L7_MASK) {
+        abort();
+        return 7;
+    } else if ((interrupt&INT_TIMER) && (scr2_2&SCR2_TIMERIPL7)) {
+        abort();
+        return 7;
+    } else if (interrupt&INT_L6_MASK) {
+        return 6;
+    } else if (interrupt&INT_L5_MASK) {
+        return 5;
+    } else if (interrupt&INT_L4_MASK) {
+        return 4;
+    } else if (interrupt&INT_L3_MASK) {
+        return 3;
+    } else if (interrupt&INT_L2_MASK) {
+        return 2;
+    } else if (interrupt&INT_L1_MASK) {
+        return 1;
     } else {
-//        M68000_Exception(((24+0)*4), M68000_EXC_SRC_AUTOVEC); // release interrupt - does this work???
+        return 0;
     }
+    abort();
 }
 
 /* Interrupt Mask Register */
@@ -442,6 +407,7 @@ void IntRegMaskWrite(void) {
 
 #define HARDCLOCK_ENABLE 0x80
 #define HARDCLOCK_LATCH  0x40
+#define HARDCLOCK_ZERO   0x3F
 
 Uint8 hardclock_csr=0;
 Uint8 hardclock1=0;
@@ -454,8 +420,8 @@ void Hardclock_InterruptHandler ( void )
 	CycInt_AcknowledgeInterrupt();
 	if ((hardclock_csr&HARDCLOCK_ENABLE) && (latch_hardclock>0)) {
 		// Log_Printf(LOG_WARN,"[INT] throwing hardclock");
-		set_interrupt(INT_TIMER,SET_INT);
-	        CycInt_AddRelativeInterrupt(latch_hardclock*33, INT_CPU_CYCLE, INTERRUPT_HARDCLOCK);
+        set_interrupt(INT_TIMER,SET_INT);
+        CycInt_AddRelativeInterrupt(latch_hardclock*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_HARDCLOCK);
 		pseudo_counter=latch_hardclock;
 	}
 }
@@ -486,14 +452,15 @@ void HardclockWrite1(void){
 void HardclockWriteCSR(void) {
 	Log_Printf(LOG_WARN,"[hardclock] write at $%08x val=%02x PC=$%08x", IoAccessCurrentAddress,IoMem[IoAccessCurrentAddress & 0x1FFFF],m68k_getpc());
 	hardclock_csr=IoMem[IoAccessCurrentAddress & 0x1FFFF];
-	if ((hardclock_csr&HARDCLOCK_LATCH)) {
+	if (hardclock_csr&HARDCLOCK_LATCH) {
+        hardclock_csr&= ~HARDCLOCK_LATCH;
 		latch_hardclock=(hardclock0<<8)|hardclock1;
 		pseudo_counter=latch_hardclock;
 	}
 	if ((hardclock_csr&HARDCLOCK_ENABLE) && (latch_hardclock>0)) {
-	        CycInt_AddRelativeInterrupt(latch_hardclock*33, INT_CPU_CYCLE, INTERRUPT_HARDCLOCK);
-//        set_interrupt(INT_TIMER, SET_INT);
+        CycInt_AddRelativeInterrupt(latch_hardclock*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_HARDCLOCK);
 	}
+    set_interrupt(INT_TIMER,RELEASE_INT);
 }
 void HardclockReadCSR(void) {
 	IoMem[IoAccessCurrentAddress & 0x1FFFF]=hardclock_csr;
