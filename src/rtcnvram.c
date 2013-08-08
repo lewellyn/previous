@@ -178,16 +178,24 @@ int oldrtc_interface_io(Uint8 rtdatabit) {
     
     if (phase<=8) {
         rtc_addr = (rtc_addr<<1)|(rtdatabit?1:0);
-    } else if (phase<=16) {
+    } else {
+        
+        if (phase==9) {
+            if (!(rtc_addr&RTC_ADDR_WRITE)) {
+                if (rtc_addr&RTC_ADDR_CLOCK) {
+                    rtc_val = rtc_get_clock(rtc_addr);
+                } else {
+                    rtc_val = rtc.ram[rtc_addr&RTC_ADDR_MASK];
+                }
+                
+                Log_Printf(LOG_RTC_LEVEL,"[RTC] reading val $%02X from addr $%02X at PC=$%08x\n",
+                           rtc_val,rtc_addr,m68k_getpc());
+            }
+        }
         
         if (rtc_addr&RTC_ADDR_WRITE) {
             rtc_val = (rtc_val<<1)|(rtdatabit?1:0);
         } else {
-            if (rtc_addr&RTC_ADDR_CLOCK) {
-                rtc_val = rtc_get_clock(rtc_addr);
-            } else {
-                rtc_val = rtc.ram[rtc_addr&RTC_ADDR_MASK];
-            }
             rtdatabit = (rtc_val&(1<<(16-phase)))?1:0;
         }
         
@@ -201,16 +209,13 @@ int oldrtc_interface_io(Uint8 rtdatabit) {
                 } else {
                     rtc.ram[rtc_addr&RTC_ADDR_MASK] = rtc_val;
                 }
-            } else {
-                Log_Printf(LOG_RTC_LEVEL,"[RTC] reading val $%02X from addr $%02X at PC=$%08x\n",
-                           rtc_val,rtc_addr,m68k_getpc());
             }
             
             switch (rtc_addr) {
-                case 0x1F: rtc_addr = 0x00; break;
-                case 0x9F: rtc_addr = 0x80; break;
-                case 0x32: rtc_addr = 0x20; break;
-                case 0xB2: rtc_addr = 0xA0; break;
+                case 0x1F:
+                case 0x9F: rtc_addr = 0x00; break;
+                case 0x32:
+                case 0xB2: rtc_addr = 0x20; break;
                 default: rtc_addr++; break;
             }
             phase-=8;
@@ -390,20 +395,28 @@ int newrtc_interface_io(Uint8 rtdatabit) {
     
     if (phase<=8) {
         rtc_addr = (rtc_addr<<1)|(rtdatabit?1:0);
-    } else if (phase<=16) {
+    } else {
+        
+        if (phase==9) {
+            if (!(rtc_addr&RTC_ADDR_WRITE)) {
+                if (rtc_addr&RTC_ADDR_CLOCK) {
+                    rtc_val = newrtc_get_clock(rtc_addr);
+                } else {
+                    if (rtc_addr&RTC_ADDR_NEWRAM) {
+                        rtc_val = newrtc.ram2[rtc_addr&0x1F];
+                    } else {
+                        rtc_val = rtc.ram[rtc_addr&0x1F];
+                    }
+                    
+                    Log_Printf(LOG_RTC_LEVEL,"[newRTC] reading val $%02X from addr $%02X at PC=$%08x\n",
+                               rtc_val,rtc_addr,m68k_getpc());
+                }
+            }
+        }
         
         if (rtc_addr&RTC_ADDR_WRITE) {
             rtc_val = (rtc_val<<1)|(rtdatabit?1:0);
         } else {
-            if (rtc_addr&RTC_ADDR_CLOCK) {
-                rtc_val = newrtc_get_clock(rtc_addr);
-            } else {
-                if (rtc_addr&RTC_ADDR_NEWRAM) {
-                    rtc_val = newrtc.ram2[rtc_addr&0x1F];
-                } else {
-                    rtc_val = rtc.ram[rtc_addr&0x1F];
-                }
-            }
             rtdatabit = (rtc_val&(1<<(16-phase)))?1:0;
         }
         
@@ -421,9 +434,6 @@ int newrtc_interface_io(Uint8 rtdatabit) {
                         rtc.ram[rtc_addr&0x1F] = rtc_val;
                     }
                 }
-            } else {
-                Log_Printf(LOG_RTC_LEVEL,"[newRTC] reading val $%02X from addr $%02X at PC=$%08x\n",
-                           rtc_val,rtc_addr,m68k_getpc());
             }
             
             switch (rtc_addr) {

@@ -364,12 +364,12 @@ void set_interrupt(Uint32 intr, Uint8 state) {
 
 int get_interrupt_level(void) {
     Uint32 interrupt = intStat&intMask;
-        
-    if (interrupt&INT_L7_MASK) {
-        abort();
+    
+    if (!interrupt) {
+        return 0;
+    } else if (interrupt&INT_L7_MASK) {
         return 7;
     } else if ((interrupt&INT_TIMER) && (scr2_2&SCR2_TIMERIPL7)) {
-        abort();
         return 7;
     } else if (interrupt&INT_L6_MASK) {
         return 6;
@@ -384,9 +384,8 @@ int get_interrupt_level(void) {
     } else if (interrupt&INT_L1_MASK) {
         return 1;
     } else {
-        return 0;
+        abort();
     }
-    abort();
 }
 
 /* Interrupt Mask Register */
