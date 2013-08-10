@@ -114,7 +114,7 @@ int get_interrupt_type(int channel) {
         case CHANNEL_DSP: return INT_DSP_DMA; break;
         case CHANNEL_EN_TX: return INT_EN_TX_DMA; break;
         case CHANNEL_EN_RX: return INT_EN_RX_DMA; break;
-        case CHANNEL_VIDEO: return 0; break;                   // no interrupt? CHECK THIS
+        case CHANNEL_VIDEO: return INT_VIDEO; break;
         case CHANNEL_M2R: return INT_M2R_DMA; break;
         case CHANNEL_R2M: return INT_R2M_DMA; break;
                         
@@ -616,4 +616,74 @@ void dma_m2m_write_memory(void) {
         } ENDTRY
     }
     CycInt_AddRelativeInterrupt(time/4, INT_CPU_CYCLE, INTERRUPT_R2M);
+}
+
+
+
+/* ---------------------- DMA Scratchpad ---------------------- */
+
+/* TODO: This is a hack, we need to find out what
+ * counts the "next" register of this channel to
+ * trigger the interrupt. Limit is set to 0xEA.
+ * (0xEA * 1024 = visible videomem size)
+ */
+
+#define ANIM_DELAY  200000
+
+/* Interrupt Handler */
+void VideoDMASPAD_InterruptHandler(void) {
+    CycInt_AcknowledgeInterrupt();
+    set_interrupt(INT_VIDEO, SET_INT);
+}
+
+/* Modified read/write functions */
+void DMASPAD_CSR_Read(void) {
+    int channel = get_channel(IoAccessCurrentAddress);
+    
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = dma[channel].csr;
+    IoMem[(IoAccessCurrentAddress+1) & IO_SEG_MASK] = IoMem[(IoAccessCurrentAddress+2) & IO_SEG_MASK] = IoMem[(IoAccessCurrentAddress+3) & IO_SEG_MASK] = 0x00; // just to be sure
+    Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].csr, m68k_getpc());
+}
+
+void DMASPAD_CSR_Write(void) {
+    int channel = get_channel(IoAccessCurrentAddress);
+    int interrupt = get_interrupt_type(channel);
+    Uint8 writecsr = IoMem[IoAccessCurrentAddress & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+1) & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+2) & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+3) & IO_SEG_MASK];
+    
+    Log_Printf(LOG_DMA_LEVEL,"DMA CSR write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, writecsr, m68k_getpc());
+    
+    /* For debugging */
+    if(writecsr&DMA_DEV2M)
+        Log_Printf(LOG_DMA_LEVEL,"DMA from dev to mem");
+    else
+        Log_Printf(LOG_DMA_LEVEL,"DMA from mem to dev");
+    
+    switch (writecsr&DMA_CMD_MASK) {
+        case DMA_RESET:
+            Log_Printf(LOG_DMA_LEVEL,"DMA reset"); break;
+        default:
+            Log_Printf(LOG_DMA_LEVEL,"DMA: unknown command!"); break;
+    }
+    
+    /* Handle CSR bits */
+    dma[channel].direction = writecsr&DMA_DEV2M;
+    
+    if (writecsr&DMA_RESET) {
+        dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE);
+        set_interrupt(interrupt, RELEASE_INT);
+        CycInt_AddRelativeInterrupt(ANIM_DELAY, INT_CPU_CYCLE, INTERRUPT_VIDEODMASPAD);
+    }
+}
+
+void DMASPAD_Limit_Read(void) { // 0x02004014
+    int channel = get_channel(IoAccessCurrentAddress-0x4004);
+    IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].limit);
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA Limit read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].limit, m68k_getpc());
+}
+
+void DMASPAD_Limit_Write(void) {
+    int channel = get_channel(IoAccessCurrentAddress-0x4004);
+    dma[channel].limit = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
+    Log_Printf(LOG_DMA_LEVEL,"DMA Limit write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].limit, m68k_getpc());
+    CycInt_AddRelativeInterrupt(ANIM_DELAY, INT_CPU_CYCLE, INTERRUPT_VIDEODMASPAD);
 }

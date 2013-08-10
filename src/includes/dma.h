@@ -44,6 +44,13 @@ void DMA_Init_Write(void);
 void DMA_Size_Read(void);
 void DMA_Size_Write(void);
 
+/* DMA Scratchpad */
+void DMASPAD_CSR_Read(void);
+void DMASPAD_CSR_Write(void);
+void DMASPAD_Limit_Read(void);
+void DMASPAD_Limit_Write(void);
+
+
 void dma_interrupt(int channel);
 
 void dma_esp_write_memory(void);
@@ -56,6 +63,7 @@ void dma_m2m_write_memory(void);
 void ESPDMA_InterruptHandler(void);
 void M2RDMA_InterruptHandler(void);
 void R2MDMA_InterruptHandler(void);
+void VideoDMASPAD_InterruptHandler(void);
 
 /* DMA registers */
 
