@@ -628,66 +628,12 @@ void dma_m2m_write_memory(void) {
  * (0xEA * 1024 = visible videomem size)
  */
 
-bool enable_retrace_interrupt = false;
 
-/* Interrupt Handler */
+/* Interrupt Handler (called from Video_InterruptHandler_VBL in video.c) */
 void Video_InterruptHandler(void) {
-    if (enable_retrace_interrupt) {
-        set_interrupt(INT_VIDEO, SET_INT);
-        enable_retrace_interrupt = false;
-    }
-}
-
-/* Modified read/write functions */
-void DMASPAD_CSR_Read(void) {
-    int channel = get_channel(IoAccessCurrentAddress);
-    
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = dma[channel].csr;
-    IoMem[(IoAccessCurrentAddress+1) & IO_SEG_MASK] = IoMem[(IoAccessCurrentAddress+2) & IO_SEG_MASK] = IoMem[(IoAccessCurrentAddress+3) & IO_SEG_MASK] = 0x00; // just to be sure
-    Log_Printf(LOG_DMA_LEVEL,"DMA CSR read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].csr, m68k_getpc());
-}
-
-void DMASPAD_CSR_Write(void) {
-    int channel = get_channel(IoAccessCurrentAddress);
-    int interrupt = get_interrupt_type(channel);
-    Uint8 writecsr = IoMem[IoAccessCurrentAddress & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+1) & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+2) & IO_SEG_MASK]|IoMem[(IoAccessCurrentAddress+3) & IO_SEG_MASK];
-    
-    Log_Printf(LOG_DMA_LEVEL,"DMA CSR write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, writecsr, m68k_getpc());
-    
-    /* For debugging */
-    if(writecsr&DMA_DEV2M)
-        Log_Printf(LOG_DMA_LEVEL,"DMA from dev to mem");
-    else
-        Log_Printf(LOG_DMA_LEVEL,"DMA from mem to dev");
-    
-    switch (writecsr&DMA_CMD_MASK) {
-        case DMA_RESET:
-            Log_Printf(LOG_DMA_LEVEL,"DMA reset"); break;
-        default:
-            Log_Printf(LOG_DMA_LEVEL,"DMA: unknown command!"); break;
-    }
-    
-    /* Handle CSR bits */
-    dma[channel].direction = writecsr&DMA_DEV2M;
-    
-    if (writecsr&DMA_RESET) {
-        dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE);
-        set_interrupt(interrupt, RELEASE_INT);
-        enable_retrace_interrupt = true;
-    }
-}
-
-void DMASPAD_Limit_Read(void) { // 0x02004014
-    int channel = get_channel(IoAccessCurrentAddress-0x4004);
-    IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].limit);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA Limit read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].limit, m68k_getpc());
-}
-
-void DMASPAD_Limit_Write(void) {
-    int channel = get_channel(IoAccessCurrentAddress-0x4004);
-    dma[channel].limit = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA Limit write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].limit, m68k_getpc());
-    if (dma[channel].limit && dma[channel].limit!=0xEA)
+    if (dma[CHANNEL_VIDEO].limit==0xEA) {
+        set_interrupt(INT_VIDEO, SET_INT); /* interrupt is released by writing to CSR */
+    } else if (dma[CHANNEL_VIDEO].limit && dma[CHANNEL_VIDEO].limit!=0xEA) {
         abort();
-    enable_retrace_interrupt = true;
+    }
 }

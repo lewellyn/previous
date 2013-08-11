@@ -103,13 +103,6 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     /* Brightness */
     { 0x02010000, SIZE_LONG, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     
-    // this is for video DMA channel
-	{ 0x02004188, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x02004189, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0200418a, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-	{ 0x0200418b, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-
-    
     /* DSP (Motorola XSP56001) ? ADB on Turbo Systems ? */
 	{ 0x02008000, SIZE_LONG, DSP_icr_Read, DSP_icr_Write },
     /* ADB */
@@ -261,12 +254,13 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x020000d0, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     { 0x02000110, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     { 0x02000150, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
-    { 0x02000180, SIZE_LONG, DMASPAD_CSR_Read, DMASPAD_CSR_Write },
+    { 0x02000180, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     { 0x020001d0, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     { 0x020001c0, SIZE_LONG, DMA_CSR_Read, DMA_CSR_Write },
     
     /* Channel Video */
-    { 0x02004184, SIZE_LONG, DMASPAD_Limit_Read, DMASPAD_Limit_Write },
+    { 0x02004184, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
+    { 0x02004188, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
     
     /* Channel R2M */
     { 0x020041c0, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },

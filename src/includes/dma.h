@@ -44,12 +44,6 @@ void DMA_Init_Write(void);
 void DMA_Size_Read(void);
 void DMA_Size_Write(void);
 
-/* DMA Scratchpad */
-void DMASPAD_CSR_Read(void);
-void DMASPAD_CSR_Write(void);
-void DMASPAD_Limit_Read(void);
-void DMASPAD_Limit_Write(void);
-
 
 void dma_interrupt(int channel);
 
