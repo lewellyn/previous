@@ -75,8 +75,7 @@ static void (* const pIntHandlerFunctions[MAX_INTERRUPTS])(void) =
     ESP_InterruptHandler,
     ESPDMA_InterruptHandler,
     M2RDMA_InterruptHandler,
-    R2MDMA_InterruptHandler,
-    VideoDMASPAD_InterruptHandler
+    R2MDMA_InterruptHandler
 };
 
 /* Event timer structure - keeps next timer to occur in structure so don't need

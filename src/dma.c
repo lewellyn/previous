@@ -622,18 +622,20 @@ void dma_m2m_write_memory(void) {
 
 /* ---------------------- DMA Scratchpad ---------------------- */
 
-/* TODO: This is a hack, we need to find out what
- * counts the "next" register of this channel to
- * trigger the interrupt. Limit is set to 0xEA.
+/* This is used to interrupt at vertical screen retrace.
+ * TODO: find out how the interrupt is generated in real
+ * hardware using the Limit register of the DMA chip.
  * (0xEA * 1024 = visible videomem size)
  */
 
-#define ANIM_DELAY  200000
+bool enable_retrace_interrupt = false;
 
 /* Interrupt Handler */
-void VideoDMASPAD_InterruptHandler(void) {
-    CycInt_AcknowledgeInterrupt();
-    set_interrupt(INT_VIDEO, SET_INT);
+void Video_InterruptHandler(void) {
+    if (enable_retrace_interrupt) {
+        set_interrupt(INT_VIDEO, SET_INT);
+        enable_retrace_interrupt = false;
+    }
 }
 
 /* Modified read/write functions */
@@ -671,7 +673,7 @@ void DMASPAD_CSR_Write(void) {
     if (writecsr&DMA_RESET) {
         dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE);
         set_interrupt(interrupt, RELEASE_INT);
-        CycInt_AddRelativeInterrupt(ANIM_DELAY, INT_CPU_CYCLE, INTERRUPT_VIDEODMASPAD);
+        enable_retrace_interrupt = true;
     }
 }
 
@@ -685,5 +687,7 @@ void DMASPAD_Limit_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x4004);
     dma[channel].limit = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
     Log_Printf(LOG_DMA_LEVEL,"DMA Limit write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].limit, m68k_getpc());
-    CycInt_AddRelativeInterrupt(ANIM_DELAY, INT_CPU_CYCLE, INTERRUPT_VIDEODMASPAD);
+    if (dma[channel].limit && dma[channel].limit!=0xEA)
+        abort();
+    enable_retrace_interrupt = true;
 }
