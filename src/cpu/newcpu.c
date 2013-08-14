@@ -1589,7 +1589,7 @@ static void Exception_mmu030 (int nr, uaecptr oldpc) {
     } else if (nr ==5 || nr == 6 || nr == 7 || nr == 9 || nr == 56) {
         Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x2);
     } else if (nr == 2 || nr == 3) {
-        Exception_build_stack_frame(oldpc, currpc, 0x0145, nr, 0xA); // ssw hacked for NeXT
+        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0xA);
     } else {
         Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x0);
     }

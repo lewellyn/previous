@@ -29,12 +29,12 @@ void mmu030_decode_rp(uae_u64 RP);
 int mmu030_logical_is_in_atc(uaecptr addr, uae_u32 fc, bool write);
 void mmu030_atc_handle_history_bit(int entry_num);
 
-void mmu030_put_long_atc(uaecptr addr, uae_u32 val, int l);
-void mmu030_put_word_atc(uaecptr addr, uae_u16 val, int l);
-void mmu030_put_byte_atc(uaecptr addr, uae_u8 val, int l);
-uae_u32 mmu030_get_long_atc(uaecptr addr, int l);
-uae_u16 mmu030_get_word_atc(uaecptr addr, int l);
-uae_u8 mmu030_get_byte_atc(uaecptr addr, int l);
+void mmu030_put_long_atc(uaecptr addr, uae_u32 fc, uae_u32 val, int l);
+void mmu030_put_word_atc(uaecptr addr, uae_u32 fc, uae_u16 val, int l);
+void mmu030_put_byte_atc(uaecptr addr, uae_u32 fc, uae_u8 val, int l);
+uae_u32 mmu030_get_long_atc(uaecptr addr, uae_u32 fc, int l);
+uae_u16 mmu030_get_word_atc(uaecptr addr, uae_u32 fc, int l);
+uae_u8 mmu030_get_byte_atc(uaecptr addr, uae_u32 fc, int l);
 
 void mmu030_flush_atc_fc(uae_u32 fc_base, uae_u32 fc_mask);
 void mmu030_flush_atc_page(uaecptr logical_addr);
@@ -52,7 +52,7 @@ uae_u32 mmu030_get_long(uaecptr addr, uae_u32 fc, int size);
 uae_u16 mmu030_get_word(uaecptr addr, uae_u32 fc, int size);
 uae_u8  mmu030_get_byte(uaecptr addr, uae_u32 fc, int size);
 
-void mmu030_page_fault(uaecptr addr, bool read);
+void mmu030_page_fault(uaecptr addr, uae_u32 fc, int size, bool read);
 
 extern uae_u16 REGPARAM3 mmu030_get_word_unaligned(uaecptr addr, uae_u32 fc) REGPARAM;
 extern uae_u32 REGPARAM3 mmu030_get_long_unaligned(uaecptr addr, uae_u32 fc) REGPARAM;
