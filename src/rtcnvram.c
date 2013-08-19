@@ -271,7 +271,7 @@ Uint8 rtc_get_clock(Uint8 addr) {
             
         case 0x30: /* status register */
             val = rtc.status;
-            rtc.status &= RTC_PWRSENSE;
+            rtc.status &= RTC_INT_SENSE;
             break;
         case 0x31: /* clock control register */
             val = rtc.clkctrl; break;

@@ -181,6 +181,9 @@ void access_km_reg(Uint32 data) {
 
 void KMS_command(Uint8 command, Uint32 data) {
     switch (command) {
+        case KMSCMD_KBD_RECV: // keyboard poll
+            return;
+
         case KMSCMD_RESET:
             Log_Printf(LOG_KMS_LEVEL, "[KMS] Reset");
             Log_Printf(LOG_KMS_LEVEL, "[KMS] Data = %08X",data);
@@ -202,8 +205,6 @@ void KMS_command(Uint8 command, Uint32 data) {
             Log_Printf(LOG_KMS_LEVEL, "[KMS] Access volume control (simple)");
             Log_Printf(LOG_KMS_LEVEL, "[KMS] Data = %08X",data);
             break;
-        case KMSCMD_KBD_RECV: // keyboard poll
-            return;
             
         default: // commands without data
             if ((command&KMSCMD_SIO_MASK)==KMSCMD_SND_OUT) {
@@ -368,16 +369,18 @@ void KMS_KM_Data_Read(void) {
 
 void kms_keydown(Uint8 modkeys, Uint8 keycode) {
     if ((keycode==0x26)&&(modkeys&0x18)) { /* backquote and one or both command keys */
+        Log_Printf(LOG_WARN, "Keyboard initiated NMI!");
         set_interrupt(INT_NMI, SET_INT);
     }
     
-    if ((keycode==0x25)&&((modkeys&0x24)==0x24)) { /* asterisk and left alt and left command key */
-        /* keyboard reset: now to? */
+    if ((keycode==0x25)&&((modkeys&0x28)==0x28)) { /* asterisk and left alt and left command key */
+        Log_Printf(LOG_WARN, "Keyboard initiated CPU reset!");
+        M68000_Reset(false);
+        return;
     }
     
     if (keycode==0x58) { /* Power key */
         rtc_request_power_down();
-        return;
     }
     
     kms.km_data = (km_address<<25)&DEVICE_ADDR_MSK;
@@ -394,7 +397,6 @@ void kms_keydown(Uint8 modkeys, Uint8 keycode) {
 void kms_keyup(Uint8 modkeys, Uint8 keycode) {
     if (keycode==0x58) {
         rtc_stop_pdown_request();
-        return;
     }
     kms.km_data = (km_address<<25)&DEVICE_ADDR_MSK;
     kms.km_data |= USER_POLL; /* TODO: check this */

@@ -157,6 +157,9 @@ void get_default_values(void) {
             if (ConfigureParams.System.bTurbo) {
                 ConfigureParams.System.nCpuFreq = 33;
                 ConfigureParams.System.nRTC = MCCS1850;
+            } else if (ConfigureParams.System.bColor) {
+                ConfigureParams.System.nCpuFreq = 25;
+                ConfigureParams.System.nRTC = MCCS1850;
             } else {
                 ConfigureParams.System.nCpuFreq = 25;
                 ConfigureParams.System.nRTC = MC68HC68T1;
