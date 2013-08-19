@@ -51,11 +51,29 @@ void rtc_interface_reset(void) {
 
 
 /* RTC power down request */
+void oldrtc_request_power_down(void);
 void newrtc_request_power_down(void);
 
+void oldrtc_stop_pdown_request(void);
+void newrtc_stop_pdown_request(void);
+
 void rtc_request_power_down(void) {
-    if (ConfigureParams.System.nRTC==MCCS1850) {
-        newrtc_request_power_down();
+    switch (ConfigureParams.System.nRTC) {
+        case MC68HC68T1: oldrtc_request_power_down(); return;
+        case MCCS1850: newrtc_request_power_down(); return;
+        default:
+            Log_Printf(LOG_WARN, "[RTC] error: no power down function for this chip!");
+            oldrtc_request_power_down(); return; /* trying old chip */
+    }
+}
+
+void rtc_stop_pdown_request(void) {
+    switch (ConfigureParams.System.nRTC) {
+        case MC68HC68T1: oldrtc_stop_pdown_request(); return;
+        case MCCS1850: newrtc_stop_pdown_request(); return;
+        default:
+            Log_Printf(LOG_WARN, "[RTC] error: no power down function for this chip!");
+            oldrtc_stop_pdown_request(); return; /* trying old chip */
     }
 }
 
@@ -314,6 +332,13 @@ RTC_TIME get_rtc_time(void) {
     return rt;
 }
 
+void oldrtc_request_power_down(void) {
+    set_interrupt(INT_POWER, SET_INT);
+}
+
+void oldrtc_stop_pdown_request(void) {
+    set_interrupt(INT_POWER, RELEASE_INT);
+}
 
 
 /* ------------------------- MCCS1850 ------------------------- */
@@ -522,6 +547,11 @@ void newrtc_put_clock(Uint8 addr, Uint8 val) {
 
 void newrtc_request_power_down(void) {
     newrtc.status |= (NRTC_INT|NRTC_INT_PDOWN);
+    set_interrupt(INT_POWER, SET_INT);
+}
+
+void newrtc_stop_pdown_request(void) {
+    set_interrupt(INT_POWER, RELEASE_INT);
 }
 
 

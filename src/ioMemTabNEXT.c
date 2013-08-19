@@ -385,14 +385,15 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02018002, SIZE_BYTE, SCC_Read, SCC_Write },
 	{ 0x02018003, SIZE_BYTE, SCC_Read, SCC_Write },
 	{ 0x02018004, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-    /* unknown (non-turbo color) */
+    
+    /* RAMDAC registers (non-turbo color) */
     { 0x02018100, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x02018101, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x02018102, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x02018103, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x02018180, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x02018190, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
-    /* RAMDAC device registers */
+    /* RAMDAC device registers (turbo color) */
     { 0x0201c000, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x0201c001, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
     { 0x0201c002, SIZE_BYTE, IoMem_ReadWithoutInterceptionButTrace, IoMem_WriteWithoutInterceptionButTrace },
