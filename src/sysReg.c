@@ -457,8 +457,11 @@ void HardclockWriteCSR(void) {
 		pseudo_counter=latch_hardclock;
 	}
 	if ((hardclock_csr&HARDCLOCK_ENABLE) && (latch_hardclock>0)) {
+        Log_Printf(LOG_WARN,"[hardclock] enable periodic interrupt (%i microseconds).", latch_hardclock);
         CycInt_AddRelativeInterrupt(latch_hardclock*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_HARDCLOCK);
-	}
+	} else {
+        Log_Printf(LOG_WARN,"[hardclock] disable periodic interrupt.");
+    }
     set_interrupt(INT_TIMER,RELEASE_INT);
 }
 void HardclockReadCSR(void) {

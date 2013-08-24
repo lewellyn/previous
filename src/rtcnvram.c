@@ -432,10 +432,10 @@ int newrtc_interface_io(Uint8 rtdatabit) {
                     } else {
                         rtc_val = rtc.ram[rtc_addr&0x1F];
                     }
-                    
-                    Log_Printf(LOG_RTC_LEVEL,"[newRTC] reading val $%02X from addr $%02X at PC=$%08x\n",
-                               rtc_val,rtc_addr,m68k_getpc());
                 }
+                
+                Log_Printf(LOG_RTC_LEVEL,"[newRTC] reading val $%02X from addr $%02X at PC=$%08x\n",
+                           rtc_val,rtc_addr,m68k_getpc());
             }
         }
         
