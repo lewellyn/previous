@@ -18,6 +18,7 @@ typedef enum
   INTERRUPT_ESPDMA,
   INTERRUPT_M2R,
   INTERRUPT_R2M,
+  INTERRUPT_MO,
   MAX_INTERRUPTS
 } interrupt_id;
 

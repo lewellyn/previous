@@ -3,10 +3,8 @@
  This file is distributed under the GNU Public License, version 2 or at
  your option any later version. Read the file gpl.txt for details.
  
- Canon Magneto-optical Disk Drive Emulation.
- 
- Based on MESS source code.
- 
+ Canon Magneto-optical Disk Drive and NeXT MO Controller Emulation.
+  
  NeXT Optical Storage Processor uses Reed-Solomon algorithm for error correction.
  It has 2 128 byte internal buffers and uses double-buffering to perform error correction.
  
@@ -26,16 +24,367 @@
 #define IO_SEG_MASK	0x1FFFF
 
 
+/* Registers */
+
 struct {
-    Uint16 track_num;
+    Uint8 tracknuml;
+    Uint8 tracknumh;
     Uint8 sector_incrnum;
     Uint8 sector_count;
     Uint8 intstatus;
     Uint8 intmask;
     Uint8 ctrlr_csr2;
     Uint8 ctrlr_csr1;
-    Uint16 command;
-} mo_drive;
+    Uint8 csrl;
+    Uint8 csrh;
+    Uint8 err_stat;
+    Uint8 ecc_cnt;
+    Uint8 init;
+    Uint8 format;
+    Uint8 mark;
+    Uint8 flag[7];
+} mo;
+
+#define MOINT_CMD_COMPL 0x01
+
+
+/* Functions */
+void mo_formatter_cmd(void);
+void mo_drive_cmd(void);
+
+/* MO drive and controller registers */
+
+void MO_TrackNumH_Read(void) { // 0x02012000
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.tracknumh;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Track number hi read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_TrackNumH_Write(void) {
+    mo.tracknumh=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Track number hi write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_TrackNumL_Read(void) { // 0x02012001
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.tracknuml;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Track number lo read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_TrackNumL_Write(void) {
+    mo.tracknuml=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Track number lo write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_SectorIncr_Read(void) { // 0x02012002
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.sector_incrnum;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Sector increment read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_SectorIncr_Write(void) {
+    mo.sector_incrnum=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Sector increment write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_SectorCnt_Read(void) { // 0x02012003
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.sector_count;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Sector count read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_SectorCnt_Write(void) {
+    mo.sector_count=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Sector count write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_IntStatus_Read(void) { // 0x02012004
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.intstatus;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Interrupt status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_IntStatus_Write(void) {
+    mo.intstatus &= ~(IoMem[IoAccessCurrentAddress & IO_SEG_MASK]);
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Interrupt status write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_IntMask_Read(void) { // 0x02012005
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.intmask;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Interrupt mask read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_IntMask_Write(void) {
+    mo.intmask=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Interrupt mask write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MOctrl_CSR2_Read(void) { // 0x02012006
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.ctrlr_csr2;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO Controller] CSR2 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MOctrl_CSR2_Write(void) {
+    mo.ctrlr_csr2=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO Controller] CSR2 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MOctrl_CSR1_Read(void) { // 0x02012007
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.ctrlr_csr1;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO Controller] CSR1 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MOctrl_CSR1_Write(void) {
+    mo.ctrlr_csr1=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO Controller] CSR1 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    
+    mo_formatter_cmd();
+}
+
+void MO_CSR_H_Read(void) { // 0x02012009
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.csrh;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] CSR hi read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_CSR_H_Write(void) {
+    mo.csrh=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] CSR hi write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_CSR_L_Read(void) { // 0x02012008
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.csrl;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] CSR lo read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_CSR_L_Write(void) {
+    mo.csrl=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] CSR lo write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    
+    mo_drive_cmd();
+}
+
+void MO_ErrStat_Read(void) { // 0x0201200a
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.err_stat;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Error status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_EccCnt_Read(void) { // 0x0201200b
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.ecc_cnt;
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] ECC count read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Init_Write(void) { // 0x0201200c
+    mo.init=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Init write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Format_Write(void) { // 0x0201200d
+    mo.format=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Format at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Mark_Write(void) { // 0x0201200e
+    mo.mark=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Mark write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag0_Read(void) { // 0x02012010
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.flag[0];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 0 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag0_Write(void) {
+    mo.flag[0]=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 0 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag1_Read(void) { // 0x02012011
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.flag[1];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 1 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag1_Write(void) {
+    mo.flag[1]=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 1 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag2_Read(void) { // 0x02012012
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.flag[2];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 2 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag2_Write(void) {
+    mo.flag[2]=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 2 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag3_Read(void) { // 0x02012013
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.flag[3];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 3 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag3_Write(void) {
+    mo.flag[3]=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 3 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag4_Read(void) { // 0x02012014
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.flag[4];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 4 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag4_Write(void) {
+    mo.flag[4]=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 4 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag5_Read(void) { // 0x02012015
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.flag[5];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 5 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag5_Write(void) {
+    mo.flag[5]=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 5 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+void MO_Flag6_Read(void) { // 0x02012016
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.flag[6];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 6 read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+
+void MO_Flag6_Write(void) {
+    mo.flag[6]=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+ 	Log_Printf(LOG_MO_LEVEL,"[MO] Flag 6 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+}
+
+
+#define FMT_RESET       0x00
+#define FMT_ECC_READ    0x80
+#define FMT_ECC_WRITE   0x40
+#define FMT_RD_STAT     0x20
+#define FMT_ID_READ     0x10
+#define FMT_VERIFY      0x08
+#define FMT_ERASE       0x04
+#define FMT_READ        0x02
+#define FMT_WRITE       0x01
+
+#define FMT_SPINUP      0xF0
+#define FMT_EJECT       0xF1
+#define FMT_SEEK        0xF2
+#define FMT_SPIRAL_OFF  0xF3
+#define FMT_RESPIN      0xF4
+
+void mo_formatter_cmd(void) {
+    
+    switch (mo.ctrlr_csr1) {
+        case FMT_RESET:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Reset (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_ECC_READ:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: ECC Read (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_ECC_WRITE:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: ECC Write (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_RD_STAT:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Read Status (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_ID_READ:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: ID Read (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_VERIFY:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Verify (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_ERASE:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Erase (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_READ:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Read (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_WRITE:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Write (%02X)\n", mo.ctrlr_csr1);
+            break;
+            
+        case FMT_SPINUP:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Spin Up (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_EJECT:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Eject (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_SEEK:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Seek (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_SPIRAL_OFF:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Spiral Off (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_RESPIN:
+            Log_Printf(LOG_MO_LEVEL,"[MO] Formatter command: Respin (%02X)\n", mo.ctrlr_csr1);
+            break;
+
+            
+        default:
+            Log_Printf(LOG_WARN,"[MO] Formatter command: Unknown command! (%02X)\n", mo.ctrlr_csr1);
+            break;
+    }
+    
+    CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_MO);
+}
+
+
+#define DRV_SEK     0x0000 /* seek (last 12 bits are track position) */
+#define DRV_HOS     0xA000
+#define DRV_REC     0x1000 /* recalibrate */
+#define DRV_RDS     0x2000 /* return drive status */
+#define DRV_RCA     0x2200
+#define DRV_RES     0x2800 /* return extended status */
+#define DRV_RHS     0x2A00 /* return hardware status */
+#define DRV_RGC     0x3000
+#define DRV_RVI     0x3F00 /* return drive version information */
+#define DRV_SRH     0x4100 /* select read head */
+#define DRV_SVH     0x4200 /* select verify head */
+#define DRV_SWH     0x4300 /* select write head */
+#define DRV_SEH     0x4400 /* select erase head */
+#define DRV_SFH     0x4500
+#define DRV_RID     0x5000 /* spin up */
+#define DRV_SPM     0x5200 /* stop (what?) */
+#define DRV_STM     0x5300 /* start (what?) */
+#define DRV_LC      0x5400
+#define DRV_ULC     0x5500
+#define DRV_EC      0x5600 /* eject */
+#define DRV_SOO     0x5900 /* start spiraling? */
+#define DRV_SOF     0x5A00 /* stop spiraling? */
+#define DRV_RSD     0x8000
+#define DRV_SD      0xB000
+#define DRV_RJ      0x5100 /* relative jump */
+
+void mo_drive_cmd(void) {
+    Uint16 command = (mo.csrh<<8) | mo.csrl;
+    
+    /* Command in progress */
+    mo.intstatus &= ~MOINT_CMD_COMPL;
+    
+    switch (command) {
+        case 0:
+            break;
+            
+        default:
+            break;
+    }
+    
+    Log_Printf(LOG_MO_LEVEL,"[MO] Drive command: %04X\n", command);
+    
+    mo.csrl = mo.csrh = 0x00; /* indicate no error, TODO: check error codes */
+        
+    CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_MO);
+}
+
+void MO_InterruptHandler(void) {
+    CycInt_AcknowledgeInterrupt();
+
+    mo.intstatus |= MOINT_CMD_COMPL;
+}
+
+
+
+
+/* old stuff, remove later */
 
 Uint8 ECC_buffer[1600];
 Uint32 length;
@@ -73,6 +422,16 @@ Uint8 sector_position;
 void check_ecc(void);
 void compute_ecc(void);
 
+struct {
+    Uint16 track_num;
+    Uint8 sector_incrnum;
+    Uint8 sector_count;
+    Uint8 intstatus;
+    Uint8 intmask;
+    Uint8 ctrlr_csr2;
+    Uint8 ctrlr_csr1;
+    Uint16 command;
+} mo_drive;
 
 void MOdrive_Read(void) {
     Uint8 val;

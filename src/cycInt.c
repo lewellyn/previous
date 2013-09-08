@@ -57,6 +57,7 @@ const char CycInt_fileid[] = "Hatari cycInt.c : " __DATE__ " " __TIME__;
 #include "video.h"
 #include "sysReg.h"
 #include "esp.h"
+#include "mo.h"
 #include "dma.h"
 
 
@@ -75,7 +76,8 @@ static void (* const pIntHandlerFunctions[MAX_INTERRUPTS])(void) =
     ESP_InterruptHandler,
     ESPDMA_InterruptHandler,
     M2RDMA_InterruptHandler,
-    R2MDMA_InterruptHandler
+    R2MDMA_InterruptHandler,
+    MO_InterruptHandler
 };
 
 /* Event timer structure - keeps next timer to occur in structure so don't need
