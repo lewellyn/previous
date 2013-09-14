@@ -51,10 +51,14 @@ void dma_esp_write_memory(void);
 void dma_esp_flush_buffer(void);
 void dma_esp_read_memory(void);
 
+void dma_mo_write_memory(void);
+void dma_mo_read_memory(void);
+
 void dma_m2m_write_memory(void);
 
 
 void ESPDMA_InterruptHandler(void);
+void MODMA_InterruptHandler(void);
 void M2RDMA_InterruptHandler(void);
 void R2MDMA_InterruptHandler(void);
 void Video_InterruptHandler(void);

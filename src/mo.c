@@ -47,12 +47,83 @@ struct {
     Uint8 flag[7];
 } mo;
 
-#define MOINT_CMD_COMPL 0x01
+Uint16 mo_status = 0;
+Uint16 mo_dstat = 0;
+Uint16 mo_estat = 0;
+Uint16 mo_hstat = 0;
+
+
+/* Interrupt status */
+#define MOINT_CMD_COMPL     0x01
+#define MOINT_GPO           0x02
+#define MOINT_OPER_COMPL    0x04
+#define MOINT_ECC_DONE      0x08
+#define MOINT_TIMEOUT       0x10
+#define MOINT_READ_FAULT    0x20
+#define MOINT_PARITY_ERR    0x40
+#define MOINT_DATA_ERR      0x80
+
+/* Controller CSR 2 */
+#define MOCSR2_DRIVE_SEL    0x01
+#define MOCSR2_ECC_CMP      0x02
+#define MOCSR2_BUF_TOGGLE   0x04
+#define MOCSR2_CLR_BUFP     0x08
+#define MOCSR2_ECC_BLOCKS   0x10
+#define MOCSR2_ECC_MODE     0x20
+#define MOCSR2_ECC_DIS      0x40
+#define MOCSR2_SECT_TIMER   0x80
+
+/* Controller CSR 1 */
+/* see below (formatter commands) */
+
+/* Drive CSR (lo and hi) */
+/* see below (drive commands) */
+
+/* Data error status */
+#define ERRSTAT_ECC         0x01
+#define ERRSTAT_CMP         0x02
+#define ERRSTAT_TIMING      0x04
+#define ERRSTAT_STARVE      0x08
+
+/* Init */
+#define MOINIT_ID_MASK      0x03
+#define MOINIT_EVEN_PAR     0x04
+#define MOINIT_DMA_STV_ENA  0x08
+#define MOINIT_25_MHZ       0x10
+#define MOINIT_ID_CMP_TRK   0x20
+#define MOINIT_ECC_STV_DIS  0x40
+#define MOINIT_SEC_GREATER  0x80
+
+#define MOINIT_ID_34    0
+#define MOINIT_ID_234   1
+#define MOINIT_ID_1234  3
+#define MOINIT_ID_0     2
+
+/* Format */
+#define MOFORM_RD_GATE_NOM  0x06
+#define MOFORM_WR_GATE_NOM  0x30
+
+#define MOFORM_RD_GATE_MIN  0x00
+#define MOFORM_RD_GATE_MAX  0x0F
+#define MOFORM_RD_GATE_MASK 0x0F
 
 
 /* Functions */
 void mo_formatter_cmd(void);
 void mo_drive_cmd(void);
+
+/* Experimental */
+int drv_num = 0;
+FILE* mo_disk = NULL;
+Uint32 head_pos;
+Uint32 ho_head_pos;
+void mo_read_disk(void);
+void mo_write_disk(void);
+void mo_erase_disk(void);
+void mo_verify_disk(void);
+#define MO_SEC_PER_TRACK    16
+#define MO_TRACK_OFFSET     4149
+#define MO_SECTORSIZE       1024
 
 /* MO drive and controller registers */
 
@@ -99,6 +170,9 @@ void MO_SectorCnt_Write(void) {
 void MO_IntStatus_Read(void) { // 0x02012004
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.intstatus;
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Interrupt status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    /* temporary hack */
+    mo.intstatus = 0x00;
+    set_interrupt(INT_DISK, RELEASE_INT);
 }
 
 void MO_IntStatus_Write(void) {
@@ -124,6 +198,8 @@ void MOctrl_CSR2_Read(void) { // 0x02012006
 void MOctrl_CSR2_Write(void) {
     mo.ctrlr_csr2=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO Controller] CSR2 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    
+    drv_num = (mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
 }
 
 void MOctrl_CSR1_Read(void) { // 0x02012007
@@ -273,8 +349,14 @@ void MO_Flag6_Write(void) {
 #define FMT_SEEK        0xF2
 #define FMT_SPIRAL_OFF  0xF3
 #define FMT_RESPIN      0xF4
+#define FMT_TEST        0xF5
+#define FMT_EJECT_NOW   0xF6
 
 void mo_formatter_cmd(void) {
+    
+    if (drv_num!=0) { /* FIXME: Add support for second drive */
+        return;
+    }
     
     /* Command in progress */
     mo.intstatus &= ~MOINT_CMD_COMPL;
@@ -291,21 +373,27 @@ void mo_formatter_cmd(void) {
             break;
         case FMT_RD_STAT:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Read Status (%02X)\n", mo.ctrlr_csr1);
+            mo.csrh = (mo_status>>8)&0xFF;
+            mo.csrl = mo_status&0xFF;
             break;
         case FMT_ID_READ:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: ID Read (%02X)\n", mo.ctrlr_csr1);
             break;
         case FMT_VERIFY:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Verify (%02X)\n", mo.ctrlr_csr1);
+            mo_verify_disk();
             break;
         case FMT_ERASE:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Erase (%02X)\n", mo.ctrlr_csr1);
+            mo_erase_disk();
             break;
         case FMT_READ:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Read (%02X)\n", mo.ctrlr_csr1);
+            mo_read_disk();
             break;
         case FMT_WRITE:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Write (%02X)\n", mo.ctrlr_csr1);
+            mo_write_disk();
             break;
             
         case FMT_SPINUP:
@@ -323,7 +411,12 @@ void mo_formatter_cmd(void) {
         case FMT_RESPIN:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Respin (%02X)\n", mo.ctrlr_csr1);
             break;
-
+        case FMT_TEST:
+            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Test (%02X)\n", mo.ctrlr_csr1);
+            break;
+        case FMT_EJECT_NOW:
+            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Eject now (%02X)\n", mo.ctrlr_csr1);
+            break;
             
         default:
             Log_Printf(LOG_WARN,"[MO] Formatter command: Unknown command! (%02X)\n", mo.ctrlr_csr1);
@@ -334,7 +427,6 @@ void mo_formatter_cmd(void) {
 }
 
 /* Drive commands */
-/* Note: track number = ((HOS & 0x000F) << 12) | (SEK & 0x0FFF) */
 
 #define DRV_SEK     0x0000 /* seek (last 12 bits are track position) */
 #define DRV_HOS     0xA000 /* high order seek (last 4 bits are high order (<<12) track position) */
@@ -343,74 +435,90 @@ void mo_formatter_cmd(void) {
 #define DRV_RCA     0x2200 /* return current track address */
 #define DRV_RES     0x2800 /* return extended status */
 #define DRV_RHS     0x2A00 /* return hardware status */
-#define DRV_RGC     0x3000
+#define DRV_RGC     0x3000 /* return general config */
 #define DRV_RVI     0x3F00 /* return drive version information */
 #define DRV_SRH     0x4100 /* select read head */
 #define DRV_SVH     0x4200 /* select verify head */
 #define DRV_SWH     0x4300 /* select write head */
 #define DRV_SEH     0x4400 /* select erase head */
-#define DRV_SFH     0x4500
-#define DRV_RID     0x5000 /* spin up */
-#define DRV_RJ      0x5100 /* relative jump (last 4 bits are jump offset) */
+#define DRV_SFH     0x4500 /* select RF head */
+#define DRV_RID     0x5000 /* reset attn and status */
+#define DRV_RJ      0x5100 /* relative jump (see below) */
 #define DRV_SPM     0x5200 /* stop motor */
 #define DRV_STM     0x5300 /* start motor */
-#define DRV_LC      0x5400
-#define DRV_ULC     0x5500
+#define DRV_LC      0x5400 /* lock cartridge */
+#define DRV_ULC     0x5500 /* unlock cartridge */
 #define DRV_EC      0x5600 /* eject */
-#define DRV_SOO     0x5900 /* start spiraling? */
-#define DRV_SOF     0x5A00 /* stop spiraling? */
-#define DRV_RSD     0x8000
-#define DRV_SD      0xB000
+#define DRV_SOO     0x5900 /* spiral operation on */
+#define DRV_SOF     0x5A00 /* spiral operation off */
+#define DRV_RSD     0x8000 /* request self-diagnostic */
+#define DRV_SD      0xB000 /* send data (last 12 bits used) */
 
+/* Relative jump:
+ * bits 0 to 3: offset (signed -8 (0x8) to +7 (0x7)
+ * bits 4 to 6: head select
+ */
+
+/* Head select for relative jump */
+#define RJ_READ     0x10
+#define RJ_VERIFY   0x20
+#define RJ_WRITE    0x30
+#define RJ_ERASE    0x40
 
 /* Drive status information */
 
 /* Disk status (returned for DRV_RDS) */
-#define DS_INSERT   0x0002
-#define DS_RESET    0x0004
-#define DS_SEEK     0x0008
-#define DS_CMD      0x0010
-#define DS_INTFC    0x0020 /* interface */
-#define DS_PARITY   0x0040
-#define DS_STOPPED  0x0100
-#define DS_SIDE     0x0200 /* cartridge is upside down */
-#define DS_SERVO    0x0400
-#define DS_POWER    0x0800
-#define DS_WP       0x1000 /* write protected */
-#define DS_EMPTY    0x2000 /* no cartridge inserted */
-#define DS_BUSY     0x4000
+#define DS_INSERT   0x0004 /* load completed */
+#define DS_RESET    0x0008 /* power on reset */
+#define DS_SEEK     0x0010 /* address fault */
+#define DS_CMD      0x0020 /* invalid or unimplemented command */
+#define DS_INTFC    0x0040 /* interface fault */
+#define DS_I_PARITY 0x0080 /* interface parity error */
+#define DS_STOPPED  0x0200 /* not spinning */
+#define DS_SIDE     0x0400 /* media upside down */
+#define DS_SERVO    0x0800 /* servo not ready */
+#define DS_POWER    0x1000 /* laser power alarm */
+#define DS_WP       0x2000 /* disk write protected */
+#define DS_EMPTY    0x4000 /* no disk inserted */
+#define DS_BUSY     0x8000 /* execute busy */
 
 /* Extended status (returned for DRV_RES) */
-#define ES_RF       0x0001
-#define ES_WRITE    0x0008
-#define ES_COARSE   0x0010
-#define ES_TEST     0x0020
-#define ES_SLEEP    0x0040
-#define ES_LENS     0x0080
-#define ES_TRACKING 0x0100
-#define ES_PLL      0x0200
-#define ES_FOCUS    0x0400
-#define ES_SPEED    0x0800
-#define ES_STUCK    0x1000
-#define ES_ENCODER  0x2000
-#define ES_LOST     0x4000
+#define ES_RF       0x0002 /* RF detected */
+#define ES_WR_INH   0x0008 /* write inhibit (high temperature) */
+#define ES_WRITE    0x0010 /* write mode failed */
+#define ES_COARSE   0x0020 /* coarse seek failed */
+#define ES_TEST     0x0040 /* test write failed */
+#define ES_SLEEP    0x0080 /* sleep/wakeup failed */
+#define ES_LENS     0x0100 /* lens out of range */
+#define ES_TRACKING 0x0200 /* tracking servo failed */
+#define ES_PLL      0x0400 /* PLL failed */
+#define ES_FOCUS    0x0800 /* focus failed */
+#define ES_SPEED    0x1000 /* not at speed */
+#define ES_STUCK    0x2000 /* disk cartridge stuck */
+#define ES_ENCODER  0x4000 /* linear encoder failed */
+#define ES_LOST     0x8000 /* tracing failure */
 
 /* Hardware status (returned for DRV_RHS) */
-#define HS_LASER    0x0040
-#define HS_INIT     0x0080
-#define HS_TEMP     0x0100
-#define HS_CLAMP    0x0200
-#define HS_STOP     0x0400
-#define HS_TEMPSENS 0x0800
-#define HS_LENSPOS  0x1000
-#define HS_SERVOCMD 0x2000
-#define HS_SERVOTO  0x4000 /* servo timeout */
-#define HS_HEAD     0x8000
+#define HS_LASER    0x0040 /* laser power failed */
+#define HS_INIT     0x0080 /* drive init failed */
+#define HS_TEMP     0x0100 /* high drive temperature */
+#define HS_CLAMP    0x0200 /* spindle clamp misaligned */
+#define HS_STOP     0x0400 /* spindle stop timeout */
+#define HS_TEMPSENS 0x0800 /* temperature sensor failed */
+#define HS_LENSPOS  0x1000 /* lens position failure */
+#define HS_SERVOCMD 0x2000 /* servo command failure */
+#define HS_SERVOTO  0x4000 /* servo timeout failure */
+#define HS_HEAD     0x8000 /* head select failure */
 
 /* Version information (returned for DRV_RVI) */
-#define VI_VERSION  0x0000 /* TODO: find out correct version */
+#define VI_VERSION  0x0880
 
 void mo_drive_cmd(void) {
+    
+    if (drv_num!=0) { /* FIXME: Add support for second drive */
+        return;
+    }
+
     Uint16 command = (mo.csrh<<8) | mo.csrl;
     
     /* Command in progress */
@@ -418,31 +526,41 @@ void mo_drive_cmd(void) {
     
     if ((command&0xF000)==DRV_SEK) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Seek (%04X)\n", command);
-    } else if ((command&0xF000)==DRV_HOS) {
-        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: High Order Seek (%04X)\n", command);
+        head_pos = (ho_head_pos&0xF000) | (command&0x0FFF);
+    } else if ((command&0xF000)==DRV_SD) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Send Data (%04X)\n", command);
     } else {
         
         switch (command&0xFF00) {
+            case DRV_HOS:
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: High Order Seek (%04X)\n", command);
+                ho_head_pos = (command&0xF)<<12; /* CHECK: only seek command actually moves head? */
+                break;
             case DRV_REC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Recalibrate (%04X)\n", command);
                 break;
             case DRV_RDS:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Drive Status (%04X)\n", command);
+                mo_status = mo_dstat;
                 break;
             case DRV_RCA:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Current Track Address (%04X)\n", command);
+                mo_status = head_pos; /* TODO: check if correct */
                 break;
             case DRV_RES:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Extended Status (%04X)\n", command);
+                mo_status = mo_estat;
                 break;
             case DRV_RHS:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Hardware Status (%04X)\n", command);
+                mo_status = mo_hstat;
                 break;
             case DRV_RGC:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: RGC (%04X)\n", command);
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return General Config (%04X)\n", command);
                 break;
             case DRV_RVI:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Version Information (%04X)\n", command);
+                mo_status = VI_VERSION;
                 break;
             case DRV_SRH:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Select Read Head (%04X)\n", command);
@@ -457,25 +575,38 @@ void mo_drive_cmd(void) {
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Select Erase Head (%04X)\n", command);
                 break;
             case DRV_SFH:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: SFH (%04X)\n", command);
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Select RF Head (%04X)\n", command);
                 break;
             case DRV_RID:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Spin Up (%04X)\n", command);
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Reset Attn and Status (%04X)\n", command);
                 break;
             case DRV_RJ:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Relative Jump (%04X)\n", command);
+                int offset = command&0x7;
+                if (command&0x8) {
+                    offset = 8 - offset;
+                    head_pos-=offset;
+                } else {
+                    head_pos+=offset;
+                }
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Relative Jump: %i sectors %s (%s head)\n", offset*16,
+                           (command&0x8)?"back":"forward",
+                           (command&0xF0)==RJ_READ?"read":
+                           (command&0xF0)==RJ_VERIFY?"verify":
+                           (command&0xF0)==RJ_WRITE?"write":
+                           (command&0xF0)==RJ_ERASE?"erase":"unknown");
                 break;
             case DRV_SPM:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Stop Motor (%04X)\n", command);
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Stop Spindle Motor (%04X)\n", command);
                 break;
             case DRV_STM:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Start Motor (%04X)\n", command);
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Start Spindle Motor (%04X)\n", command);
                 break;
             case DRV_LC:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: LC (%04X)\n", command);
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Lock Cartridge (%04X)\n", command);
                 break;
             case DRV_ULC:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: ULC (%04X)\n", command);
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Unlock Cartridge (%04X)\n", command);
                 break;
             case DRV_EC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Eject (%04X)\n", command);
@@ -487,10 +618,7 @@ void mo_drive_cmd(void) {
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Stop Spiraling (%04X)\n", command);
                 break;
             case DRV_RSD:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: RSD (%04X)\n", command);
-                break;
-            case DRV_SD:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: SD (%04X)\n", command);
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Request Self-Diagnostic (%04X)\n", command);
                 break;
                 
             default:
@@ -498,19 +626,140 @@ void mo_drive_cmd(void) {
                 break;
         }
     }
-    
-    mo.csrl = mo.csrh = 0x00; /* indicate no error, TODO: check error codes */
-        
+            
     CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_MO);
 }
 
 void MO_InterruptHandler(void) {
     CycInt_AcknowledgeInterrupt();
 
-    mo.intstatus |= MOINT_CMD_COMPL;
+    mo.intstatus |= (MOINT_CMD_COMPL|0x04|0x08); // mo_oper_compl|mo_ecc_done
+    
+    if (mo.intstatus&mo.intmask) {
+        set_interrupt(INT_DISK, SET_INT);
+    }
 }
 
 
+
+
+
+
+
+#include "file.h"
+/* Initialize/Uninitialize MO disks */
+void MO_Init(void);
+void MO_Uninit(void);
+void MO_Init(void) {
+    Log_Printf(LOG_WARN, "CALL MO INIT\n");
+    
+    /* Check if files exist. Present dialog to re-select missing files. */
+    if (File_Exists(ConfigureParams.SCSI.target[0].szImageName) && ConfigureParams.SCSI.target[0].bAttached) {
+        //nFileSize[target] = File_Length(ConfigureParams.SCSI.target[target].szImageName);
+        mo_disk = File_Open(ConfigureParams.SCSI.target[0].szImageName, "r");
+    } else {
+        //nFileSize[target] = 0;
+        mo_disk=NULL;
+        mo_dstat=DS_EMPTY;
+    }
+    
+    //mo_dstat |= (DS_STOPPED|DS_RESET);
+    
+    Log_Printf(LOG_WARN, "MO Disk: %s\n",ConfigureParams.SCSI.target[0].szImageName);
+}
+
+void MO_Uninit(void) {
+    if (mo_disk)
+        File_Close(mo_disk);
+    mo_disk = NULL;
+}
+
+void MO_Reset(void) {
+    MO_Uninit();
+    MO_Init();
+}
+
+
+void mo_read_disk(void) {
+    /* Get the first sector */
+    Uint32 sector_num = (head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
+    sector_num+=mo.sector_incrnum;
+    /* Move head to position */
+    head_pos+=(mo.sector_incrnum>>4)&0x0F;
+    head_pos+=(mo.sector_incrnum&0x0F)?1:0;
+    /* Get transfer size */
+    Uint32 num_sectors = mo.sector_count;
+    Uint32 datasize = num_sectors * MO_SECTORSIZE;
+    
+    Log_Printf(LOG_WARN, "MO read %i sector(s) at offset %i (blocksize: %i byte)",
+               num_sectors, sector_num, MO_SECTORSIZE);
+    
+	/* seek to the position */
+	fseek(mo_disk, sector_num*MO_SECTORSIZE, SEEK_SET);
+    fread(mo_dma_buffer, datasize, 1, mo_disk);
+    
+    printf("%c%c%c%c\n",mo_dma_buffer[0],mo_dma_buffer[1],mo_dma_buffer[2],mo_dma_buffer[3]);
+        
+    dma_mo_write_memory();
+}
+
+void mo_write_disk(void) {
+    dma_mo_read_memory();
+
+    /* Get the first sector */
+    Uint32 sector_num = (head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
+    sector_num+=mo.sector_incrnum;
+    /* Move head to position */
+    head_pos+=(mo.sector_incrnum>>4)&0x0F;
+    head_pos+=(mo.sector_incrnum&0x0F)?1:0;
+    /* Get transfer size */
+    Uint32 num_sectors = mo.sector_count;
+    Uint32 datasize = num_sectors * MO_SECTORSIZE;
+    
+    
+
+    Log_Printf(LOG_WARN, "MO write %i sector(s) at offset %i (blocksize: %i byte)",
+               num_sectors, sector_num, MO_SECTORSIZE);
+    
+    
+    /* NO FILE WRITE */
+    Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
+#if 0
+    return; // just to be sure
+	/* seek to the position */
+	fseek(mo_disk, sector_num*MO_SECTORSIZE, SEEK_SET);
+    fwrite(mo_dma_buffer, datasize, 1, mo_disk);
+#endif
+    printf("%c%c%c%c\n",mo_dma_buffer[0],mo_dma_buffer[1],mo_dma_buffer[2],mo_dma_buffer[3]);
+}
+
+void mo_erase_disk(void) {
+    /* Get the first sector */
+    Uint32 sector_num = (head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
+    sector_num+=mo.sector_incrnum;
+    /* Move head to position */
+    head_pos+=(mo.sector_incrnum>>4)&0x0F;
+    head_pos+=(mo.sector_incrnum&0x0F)?1:0;
+    /* Get transfer size */
+    Uint32 num_sectors = mo.sector_count;
+
+    Log_Printf(LOG_WARN, "MO erase %i sector(s) at offset %i (blocksize: %i byte)",
+               num_sectors, sector_num, MO_SECTORSIZE);
+}
+
+void mo_verify_disk(void) {
+    /* Get the first sector */
+    Uint32 sector_num = (head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
+    sector_num+=mo.sector_incrnum;
+    /* Move head to position */
+    head_pos+=(mo.sector_incrnum>>4)&0x0F;
+    head_pos+=(mo.sector_incrnum&0x0F)?1:0;
+    /* Get transfer size */
+    Uint32 num_sectors = mo.sector_count;
+
+    Log_Printf(LOG_WARN, "MO verify %i sector(s) at offset %i (blocksize: %i byte)",
+               num_sectors, sector_num, MO_SECTORSIZE);
+}
 
 
 /* old stuff, remove later */

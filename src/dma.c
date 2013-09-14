@@ -10,6 +10,7 @@
 #include "m68000.h"
 #include "scsi.h"
 #include "esp.h"
+#include "mo.h"
 #include "sysReg.h"
 #include "dma.h"
 #include "configuration.h"
@@ -378,6 +379,12 @@ void ESPDMA_InterruptHandler(void) {
     esp_dma_done(write);
 }
 
+/* Handler function for DMA ESP delayed interrupt */
+void MODMA_InterruptHandler(void) {
+	CycInt_AcknowledgeInterrupt();
+    dma_interrupt(CHANNEL_DISK);
+}
+
 /* Handler functions for DMA M2M delyed interrupts */
 void M2RDMA_InterruptHandler(void) {
     CycInt_AcknowledgeInterrupt();
@@ -564,6 +571,103 @@ void dma_esp_read_memory(void) {
     esp_dma_done(false);
 #endif
 }
+
+
+/* Channel MO */
+void dma_mo_write_memory(void) {
+    int i;
+    int pos = 0;
+    
+    Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel MO: Write to memory at $%08x, %i bytes",
+               dma[CHANNEL_DISK].next,dma[CHANNEL_DISK].limit-dma[CHANNEL_DISK].next);
+    
+    if (!(dma[CHANNEL_DISK].csr&DMA_ENABLE)) {
+        Log_Printf(LOG_WARN, "[DMA] Channel MO: Error! DMA not enabled!");
+        return;
+    }
+    if ((dma[CHANNEL_DISK].limit%DMA_BURST_SIZE) || (dma[CHANNEL_DISK].next%4)) {
+        Log_Printf(LOG_WARN, "[DMA] Channel MO: Error! Bad alignment! (Next: $%08X, Limit: $%08X)",
+                   dma[CHANNEL_DISK].next, dma[CHANNEL_DISK].limit);
+    }
+    
+    while (dma[CHANNEL_DISK].next%DMA_BURST_SIZE) {
+        Log_Printf(LOG_WARN, "[DMA] Channel MO: Warning! DMA Next not burst size aligned! (Next: $%08X)",
+                   dma[CHANNEL_DISK].next);
+        NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(mo_dma_buffer, pos));
+        dma[CHANNEL_DISK].next+=4;
+        pos+=4;
+    }
+    
+    /* TODO: Find out how we should handle non burst-size aligned start address.
+     * End address is always burst-size aligned. For now we use a hack. */
+    
+    TRY(prb) {        
+        while (dma[CHANNEL_DISK].next<dma[CHANNEL_DISK].limit) {
+            /* Burst write to memory */
+            for (i=0; i<DMA_BURST_SIZE; i+=4) {
+                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(mo_dma_buffer, pos));
+                dma[CHANNEL_DISK].next+=4;
+                pos+=4;
+            }
+        }
+    } CATCH(prb) {
+        Log_Printf(LOG_WARN, "[DMA] Channel MO: Bus error while writing to %08x",dma[CHANNEL_DISK].next);
+        dma[CHANNEL_DISK].csr &= ~DMA_ENABLE;
+        dma[CHANNEL_DISK].csr |= (DMA_COMPLETE|DMA_BUSEXC);
+    } ENDTRY
+    
+    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MODMA);
+}
+
+void dma_mo_read_memory(void) {
+    int i;
+    int pos = 0;
+    
+    Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel MO: Read from memory at $%08x, %i bytes",
+               dma[CHANNEL_DISK].next,dma[CHANNEL_DISK].limit-dma[CHANNEL_DISK].next);
+    
+    if (!(dma[CHANNEL_DISK].csr&DMA_ENABLE)) {
+        Log_Printf(LOG_WARN, "[DMA] Channel MO: Error! DMA not enabled!");
+        return;
+    }
+    if ((dma[CHANNEL_DISK].limit%DMA_BURST_SIZE) || (dma[CHANNEL_DISK].next%4)) {
+        Log_Printf(LOG_WARN, "[DMA] Channel MO: Error! Bad alignment! (Next: $%08X, Limit: $%08X)",
+                   dma[CHANNEL_DISK].next, dma[CHANNEL_DISK].limit);
+        abort();
+    }
+    
+    /* TODO: Find out how we should handle non burst-size aligned start address.
+     * End address should be always burst-size aligned. For now we use a hack. */
+    
+    TRY(prb) {
+        /* This is a hack to handle non-burstsize-aligned DMA start */
+        if (dma[CHANNEL_DISK].next%DMA_BURST_SIZE) {
+            Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Start memory address is not 16 byte aligned ($%08X).",
+                       dma[CHANNEL_DISK].next);
+            while (dma[CHANNEL_DISK].next%DMA_BURST_SIZE) {
+                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_DISK].next), mo_dma_buffer, pos);
+                dma[CHANNEL_DISK].next+=4;
+                pos+=4;
+            }
+        }
+        
+        while (dma[CHANNEL_DISK].next<dma[CHANNEL_DISK].limit) {
+            /* Read data from memory to internal DMA buffer (no real buffer, we use an imaginary one) */
+            for (i=0; i<DMA_BURST_SIZE; i+=4) {
+                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_DISK].next), mo_dma_buffer, pos);
+                dma[CHANNEL_DISK].next+=4;
+                pos+=4;
+            }
+        }
+    } CATCH(prb) {
+        Log_Printf(LOG_WARN, "[DMA] Channel MO: Bus error while writing to %08x",dma[CHANNEL_DISK].next);
+        dma[CHANNEL_DISK].csr &= ~DMA_ENABLE;
+        dma[CHANNEL_DISK].csr |= (DMA_COMPLETE|DMA_BUSEXC);
+    } ENDTRY
+    
+    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MODMA);
+}
+
 
 
 /* Memory to Memory */

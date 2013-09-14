@@ -1,7 +1,13 @@
+void MO_Reset(void);
+
 void MOdrive_Read(void);
 void MOdrive_Write(void);
 
 void MOdrive_Execute_Command(Uint16 command);
+
+
+Uint8 mo_dma_buffer[256*1024];
+Uint32 mo_buf_size;
 
 void MO_InterruptHandler(void);
 
