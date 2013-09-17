@@ -47,10 +47,24 @@ struct {
     Uint8 flag[7];
 } mo;
 
-Uint16 mo_status = 0;
-Uint16 mo_dstat = 0;
-Uint16 mo_estat = 0;
-Uint16 mo_hstat = 0;
+struct {
+    Uint16 status;
+    Uint16 dstat;
+    Uint16 estat;
+    Uint16 hstat;
+    
+    Uint32 head_pos;
+    Uint32 ho_head_pos;
+    
+    FILE* dsk;
+} modrv[2];
+
+int dnum;
+
+//Uint16 mo_status = 0;
+//Uint16 mo_dstat = 0;
+//Uint16 mo_estat = 0;
+//Uint16 mo_hstat = 0;
 
 
 /* Interrupt status */
@@ -113,10 +127,10 @@ void mo_formatter_cmd(void);
 void mo_drive_cmd(void);
 
 /* Experimental */
-int drv_num = 0;
-FILE* mo_disk = NULL;
-Uint32 head_pos;
-Uint32 ho_head_pos;
+//int drv_num = 0;
+//FILE* mo_disk[2];
+//Uint32 head_pos;
+//Uint32 ho_head_pos;
 void mo_read_disk(void);
 void mo_write_disk(void);
 void mo_erase_disk(void);
@@ -199,7 +213,7 @@ void MOctrl_CSR2_Write(void) {
     mo.ctrlr_csr2=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO Controller] CSR2 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     
-    drv_num = (mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
+    dnum = (mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
 }
 
 void MOctrl_CSR1_Read(void) { // 0x02012007
@@ -354,7 +368,8 @@ void MO_Flag6_Write(void) {
 
 void mo_formatter_cmd(void) {
     
-    if (drv_num!=0) { /* FIXME: Add support for second drive */
+    if (modrv[dnum].dsk==NULL) { /* FIXME: Add support for second drive */
+        mo.intstatus &= ~MOINT_CMD_COMPL;
         return;
     }
     
@@ -373,8 +388,8 @@ void mo_formatter_cmd(void) {
             break;
         case FMT_RD_STAT:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Read Status (%02X)\n", mo.ctrlr_csr1);
-            mo.csrh = (mo_status>>8)&0xFF;
-            mo.csrl = mo_status&0xFF;
+            mo.csrh = (modrv[dnum].status>>8)&0xFF;
+            mo.csrl = modrv[dnum].status&0xFF;
             break;
         case FMT_ID_READ:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: ID Read (%02X)\n", mo.ctrlr_csr1);
@@ -514,8 +529,9 @@ void mo_formatter_cmd(void) {
 #define VI_VERSION  0x0880
 
 void mo_drive_cmd(void) {
-    
-    if (drv_num!=0) { /* FIXME: Add support for second drive */
+
+    if (modrv[dnum].dsk==NULL) { /* FIXME: Add support for second drive */
+        mo.intstatus &= ~MOINT_CMD_COMPL;
         return;
     }
 
@@ -526,7 +542,7 @@ void mo_drive_cmd(void) {
     
     if ((command&0xF000)==DRV_SEK) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Seek (%04X)\n", command);
-        head_pos = (ho_head_pos&0xF000) | (command&0x0FFF);
+        modrv[dnum].head_pos = (modrv[dnum].ho_head_pos&0xF000) | (command&0x0FFF);
     } else if ((command&0xF000)==DRV_SD) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Send Data (%04X)\n", command);
     } else {
@@ -534,33 +550,33 @@ void mo_drive_cmd(void) {
         switch (command&0xFF00) {
             case DRV_HOS:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: High Order Seek (%04X)\n", command);
-                ho_head_pos = (command&0xF)<<12; /* CHECK: only seek command actually moves head? */
+                modrv[dnum].ho_head_pos = (command&0xF)<<12; /* CHECK: only seek command actually moves head? */
                 break;
             case DRV_REC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Recalibrate (%04X)\n", command);
                 break;
             case DRV_RDS:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Drive Status (%04X)\n", command);
-                mo_status = mo_dstat;
+                modrv[dnum].status = modrv[dnum].dstat;
                 break;
             case DRV_RCA:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Current Track Address (%04X)\n", command);
-                mo_status = head_pos; /* TODO: check if correct */
+                modrv[dnum].status = modrv[dnum].head_pos; /* TODO: check if correct */
                 break;
             case DRV_RES:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Extended Status (%04X)\n", command);
-                mo_status = mo_estat;
+                modrv[dnum].status = modrv[dnum].estat;
                 break;
             case DRV_RHS:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Hardware Status (%04X)\n", command);
-                mo_status = mo_hstat;
+                modrv[dnum].status = modrv[dnum].hstat;
                 break;
             case DRV_RGC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return General Config (%04X)\n", command);
                 break;
             case DRV_RVI:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Version Information (%04X)\n", command);
-                mo_status = VI_VERSION;
+                modrv[dnum].status = VI_VERSION;
                 break;
             case DRV_SRH:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Select Read Head (%04X)\n", command);
@@ -585,9 +601,9 @@ void mo_drive_cmd(void) {
                 int offset = command&0x7;
                 if (command&0x8) {
                     offset = 8 - offset;
-                    head_pos-=offset;
+                    modrv[dnum].head_pos-=offset;
                 } else {
-                    head_pos+=offset;
+                    modrv[dnum].head_pos+=offset;
                 }
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Relative Jump: %i sectors %s (%s head)\n", offset*16,
                            (command&0x8)?"back":"forward",
@@ -651,27 +667,31 @@ void MO_InterruptHandler(void) {
 void MO_Init(void);
 void MO_Uninit(void);
 void MO_Init(void) {
-    Log_Printf(LOG_WARN, "CALL MO INIT\n");
+    Log_Printf(LOG_WARN, "Loading magneto-optical disks:");
+    int i;
     
-    /* Check if files exist. Present dialog to re-select missing files. */
-    if (File_Exists(ConfigureParams.SCSI.target[0].szImageName) && ConfigureParams.SCSI.target[0].bAttached) {
-        //nFileSize[target] = File_Length(ConfigureParams.SCSI.target[target].szImageName);
-        mo_disk = File_Open(ConfigureParams.SCSI.target[0].szImageName, "r");
-    } else {
-        //nFileSize[target] = 0;
-        mo_disk=NULL;
-        mo_dstat=DS_EMPTY;
+    for (i=0; i<2; i++) {
+        /* Check if files exist. Present dialog to re-select missing files. */
+        if (File_Exists(ConfigureParams.SCSI.target[i].szImageName) && ConfigureParams.SCSI.target[i].bAttached) {
+            //nFileSize[target] = File_Length(ConfigureParams.SCSI.target[target].szImageName);
+            modrv[i].dsk = File_Open(ConfigureParams.SCSI.target[i].szImageName, "r");
+        } else {
+            //nFileSize[target] = 0;
+            modrv[i].dsk=NULL;
+            modrv[i].dstat=DS_EMPTY;
+        }
+
+        Log_Printf(LOG_WARN, "MO Disk%i: %s\n",i,ConfigureParams.SCSI.target[i].szImageName);
     }
-    
-    //mo_dstat |= (DS_STOPPED|DS_RESET);
-    
-    Log_Printf(LOG_WARN, "MO Disk: %s\n",ConfigureParams.SCSI.target[0].szImageName);
 }
 
 void MO_Uninit(void) {
-    if (mo_disk)
-        File_Close(mo_disk);
-    mo_disk = NULL;
+    if (modrv[0].dsk)
+        File_Close(modrv[0].dsk);
+    if (modrv[1].dsk) {
+        File_Close(modrv[0].dsk);
+    }
+    modrv[0].dsk = modrv[1].dsk = NULL;
 }
 
 void MO_Reset(void) {
@@ -682,11 +702,11 @@ void MO_Reset(void) {
 
 void mo_read_disk(void) {
     /* Get the first sector */
-    Uint32 sector_num = (head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
+    Uint32 sector_num = (modrv[dnum].head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
     sector_num+=mo.sector_incrnum;
     /* Move head to position */
-    head_pos+=(mo.sector_incrnum>>4)&0x0F;
-    head_pos+=(mo.sector_incrnum&0x0F)?1:0;
+    modrv[dnum].head_pos+=(mo.sector_incrnum>>4)&0x0F;
+    modrv[dnum].head_pos+=(mo.sector_incrnum&0x0F)?1:0;
     /* Get transfer size */
     Uint32 num_sectors = mo.sector_count;
     Uint32 datasize = num_sectors * MO_SECTORSIZE;
@@ -695,8 +715,8 @@ void mo_read_disk(void) {
                num_sectors, sector_num, MO_SECTORSIZE);
     
 	/* seek to the position */
-	fseek(mo_disk, sector_num*MO_SECTORSIZE, SEEK_SET);
-    fread(mo_dma_buffer, datasize, 1, mo_disk);
+	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
+    fread(mo_dma_buffer, datasize, 1, modrv[dnum].dsk);
     
     printf("%c%c%c%c\n",mo_dma_buffer[0],mo_dma_buffer[1],mo_dma_buffer[2],mo_dma_buffer[3]);
         
@@ -707,16 +727,16 @@ void mo_write_disk(void) {
     dma_mo_read_memory();
 
     /* Get the first sector */
-    Uint32 sector_num = (head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
+    Uint32 sector_num = (modrv[dnum].head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
     sector_num+=mo.sector_incrnum;
     /* Move head to position */
-    head_pos+=(mo.sector_incrnum>>4)&0x0F;
-    head_pos+=(mo.sector_incrnum&0x0F)?1:0;
+    modrv[dnum].head_pos+=(mo.sector_incrnum>>4)&0x0F;
+    modrv[dnum].head_pos+=(mo.sector_incrnum&0x0F)?1:0;
     /* Get transfer size */
     Uint32 num_sectors = mo.sector_count;
     Uint32 datasize = num_sectors * MO_SECTORSIZE;
     
-    
+    FILE* modrv2 = File_Open("/Users/andi/Desktop/test.dd", "r+");
 
     Log_Printf(LOG_WARN, "MO write %i sector(s) at offset %i (blocksize: %i byte)",
                num_sectors, sector_num, MO_SECTORSIZE);
@@ -727,19 +747,19 @@ void mo_write_disk(void) {
 #if 0
     return; // just to be sure
 	/* seek to the position */
-	fseek(mo_disk, sector_num*MO_SECTORSIZE, SEEK_SET);
-    fwrite(mo_dma_buffer, datasize, 1, mo_disk);
+	fseek(modrv2, sector_num*MO_SECTORSIZE, SEEK_SET);
+    fwrite(mo_dma_buffer, datasize, 1, modrv2);
 #endif
     printf("%c%c%c%c\n",mo_dma_buffer[0],mo_dma_buffer[1],mo_dma_buffer[2],mo_dma_buffer[3]);
 }
 
 void mo_erase_disk(void) {
     /* Get the first sector */
-    Uint32 sector_num = (head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
+    Uint32 sector_num = (modrv[dnum].head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
     sector_num+=mo.sector_incrnum;
     /* Move head to position */
-    head_pos+=(mo.sector_incrnum>>4)&0x0F;
-    head_pos+=(mo.sector_incrnum&0x0F)?1:0;
+    modrv[dnum].head_pos+=(mo.sector_incrnum>>4)&0x0F;
+    modrv[dnum].head_pos+=(mo.sector_incrnum&0x0F)?1:0;
     /* Get transfer size */
     Uint32 num_sectors = mo.sector_count;
 
@@ -749,11 +769,11 @@ void mo_erase_disk(void) {
 
 void mo_verify_disk(void) {
     /* Get the first sector */
-    Uint32 sector_num = (head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
+    Uint32 sector_num = (modrv[dnum].head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
     sector_num+=mo.sector_incrnum;
     /* Move head to position */
-    head_pos+=(mo.sector_incrnum>>4)&0x0F;
-    head_pos+=(mo.sector_incrnum&0x0F)?1:0;
+    modrv[dnum].head_pos+=(mo.sector_incrnum>>4)&0x0F;
+    modrv[dnum].head_pos+=(mo.sector_incrnum&0x0F)?1:0;
     /* Get transfer size */
     Uint32 num_sectors = mo.sector_count;
 
