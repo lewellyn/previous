@@ -736,7 +736,7 @@ void mo_write_disk(void) {
     Uint32 num_sectors = mo.sector_count;
     Uint32 datasize = num_sectors * MO_SECTORSIZE;
     
-    FILE* modrv2 = File_Open("/Users/andi/Desktop/test.dd", "r+");
+    
 
     Log_Printf(LOG_WARN, "MO write %i sector(s) at offset %i (blocksize: %i byte)",
                num_sectors, sector_num, MO_SECTORSIZE);
@@ -747,8 +747,8 @@ void mo_write_disk(void) {
 #if 0
     return; // just to be sure
 	/* seek to the position */
-	fseek(modrv2, sector_num*MO_SECTORSIZE, SEEK_SET);
-    fwrite(mo_dma_buffer, datasize, 1, modrv2);
+	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
+    fwrite(mo_dma_buffer, datasize, 1, modrv[dnum].dsk);
 #endif
     printf("%c%c%c%c\n",mo_dma_buffer[0],mo_dma_buffer[1],mo_dma_buffer[2],mo_dma_buffer[3]);
 }
