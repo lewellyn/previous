@@ -616,7 +616,7 @@ void dma_mo_write_memory(void) {
         dma[CHANNEL_DISK].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
-    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MODMA);
+    CycInt_AddRelativeInterrupt(15000, INT_CPU_CYCLE, INTERRUPT_MODMA);
 }
 
 void dma_mo_read_memory(void) {
@@ -665,7 +665,7 @@ void dma_mo_read_memory(void) {
         dma[CHANNEL_DISK].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
-    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MODMA);
+    CycInt_AddRelativeInterrupt(15000, INT_CPU_CYCLE, INTERRUPT_MODMA);
 }
 
 

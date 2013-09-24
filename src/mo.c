@@ -122,22 +122,29 @@ int dnum;
 #define MOFORM_RD_GATE_MASK 0x0F
 
 
+/* Disk layout */
+#define MO_SEC_PER_TRACK    16
+#define MO_TRACK_OFFSET     4149
+#define MO_SECTORSIZE       1024
+
+
 /* Functions */
 void mo_formatter_cmd(void);
 void mo_drive_cmd(void);
+
+void mo_read_disk(void);
+void mo_write_disk(void);
+void mo_erase_disk(void);
+void mo_verify_disk(void);
+
 
 /* Experimental */
 //int drv_num = 0;
 //FILE* mo_disk[2];
 //Uint32 head_pos;
 //Uint32 ho_head_pos;
-void mo_read_disk(void);
-void mo_write_disk(void);
-void mo_erase_disk(void);
-void mo_verify_disk(void);
-#define MO_SEC_PER_TRACK    16
-#define MO_TRACK_OFFSET     4149
-#define MO_SECTORSIZE       1024
+Uint8 delayed_intr = 0;
+void mo_raise_irq(Uint8 interrupt);
 
 /* MO drive and controller registers */
 
@@ -185,13 +192,17 @@ void MO_IntStatus_Read(void) { // 0x02012004
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.intstatus;
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Interrupt status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     /* temporary hack */
-    mo.intstatus = 0x00;
-    set_interrupt(INT_DISK, RELEASE_INT);
+    //mo.intstatus = 0x00;
+    //set_interrupt(INT_DISK, RELEASE_INT);
 }
 
 void MO_IntStatus_Write(void) {
     mo.intstatus &= ~(IoMem[IoAccessCurrentAddress & IO_SEG_MASK]);
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Interrupt status write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    /* TODO: check if correct */
+    if (!(mo.intstatus&mo.intmask)||(mo.intstatus&mo.intmask)==MOINT_CMD_COMPL) {
+        set_interrupt(INT_DISK, RELEASE_INT);
+    }
 }
 
 void MO_IntMask_Read(void) { // 0x02012005
@@ -438,7 +449,8 @@ void mo_formatter_cmd(void) {
             break;
     }
     
-    CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_MO);
+    mo_raise_irq(MOINT_CMD_COMPL);
+    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MO);
 }
 
 /* Drive commands */
@@ -642,14 +654,28 @@ void mo_drive_cmd(void) {
                 break;
         }
     }
-            
-    CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_MO);
+    
+    mo_raise_irq(MOINT_CMD_COMPL);
+    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MO);
+}
+
+
+/* Interrupts */
+#define INTDELAY_CMD    100
+#define INTDELAY_OPER   2000
+#define INTDELAY_ECC    3000
+#define INTDELAY_OTHER  4000
+
+void mo_raise_irq(Uint8 interrupt) {
+
+    delayed_intr|=interrupt;
 }
 
 void MO_InterruptHandler(void) {
     CycInt_AcknowledgeInterrupt();
 
-    mo.intstatus |= (MOINT_CMD_COMPL|0x04|0x08); // mo_oper_compl|mo_ecc_done
+    mo.intstatus |= delayed_intr;
+    delayed_intr = 0;
     
     if (mo.intstatus&mo.intmask) {
         set_interrupt(INT_DISK, SET_INT);
@@ -689,7 +715,7 @@ void MO_Uninit(void) {
     if (modrv[0].dsk)
         File_Close(modrv[0].dsk);
     if (modrv[1].dsk) {
-        File_Close(modrv[0].dsk);
+        File_Close(modrv[1].dsk);
     }
     modrv[0].dsk = modrv[1].dsk = NULL;
 }
@@ -717,10 +743,13 @@ void mo_read_disk(void) {
 	/* seek to the position */
 	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
     fread(mo_dma_buffer, datasize, 1, modrv[dnum].dsk);
-    
+
     printf("%c%c%c%c\n",mo_dma_buffer[0],mo_dma_buffer[1],mo_dma_buffer[2],mo_dma_buffer[3]);
         
     dma_mo_write_memory();
+    
+    mo_raise_irq(MOINT_OPER_COMPL);
+    mo_raise_irq(MOINT_ECC_DONE); /* TODO: check */
 }
 
 void mo_write_disk(void) {
@@ -751,6 +780,9 @@ void mo_write_disk(void) {
     fwrite(mo_dma_buffer, datasize, 1, modrv[dnum].dsk);
 #endif
     printf("%c%c%c%c\n",mo_dma_buffer[0],mo_dma_buffer[1],mo_dma_buffer[2],mo_dma_buffer[3]);
+    
+    mo_raise_irq(MOINT_OPER_COMPL);
+    mo_raise_irq(MOINT_ECC_DONE); /* TODO: check */
 }
 
 void mo_erase_disk(void) {
@@ -765,6 +797,8 @@ void mo_erase_disk(void) {
 
     Log_Printf(LOG_WARN, "MO erase %i sector(s) at offset %i (blocksize: %i byte)",
                num_sectors, sector_num, MO_SECTORSIZE);
+    
+    mo_raise_irq(MOINT_OPER_COMPL);
 }
 
 void mo_verify_disk(void) {
@@ -779,6 +813,9 @@ void mo_verify_disk(void) {
 
     Log_Printf(LOG_WARN, "MO verify %i sector(s) at offset %i (blocksize: %i byte)",
                num_sectors, sector_num, MO_SECTORSIZE);
+    
+    mo_raise_irq(MOINT_OPER_COMPL);
+    mo_raise_irq(MOINT_ECC_DONE);
 }
 
 
