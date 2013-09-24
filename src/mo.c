@@ -3,13 +3,11 @@
  This file is distributed under the GNU Public License, version 2 or at
  your option any later version. Read the file gpl.txt for details.
  
- Canon Magneto-optical Disk Drive and NeXT MO Controller Emulation.
+ Canon Magneto-Optical Disk Drive and NeXT Optical Storage Processor emulation.
   
  NeXT Optical Storage Processor uses Reed-Solomon algorithm for error correction.
  It has 2 128 byte internal buffers and uses double-buffering to perform error correction.
- 
- Dummy to pass POT.
- 
+  
  */
 
 #include "ioMem.h"
@@ -698,16 +696,18 @@ void MO_Init(void) {
     
     for (i=0; i<2; i++) {
         /* Check if files exist. Present dialog to re-select missing files. */
-        if (File_Exists(ConfigureParams.SCSI.target[i].szImageName) && ConfigureParams.SCSI.target[i].bAttached) {
+        if (File_Exists(ConfigureParams.MO.drive[i].szImageName) &&
+            ConfigureParams.MO.drive[i].bDriveConnected &&
+            ConfigureParams.MO.drive[i].bDiskInserted) {
             //nFileSize[target] = File_Length(ConfigureParams.SCSI.target[target].szImageName);
-            modrv[i].dsk = File_Open(ConfigureParams.SCSI.target[i].szImageName, "r");
+            modrv[i].dsk = File_Open(ConfigureParams.MO.drive[i].szImageName, "r");
         } else {
             //nFileSize[target] = 0;
             modrv[i].dsk=NULL;
             modrv[i].dstat=DS_EMPTY;
         }
 
-        Log_Printf(LOG_WARN, "MO Disk%i: %s\n",i,ConfigureParams.SCSI.target[i].szImageName);
+        Log_Printf(LOG_WARN, "MO Disk%i: %s\n",i,ConfigureParams.MO.drive[i].szImageName);
     }
 }
 

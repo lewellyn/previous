@@ -230,6 +230,22 @@ static const struct Config_Tag configs_SCSI[] =
 	{ NULL , Error_Tag, NULL }
 };
 
+/* Used to load/save MO options */
+static const struct Config_Tag configs_MO[] =
+{
+    { "szImageName0", String_Tag, ConfigureParams.MO.drive[0].szImageName },
+    { "bDriveConnected0", Bool_Tag, &ConfigureParams.MO.drive[0].bDriveConnected },
+    { "bDiskInserted0", Bool_Tag, &ConfigureParams.MO.drive[0].bDiskInserted },
+    { "bWriteProtected0", Bool_Tag, &ConfigureParams.MO.drive[0].bWriteProtected },
+    
+    { "szImageName1", String_Tag, ConfigureParams.MO.drive[1].szImageName },
+    { "bDriveConnected1", Bool_Tag, &ConfigureParams.MO.drive[1].bDriveConnected },
+    { "bDiskInserted1", Bool_Tag, &ConfigureParams.MO.drive[1].bDiskInserted },
+    { "bWriteProtected1", Bool_Tag, &ConfigureParams.MO.drive[1].bWriteProtected },
+
+	{ NULL , Error_Tag, NULL }
+};
+
 /* Used to load/save ROM options */
 static const struct Config_Tag configs_Rom[] =
 {
@@ -365,6 +381,15 @@ void Configuration_SetDefault(void)
         strcpy(ConfigureParams.SCSI.target[target].szImageName, psWorkingDir);
         ConfigureParams.SCSI.target[target].bAttached = false;
         ConfigureParams.SCSI.target[target].bCDROM = false;
+    }
+    
+    /* Set defaults for MO drives */
+    int drive;
+    for (drive = 0; drive < MO_MAX_DRIVES; drive++) {
+        strcpy(ConfigureParams.MO.drive[drive].szImageName, psWorkingDir);
+        ConfigureParams.MO.drive[drive].bDriveConnected = false;
+        ConfigureParams.MO.drive[drive].bDiskInserted = false;
+        ConfigureParams.MO.drive[drive].bWriteProtected = false;
     }
     
 	/* Set defaults for Keyboard */
@@ -694,6 +719,7 @@ void Configuration_Load(const char *psFileName)
 	Configuration_LoadSection(psFileName, configs_Floppy, "[Floppy]");
     Configuration_LoadSection(psFileName, configs_Boot, "[Boot]");
 	Configuration_LoadSection(psFileName, configs_SCSI, "[HardDisk]");
+    Configuration_LoadSection(psFileName, configs_MO, "[MagnetoOptical]");
 	Configuration_LoadSection(psFileName, configs_Rom, "[ROM]");
 	Configuration_LoadSection(psFileName, configs_Rs232, "[RS232]");
 	Configuration_LoadSection(psFileName, configs_Printer, "[Printer]");
@@ -742,6 +768,7 @@ void Configuration_Save(void)
 	Configuration_SaveSection(sConfigFileName, configs_Floppy, "[Floppy]");
     Configuration_SaveSection(sConfigFileName, configs_Boot, "[Boot]");
 	Configuration_SaveSection(sConfigFileName, configs_SCSI, "[HardDisk]");
+    Configuration_SaveSection(sConfigFileName, configs_MO, "[MagnetoOptical]");
 	Configuration_SaveSection(sConfigFileName, configs_Rom, "[ROM]");
 	Configuration_SaveSection(sConfigFileName, configs_Rs232, "[RS232]");
 	Configuration_SaveSection(sConfigFileName, configs_Printer, "[Printer]");
@@ -773,6 +800,15 @@ void Configuration_MemorySnapShot_Capture(bool bSave)
         MemorySnapShot_Store(ConfigureParams.SCSI.target[target].szImageName, sizeof(ConfigureParams.SCSI.target[target].szImageName));
         MemorySnapShot_Store(&ConfigureParams.SCSI.target[target].bAttached, sizeof(ConfigureParams.SCSI.target[target].bAttached));
         MemorySnapShot_Store(&ConfigureParams.SCSI.target[target].bCDROM, sizeof(ConfigureParams.SCSI.target[target].bCDROM));
+    }
+    
+    /* MO drives */
+    int drive;
+    for (drive = 0; drive < MO_MAX_DRIVES; drive++) {
+        MemorySnapShot_Store(ConfigureParams.MO.drive[drive].szImageName, sizeof(ConfigureParams.MO.drive[drive].szImageName));
+        MemorySnapShot_Store(&ConfigureParams.MO.drive[drive].bDriveConnected, sizeof(ConfigureParams.MO.drive[drive].bDriveConnected));
+        MemorySnapShot_Store(&ConfigureParams.MO.drive[drive].bDiskInserted, sizeof(ConfigureParams.MO.drive[drive].bDiskInserted));
+        MemorySnapShot_Store(&ConfigureParams.MO.drive[drive].bWriteProtected, sizeof(ConfigureParams.MO.drive[drive].bWriteProtected));
     }
 
     /* Monitor options */
