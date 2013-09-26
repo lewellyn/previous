@@ -17,6 +17,8 @@
 #include "mo.h"
 #include "sysReg.h"
 #include "dma.h"
+#include "file.h"
+
 
 #define LOG_MO_REG_LEVEL    LOG_DEBUG
 #define LOG_MO_CMD_LEVEL    LOG_WARN
@@ -134,7 +136,14 @@ void mo_read_disk(void);
 void mo_write_disk(void);
 void mo_erase_disk(void);
 void mo_verify_disk(void);
+void mo_eject_disk(void);
+void mo_read_ecc(void);
+void mo_write_ecc(void);
 
+void mo_jump_head(Uint16 command);
+
+void MO_Init(void);
+void MO_Uninit(void);
 
 /* Experimental */
 //int drv_num = 0;
@@ -375,7 +384,7 @@ void MO_Flag6_Write(void) {
 #define FMT_TEST        0xF5
 #define FMT_EJECT_NOW   0xF6
 
-void mo_formatter_cmd(void) {
+void mo_formatter_cmd(void) { /* TODO: commands can be combined! (read|eccread)*/
     
     if (modrv[dnum].dsk==NULL) { /* FIXME: Add support for second drive */
         mo.intstatus &= ~MOINT_CMD_COMPL;
@@ -391,9 +400,11 @@ void mo_formatter_cmd(void) {
             break;
         case FMT_ECC_READ:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: ECC Read (%02X)\n", mo.ctrlr_csr1);
+            mo_read_ecc();
             break;
         case FMT_ECC_WRITE:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: ECC Write (%02X)\n", mo.ctrlr_csr1);
+            mo_write_ecc();
             break;
         case FMT_RD_STAT:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Read Status (%02X)\n", mo.ctrlr_csr1);
@@ -419,7 +430,19 @@ void mo_formatter_cmd(void) {
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Write (%02X)\n", mo.ctrlr_csr1);
             mo_write_disk();
             break;
+        /* Combined commands */
+        case (FMT_READ|FMT_ECC_READ):
+            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Read using ECC (%02X)\n", mo.ctrlr_csr1);
+            mo_read_disk();
+            mo_read_ecc();
+            break;
+        case (FMT_WRITE|FMT_ECC_WRITE):
+            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Write using ECC (%02X)\n", mo.ctrlr_csr1);
+            mo_write_disk();
+            mo_write_ecc();
+            break;
             
+#if 0
         case FMT_SPINUP:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Spin Up (%02X)\n", mo.ctrlr_csr1);
             break;
@@ -441,9 +464,10 @@ void mo_formatter_cmd(void) {
         case FMT_EJECT_NOW:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Eject now (%02X)\n", mo.ctrlr_csr1);
             break;
-            
+#endif
         default:
             Log_Printf(LOG_WARN,"[MO] Formatter command: Unknown command! (%02X)\n", mo.ctrlr_csr1);
+            abort();
             break;
     }
     
@@ -555,13 +579,15 @@ void mo_drive_cmd(void) {
         modrv[dnum].head_pos = (modrv[dnum].ho_head_pos&0xF000) | (command&0x0FFF);
     } else if ((command&0xF000)==DRV_SD) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Send Data (%04X)\n", command);
+    } else if ((command&0xFF00)==DRV_RJ) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Relative Jump (%04X)\n", command);
+        mo_jump_head(command);
+    } else if ((command&0xFFF0)==DRV_HOS) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: High Order Seek (%04X)\n", command);
+        modrv[dnum].ho_head_pos = (command&0xF)<<12; /* CHECK: only seek command actually moves head? */
     } else {
-        
-        switch (command&0xFF00) {
-            case DRV_HOS:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: High Order Seek (%04X)\n", command);
-                modrv[dnum].ho_head_pos = (command&0xF)<<12; /* CHECK: only seek command actually moves head? */
-                break;
+    
+        switch (command&0xFFFF) {
             case DRV_REC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Recalibrate (%04X)\n", command);
                 break;
@@ -606,22 +632,6 @@ void mo_drive_cmd(void) {
             case DRV_RID:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Reset Attn and Status (%04X)\n", command);
                 break;
-            case DRV_RJ:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Relative Jump (%04X)\n", command);
-                int offset = command&0x7;
-                if (command&0x8) {
-                    offset = 8 - offset;
-                    modrv[dnum].head_pos-=offset;
-                } else {
-                    modrv[dnum].head_pos+=offset;
-                }
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Relative Jump: %i sectors %s (%s head)\n", offset*16,
-                           (command&0x8)?"back":"forward",
-                           (command&0xF0)==RJ_READ?"read":
-                           (command&0xF0)==RJ_VERIFY?"verify":
-                           (command&0xF0)==RJ_WRITE?"write":
-                           (command&0xF0)==RJ_ERASE?"erase":"unknown");
-                break;
             case DRV_SPM:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Stop Spindle Motor (%04X)\n", command);
                 break;
@@ -636,6 +646,7 @@ void mo_drive_cmd(void) {
                 break;
             case DRV_EC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Eject (%04X)\n", command);
+                mo_eject_disk();
                 break;
             case DRV_SOO:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Start Spiraling (%04X)\n", command);
@@ -681,15 +692,7 @@ void MO_InterruptHandler(void) {
 }
 
 
-
-
-
-
-
-#include "file.h"
 /* Initialize/Uninitialize MO disks */
-void MO_Init(void);
-void MO_Uninit(void);
 void MO_Init(void) {
     Log_Printf(LOG_WARN, "Loading magneto-optical disks:");
     int i;
@@ -700,7 +703,11 @@ void MO_Init(void) {
             ConfigureParams.MO.drive[i].bDriveConnected &&
             ConfigureParams.MO.drive[i].bDiskInserted) {
             //nFileSize[target] = File_Length(ConfigureParams.SCSI.target[target].szImageName);
-            modrv[i].dsk = File_Open(ConfigureParams.MO.drive[i].szImageName, "r");
+            if (ConfigureParams.MO.drive[i].bWriteProtected) {
+                modrv[i].dsk = File_Open(ConfigureParams.MO.drive[i].szImageName, "r");
+            } else {
+                modrv[i].dsk = File_Open(ConfigureParams.MO.drive[i].szImageName, "r+");
+            }
         } else {
             //nFileSize[target] = 0;
             modrv[i].dsk=NULL;
@@ -726,19 +733,56 @@ void MO_Reset(void) {
 }
 
 
+/* Head functions */
+
+void mo_jump_head(Uint16 command) {
+    int offset = command&0x7;
+    if (command&0x8) {
+        offset = 8 - offset;
+        modrv[dnum].head_pos-=offset;
+    } else {
+        modrv[dnum].head_pos+=offset;
+    }
+    Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Relative Jump: %i sectors %s (%s head)\n", offset*16,
+               (command&0x8)?"back":"forward",
+               (command&0xF0)==RJ_READ?"read":
+               (command&0xF0)==RJ_VERIFY?"verify":
+               (command&0xF0)==RJ_WRITE?"write":
+               (command&0xF0)==RJ_ERASE?"erase":"unknown");
+}
+
+void mo_move_head_start(void) {
+    modrv[dnum].head_pos+=mo.sector_incrnum/MO_SEC_PER_TRACK;
+    modrv[dnum].head_pos+=(mo.sector_incrnum%MO_SEC_PER_TRACK)?1:0;
+}
+
+void mo_move_head_end(void) {
+    Uint32 offset = (mo.sector_incrnum%MO_SEC_PER_TRACK)+mo.sector_count;
+    modrv[dnum].head_pos+=(offset-1)/MO_SEC_PER_TRACK;
+}
+
+
+/* Helpers */
+
+Uint32 mo_get_sector(void) {
+    Sint32 tracknum = modrv[dnum].head_pos;
+#if 1
+    tracknum-=MO_TRACK_OFFSET;
+#endif
+    return (tracknum*MO_SEC_PER_TRACK)+mo.sector_incrnum;
+}
+
+
+/* I/O functions */
+
 void mo_read_disk(void) {
-    /* Get the first sector */
-    Uint32 sector_num = (modrv[dnum].head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
-    sector_num+=mo.sector_incrnum;
-    /* Move head to position */
-    modrv[dnum].head_pos+=(mo.sector_incrnum>>4)&0x0F;
-    modrv[dnum].head_pos+=(mo.sector_incrnum&0x0F)?1:0;
-    /* Get transfer size */
-    Uint32 num_sectors = mo.sector_count;
-    Uint32 datasize = num_sectors * MO_SECTORSIZE;
-    
-    Log_Printf(LOG_WARN, "MO read %i sector(s) at offset %i (blocksize: %i byte)",
-               num_sectors, sector_num, MO_SECTORSIZE);
+    Uint32 sector_num = mo_get_sector();
+    Uint32 datasize = mo.sector_count*MO_SECTORSIZE;
+
+    mo_move_head_start();
+
+    Log_Printf(LOG_WARN, "MO disk %i: Read %i sector(s) at offset %i",
+               dnum, datasize/MO_SECTORSIZE, sector_num);
     
 	/* seek to the position */
 	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
@@ -748,8 +792,10 @@ void mo_read_disk(void) {
         
     dma_mo_write_memory();
     
+    mo_move_head_end();
+    mo.sector_count = 0;
+    
     mo_raise_irq(MOINT_OPER_COMPL);
-    mo_raise_irq(MOINT_ECC_DONE); /* TODO: check */
 }
 
 void mo_write_disk(void) {
@@ -767,8 +813,8 @@ void mo_write_disk(void) {
     
     
 
-    Log_Printf(LOG_WARN, "MO write %i sector(s) at offset %i (blocksize: %i byte)",
-               num_sectors, sector_num, MO_SECTORSIZE);
+    Log_Printf(LOG_WARN, "MO disk %i: Write %i sector(s) at offset %i",
+               dnum, num_sectors, sector_num);
     
     
     /* NO FILE WRITE */
@@ -782,7 +828,6 @@ void mo_write_disk(void) {
     printf("%c%c%c%c\n",mo_dma_buffer[0],mo_dma_buffer[1],mo_dma_buffer[2],mo_dma_buffer[3]);
     
     mo_raise_irq(MOINT_OPER_COMPL);
-    mo_raise_irq(MOINT_ECC_DONE); /* TODO: check */
 }
 
 void mo_erase_disk(void) {
@@ -795,8 +840,8 @@ void mo_erase_disk(void) {
     /* Get transfer size */
     Uint32 num_sectors = mo.sector_count;
 
-    Log_Printf(LOG_WARN, "MO erase %i sector(s) at offset %i (blocksize: %i byte)",
-               num_sectors, sector_num, MO_SECTORSIZE);
+    Log_Printf(LOG_WARN, "MO disk %i: Erase %i sector(s) at offset %i",
+               dnum, num_sectors, sector_num);
     
     mo_raise_irq(MOINT_OPER_COMPL);
 }
@@ -811,10 +856,33 @@ void mo_verify_disk(void) {
     /* Get transfer size */
     Uint32 num_sectors = mo.sector_count;
 
-    Log_Printf(LOG_WARN, "MO verify %i sector(s) at offset %i (blocksize: %i byte)",
-               num_sectors, sector_num, MO_SECTORSIZE);
+    Log_Printf(LOG_WARN, "MO disk %i: Verify %i sector(s) at offset %i",
+               dnum, num_sectors, sector_num);
     
     mo_raise_irq(MOINT_OPER_COMPL);
+    mo_raise_irq(MOINT_ECC_DONE); /* TODO: check! */
+}
+
+void mo_eject_disk(void) {
+    Log_Printf(LOG_WARN, "MO disk %i: Eject",dnum);
+    
+    File_Close(modrv[dnum].dsk);
+    modrv[dnum].dsk=NULL;
+    
+    ConfigureParams.MO.drive[dnum].bDiskInserted=false;
+    ConfigureParams.MO.drive[dnum].szImageName[0]='\0';
+}
+
+
+/* ECC functions */
+
+void mo_read_ecc(void) {
+    dma_mo_write_memory();
+    mo_raise_irq(MOINT_ECC_DONE);
+}
+
+void mo_write_ecc(void) {
+    dma_mo_read_memory();
     mo_raise_irq(MOINT_ECC_DONE);
 }
 

@@ -665,7 +665,7 @@ void dma_mo_read_memory(void) {
         dma[CHANNEL_DISK].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
-    CycInt_AddRelativeInterrupt(15000, INT_CPU_CYCLE, INTERRUPT_MODMA);
+    CycInt_AddRelativeInterrupt(5000, INT_CPU_CYCLE, INTERRUPT_MODMA);
 }
 
 
