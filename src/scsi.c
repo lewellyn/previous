@@ -49,7 +49,7 @@ Uint32 nFileSize[ESP_MAX_DEVS];
 
 /* Initialize/Uninitialize SCSI disks */
 void SCSI_Init(void) {
-    Log_Printf(LOG_WARN, "CALL SCSI INIT\n");
+    Log_Printf(LOG_WARN, "Loading SCSI disks:\n");
     
     /* Check if files exist. Present dialog to re-select missing files. */        
     int target;
@@ -64,7 +64,7 @@ void SCSI_Init(void) {
     }
     
     for (target = 0; target < ESP_MAX_DEVS; target++) {
-        Log_Printf(LOG_WARN, "Disk%i: %s\n",target,ConfigureParams.SCSI.target[target].szImageName);
+        Log_Printf(LOG_WARN, "SCSI Disk%i: %s\n",target,ConfigureParams.SCSI.target[target].szImageName);
     }
 }
 
@@ -433,7 +433,7 @@ void SCSI_ReadCapacity(Uint8 *cdb)
 {        
     Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Read disk image: size = %i\n", SCSIdisk.size);
   
-    Uint32 sectors = SCSIdisk.size / BLOCKSIZE;
+    Uint32 sectors = (SCSIdisk.size / BLOCKSIZE) - 1; /* last LBA */
     
     static Uint8 scsi_disksize[8];
 

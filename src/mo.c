@@ -776,45 +776,52 @@ Uint32 mo_get_sector(void) {
 /* I/O functions */
 
 void mo_read_disk(void) {
+    MOdata.size = mo.sector_count*MO_SECTORSIZE;
+    if (mo.sector_count==0) /* 0 is maximum size (256 sectors) */
+        MOdata.size=0x100*MO_SECTORSIZE;
+
     Uint32 sector_num = mo_get_sector();
-    Uint32 datasize = mo.sector_count*MO_SECTORSIZE;
 
     mo_move_head_start();
 
     Log_Printf(LOG_WARN, "MO disk %i: Read %i sector(s) at offset %i",
-               dnum, datasize/MO_SECTORSIZE, sector_num);
+               dnum, MOdata.size/MO_SECTORSIZE, sector_num);
     
 	/* seek to the position */
 	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
-    fread(mo_dma_buffer, datasize, 1, modrv[dnum].dsk);
+    fread(MOdata.buf, MOdata.size, 1, modrv[dnum].dsk);
 
-    printf("%c%c%c%c\n",mo_dma_buffer[0],mo_dma_buffer[1],mo_dma_buffer[2],mo_dma_buffer[3]);
-        
+    printf("%c%c%c%c\n",MOdata.buf[0],MOdata.buf[1],MOdata.buf[2],MOdata.buf[3]);
+#if 1 // experimental, needs to be timed with DMA!
+    mo_raise_irq(MOINT_OPER_COMPL);
+    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MO);
+#endif
     dma_mo_write_memory();
-    
+}
+void mo_read_done(void) {
     mo_move_head_end();
     mo.sector_count = 0;
     
-    mo_raise_irq(MOINT_OPER_COMPL);
+    //mo_raise_irq(MOINT_OPER_COMPL);
+    //CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MO);
 }
 
+
 void mo_write_disk(void) {
+    MOdata.size = mo.sector_count*MO_SECTORSIZE;
+    if (mo.sector_count==0) /* 0 is maximum size (256 sectors) */
+        MOdata.size=0x100*MO_SECTORSIZE;
     dma_mo_read_memory();
-
-    /* Get the first sector */
-    Uint32 sector_num = (modrv[dnum].head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
-    sector_num+=mo.sector_incrnum;
-    /* Move head to position */
-    modrv[dnum].head_pos+=(mo.sector_incrnum>>4)&0x0F;
-    modrv[dnum].head_pos+=(mo.sector_incrnum&0x0F)?1:0;
-    /* Get transfer size */
-    Uint32 num_sectors = mo.sector_count;
-    Uint32 datasize = num_sectors * MO_SECTORSIZE;
+}
+void mo_write_done(void) {
+    Uint32 sector_num = mo_get_sector();
+    
+    mo_move_head_start();
     
     
-
+    
     Log_Printf(LOG_WARN, "MO disk %i: Write %i sector(s) at offset %i",
-               dnum, num_sectors, sector_num);
+               dnum, MOdata.size/MO_SECTORSIZE, sector_num);
     
     
     /* NO FILE WRITE */
@@ -823,41 +830,43 @@ void mo_write_disk(void) {
     return; // just to be sure
 	/* seek to the position */
 	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
-    fwrite(mo_dma_buffer, datasize, 1, modrv[dnum].dsk);
+    fwrite(MOdata.buf, MOdata.size, 1, modrv[dnum].dsk);
 #endif
-    printf("%c%c%c%c\n",mo_dma_buffer[0],mo_dma_buffer[1],mo_dma_buffer[2],mo_dma_buffer[3]);
+    printf("%c%c%c%c\n",MOdata.buf[0],MOdata.buf[1],MOdata.buf[2],MOdata.buf[3]);
+    
+    mo_move_head_end();
+    mo.sector_count = 0;
     
     mo_raise_irq(MOINT_OPER_COMPL);
+    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MO);
 }
 
 void mo_erase_disk(void) {
-    /* Get the first sector */
-    Uint32 sector_num = (modrv[dnum].head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
-    sector_num+=mo.sector_incrnum;
-    /* Move head to position */
-    modrv[dnum].head_pos+=(mo.sector_incrnum>>4)&0x0F;
-    modrv[dnum].head_pos+=(mo.sector_incrnum&0x0F)?1:0;
-    /* Get transfer size */
-    Uint32 num_sectors = mo.sector_count;
+    Uint32 datasize = mo.sector_count*MO_SECTORSIZE;
+    Uint32 sector_num = mo_get_sector();
+    
+    mo_move_head_start();
 
     Log_Printf(LOG_WARN, "MO disk %i: Erase %i sector(s) at offset %i",
-               dnum, num_sectors, sector_num);
+               dnum, datasize/MO_SECTORSIZE, sector_num);
+    
+    mo_move_head_end();
+    mo.sector_count = 0;
     
     mo_raise_irq(MOINT_OPER_COMPL);
 }
 
 void mo_verify_disk(void) {
-    /* Get the first sector */
-    Uint32 sector_num = (modrv[dnum].head_pos-MO_TRACK_OFFSET)*MO_SEC_PER_TRACK;
-    sector_num+=mo.sector_incrnum;
-    /* Move head to position */
-    modrv[dnum].head_pos+=(mo.sector_incrnum>>4)&0x0F;
-    modrv[dnum].head_pos+=(mo.sector_incrnum&0x0F)?1:0;
-    /* Get transfer size */
-    Uint32 num_sectors = mo.sector_count;
+    Uint32 datasize = mo.sector_count*MO_SECTORSIZE;
+    Uint32 sector_num = mo_get_sector();
+    
+    mo_move_head_start();
 
     Log_Printf(LOG_WARN, "MO disk %i: Verify %i sector(s) at offset %i",
-               dnum, num_sectors, sector_num);
+               dnum, datasize/MO_SECTORSIZE, sector_num);
+    
+    mo_move_head_end();
+    mo.sector_count = 0;
     
     mo_raise_irq(MOINT_OPER_COMPL);
     mo_raise_irq(MOINT_ECC_DONE); /* TODO: check! */
@@ -874,14 +883,39 @@ void mo_eject_disk(void) {
 }
 
 
+/* EXPERIMENTAL */
+void mo_dma_done(bool write) {
+    Log_Printf(LOG_WARN, "[MO] DMA transfer done: MO residual bytes: %i",MOdata.size-MOdata.rpos);
+    
+    if (MOdata.size == MOdata.rpos) { /* Transfer done */
+        if (write) {
+            mo_read_done();
+        } else {
+            mo_write_done();
+        }
+        MOdata.size=MOdata.rpos=0;
+    }
+}
+
+
 /* ECC functions */
 
 void mo_read_ecc(void) {
-    dma_mo_write_memory();
+#if 0
+    if (!MOdata.size) {
+        MOdata.size=1296;// hack
+    }
+#endif
     mo_raise_irq(MOINT_ECC_DONE);
+    dma_mo_write_memory();
 }
 
 void mo_write_ecc(void) {
+#if 0
+    if (!MOdata.size) {
+        MOdata.size=1024; // hack
+    }
+#endif
     dma_mo_read_memory();
     mo_raise_irq(MOINT_ECC_DONE);
 }

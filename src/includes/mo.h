@@ -6,8 +6,16 @@ void MOdrive_Write(void);
 void MOdrive_Execute_Command(Uint16 command);
 
 
-Uint8 mo_dma_buffer[256*1024];
-Uint32 mo_buf_size;
+//Uint8 mo_dma_buffer[256*1024]; // old
+Uint32 mo_buf_size; // old
+
+struct {
+    Uint8 buf[256*1024];
+    Uint32 size;
+    Uint32 rpos;
+} MOdata;
+
+void mo_dma_done(bool write);
 
 void MO_InterruptHandler(void);
 
