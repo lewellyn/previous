@@ -232,6 +232,7 @@ void MOctrl_CSR2_Write(void) {
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO Controller] CSR2 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     
     dnum = (mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
+    mo.intstatus &= ~MOINT_CMD_COMPL; // experimental!
 }
 
 void MOctrl_CSR1_Read(void) { // 0x02012007
@@ -386,8 +387,8 @@ void MO_Flag6_Write(void) {
 
 void mo_formatter_cmd(void) { /* TODO: commands can be combined! (read|eccread)*/
     
-    if (modrv[dnum].dsk==NULL) { /* FIXME: Add support for second drive */
-        mo.intstatus &= ~MOINT_CMD_COMPL;
+    if (modrv[dnum].dsk==NULL) { /* TODO: Add support for empty drive */
+        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Drive %i not connected.\n", dnum);
         return;
     }
     
@@ -564,8 +565,8 @@ void mo_formatter_cmd(void) { /* TODO: commands can be combined! (read|eccread)*
 
 void mo_drive_cmd(void) {
 
-    if (modrv[dnum].dsk==NULL) { /* FIXME: Add support for second drive */
-        mo.intstatus &= ~MOINT_CMD_COMPL;
+    if (modrv[dnum].dsk==NULL) { /* TODO: Add support for empty drive */
+        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Drive %i not connected.\n", dnum);
         return;
     }
 
