@@ -214,12 +214,14 @@ void DMA_CSR_Write(void) {
                 else
                     dma_esp_read_memory();
                 break;
+#if 0
             case CHANNEL_DISK:
                 if (dma[channel].direction==DMA_DEV2M)
                     dma_mo_write_memory();
                 else
                     dma_mo_read_memory();
                 break;
+#endif
             default: break;
         }
     }
@@ -394,12 +396,8 @@ void ESPDMA_InterruptHandler(void) {
 
 /* Handler function for DMA ESP delayed interrupt */
 void MODMA_InterruptHandler(void) {
-    bool write = (dma[CHANNEL_DISK].direction==DMA_DEV2M) ? true : false;
-
 	CycInt_AcknowledgeInterrupt();
     dma_interrupt(CHANNEL_DISK);
-    
-    mo_dma_done(write);
 }
 
 /* Handler functions for DMA M2M delyed interrupts */
@@ -607,6 +605,16 @@ void dma_mo_write_memory(void) {
      * End address is always burst-size aligned. For now we use a hack. */
     
     TRY(prb) {
+        if (modma_buf_size>0) {
+            Log_Printf(LOG_WARN, "[DMA] Channel MO: %i residual bytes in DMA buffer.", modma_buf_size);
+            while (modma_buf_size>=4) {
+                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(MOdata.buf, MOdata.rpos));
+                dma[CHANNEL_DISK].next+=4;
+                MOdata.rpos+=4;
+                modma_buf_size-=4;
+            }
+        }
+        
         /* This is a hack to handle non-burstsize-aligned DMA start */
         if (dma[CHANNEL_DISK].next%DMA_BURST_SIZE) {
             Log_Printf(LOG_WARN, "[DMA] Channel MO: Start memory address is not 16 byte aligned ($%08X).",
@@ -647,7 +655,8 @@ void dma_mo_write_memory(void) {
         dma[CHANNEL_DISK].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
-    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MODMA);
+    //set_interrupt(INT_DISK_DMA, SET_INT);
+    CycInt_AddRelativeInterrupt(50, INT_CPU_CYCLE, INTERRUPT_MODMA); // minor delay, separate from oper compl
 }
 
 void dma_mo_read_memory(void) {
@@ -668,6 +677,15 @@ void dma_mo_read_memory(void) {
      * End address should be always burst-size aligned. For now we use a hack. */
     
     TRY(prb) {
+        if (modma_buf_size>0) {
+            Log_Printf(LOG_WARN, "[DMA] Channel MO: %i residual bytes in DMA buffer.", modma_buf_size);
+            while (modma_buf_size>=4) {
+                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_DISK].next-modma_buf_size), MOdata.buf, MOdata.rpos);
+                MOdata.rpos+=4;
+                modma_buf_size-=4;
+            }
+        }
+
         /* This is a hack to handle non-burstsize-aligned DMA start */
         if (dma[CHANNEL_DISK].next%DMA_BURST_SIZE) {
             Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Start memory address is not 16 byte aligned ($%08X).",
@@ -678,7 +696,7 @@ void dma_mo_read_memory(void) {
                 modma_buf_size++;
             }
             while (modma_buf_size>=4) {
-                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(MOdata.buf, MOdata.rpos-modma_buf_size));
+                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_DISK].next+modma_buf_size), MOdata.buf, MOdata.rpos+modma_buf_size);
                 dma[CHANNEL_DISK].next+=4;
                 modma_buf_size-=4;
             }
@@ -707,7 +725,8 @@ void dma_mo_read_memory(void) {
         Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel MO: Residual bytes in DMA buffer: %i bytes",modma_buf_size);
     }
 
-    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MODMA);
+    dma_interrupt(CHANNEL_DISK);
+    //CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MODMA);
 }
 
 

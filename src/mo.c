@@ -56,7 +56,12 @@ struct {
     Uint32 head_pos;
     Uint32 ho_head_pos;
     
+    Uint32 sec_offset;
+    
     FILE* dsk;
+    
+    bool connected;
+    bool protected;
 } modrv[2];
 
 int dnum;
@@ -68,14 +73,16 @@ int dnum;
 
 
 /* Interrupt status */
-#define MOINT_CMD_COMPL     0x01
-#define MOINT_GPO           0x02
-#define MOINT_OPER_COMPL    0x04
-#define MOINT_ECC_DONE      0x08
-#define MOINT_TIMEOUT       0x10
-#define MOINT_READ_FAULT    0x20
-#define MOINT_PARITY_ERR    0x40
-#define MOINT_DATA_ERR      0x80
+#define MOINT_CMD_COMPL     0x01 /* ro */
+#define MOINT_ATTN          0x02 /* ro */
+#define MOINT_OPER_COMPL    0x04 /* rw */
+#define MOINT_ECC_DONE      0x08 /* rw */
+#define MOINT_TIMEOUT       0x10 /* rw */
+#define MOINT_READ_FAULT    0x20 /* rw */
+#define MOINT_PARITY_ERR    0x40 /* rw */
+#define MOINT_DATA_ERR      0x80 /* rw */
+#define MOINT_RESET         0x01 /* wo */
+#define MOINT_GPO           0x02 /* wo */
 
 /* Controller CSR 2 */
 #define MOCSR2_DRIVE_SEL    0x01
@@ -152,6 +159,13 @@ void MO_Uninit(void);
 //Uint32 ho_head_pos;
 Uint8 delayed_intr = 0;
 void mo_raise_irq(Uint8 interrupt);
+bool no_disk(void) {
+    if (modrv[dnum].dsk==NULL) {
+        return true;
+    } else {
+        return false;
+    }
+}
 
 /* MO drive and controller registers */
 
@@ -204,11 +218,15 @@ void MO_IntStatus_Read(void) { // 0x02012004
 }
 
 void MO_IntStatus_Write(void) {
-    mo.intstatus &= ~(IoMem[IoAccessCurrentAddress & IO_SEG_MASK]);
+    Uint8 val = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+    mo.intstatus &= ~val;
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Interrupt status write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     /* TODO: check if correct */
     if (!(mo.intstatus&mo.intmask)||(mo.intstatus&mo.intmask)==MOINT_CMD_COMPL) {
         set_interrupt(INT_DISK, RELEASE_INT);
+    }
+    if (val&MOINT_RESET) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Hard reset\n");
     }
 }
 
@@ -387,7 +405,7 @@ void MO_Flag6_Write(void) {
 
 void mo_formatter_cmd(void) { /* TODO: commands can be combined! (read|eccread)*/
     
-    if (modrv[dnum].dsk==NULL) { /* TODO: Add support for empty drive */
+    if (!modrv[dnum].connected) { /* TODO: Add support for empty drive */
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Drive %i not connected.\n", dnum);
         return;
     }
@@ -565,9 +583,13 @@ void mo_formatter_cmd(void) { /* TODO: commands can be combined! (read|eccread)*
 
 void mo_drive_cmd(void) {
 
-    if (modrv[dnum].dsk==NULL) { /* TODO: Add support for empty drive */
+    if (!modrv[dnum].connected) { /* TODO: Add support for empty drive */
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Drive %i not connected.\n", dnum);
         return;
+    }
+    if (no_disk()) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Drive %i: No disk inserted.\n", dnum);
+        modrv[dnum].dstat |= DS_EMPTY;
     }
 
     Uint16 command = (mo.csrh<<8) | mo.csrl;
@@ -692,6 +714,45 @@ void MO_InterruptHandler(void) {
     }
 }
 
+enum {
+    DISK_READ,
+    DISK_WRITE,
+    DISK_ERASE,
+    DISK_VERIFY,
+    DISK_IDLE
+} io_mode;
+
+void mo_read_sector(void);
+void mo_write_sector(void);
+void mo_erase_sector(void);
+void mo_verify_sector(void);
+
+void MO_IO_Handler(void) {
+    CycInt_AcknowledgeInterrupt();
+    
+    switch (io_mode) {
+        case DISK_READ:
+            mo_read_sector();
+            break;
+        case DISK_WRITE:
+            mo_write_sector();
+            break;
+        case DISK_ERASE:
+            mo_erase_sector();
+            break;
+        case DISK_VERIFY:
+            mo_verify_sector();
+            break;
+        case DISK_IDLE:
+            abort();
+            break;
+            
+        default:
+            break;
+    }
+}
+
+
 
 /* Initialize/Uninitialize MO disks */
 void MO_Init(void) {
@@ -703,17 +764,20 @@ void MO_Init(void) {
         if (File_Exists(ConfigureParams.MO.drive[i].szImageName) &&
             ConfigureParams.MO.drive[i].bDriveConnected &&
             ConfigureParams.MO.drive[i].bDiskInserted) {
-            //nFileSize[target] = File_Length(ConfigureParams.SCSI.target[target].szImageName);
             if (ConfigureParams.MO.drive[i].bWriteProtected) {
                 modrv[i].dsk = File_Open(ConfigureParams.MO.drive[i].szImageName, "r");
             } else {
                 modrv[i].dsk = File_Open(ConfigureParams.MO.drive[i].szImageName, "r+");
             }
+            //modrv[i].dstat &= ~DS_EMPTY;
         } else {
-            //nFileSize[target] = 0;
             modrv[i].dsk=NULL;
-            modrv[i].dstat=DS_EMPTY;
+            //modrv[i].dstat |= DS_EMPTY;
         }
+        
+        modrv[i].connected = ConfigureParams.MO.drive[i].bDriveConnected;
+        modrv[i].connected = ConfigureParams.MO.drive[i].bDiskInserted; /* temporary hack */
+        modrv[i].protected = ConfigureParams.MO.drive[i].bWriteProtected;
 
         Log_Printf(LOG_WARN, "MO Disk%i: %s\n",i,ConfigureParams.MO.drive[i].szImageName);
     }
@@ -754,123 +818,169 @@ void mo_jump_head(Uint16 command) {
 
 void mo_move_head_start(void) {
     modrv[dnum].head_pos+=mo.sector_incrnum/MO_SEC_PER_TRACK;
-    modrv[dnum].head_pos+=(mo.sector_incrnum%MO_SEC_PER_TRACK)?1:0;
+    modrv[dnum].sec_offset=mo.sector_incrnum%MO_SEC_PER_TRACK;
 }
 
-void mo_move_head_end(void) {
-    Uint32 offset = (mo.sector_incrnum%MO_SEC_PER_TRACK)+mo.sector_count;
-    modrv[dnum].head_pos+=(offset-1)/MO_SEC_PER_TRACK;
+void mo_move_head_next(void) {
+    modrv[dnum].sec_offset++;
+    modrv[dnum].head_pos+=modrv[dnum].sec_offset/MO_SEC_PER_TRACK;
+    modrv[dnum].sec_offset%=MO_SEC_PER_TRACK;
 }
 
 
 /* Helpers */
 
-Uint32 mo_get_sector(void) {
+Uint32 mo_get_sector(void) { /* must be called after move_head_start */
     Sint32 tracknum = modrv[dnum].head_pos;
 #if 1
     tracknum-=MO_TRACK_OFFSET;
 #endif
-    return (tracknum*MO_SEC_PER_TRACK)+mo.sector_incrnum;
+    return (tracknum*MO_SEC_PER_TRACK)+modrv[dnum].sec_offset;
 }
 
 
 /* I/O functions */
 
-void mo_read_disk(void) {
-    MOdata.size = mo.sector_count*MO_SECTORSIZE;
-    if (mo.sector_count==0) /* 0 is maximum size (256 sectors) */
-        MOdata.size=0x100*MO_SECTORSIZE;
-
+void mo_read_sector(void) {
     Uint32 sector_num = mo_get_sector();
-
-    mo_move_head_start();
-
-    Log_Printf(LOG_WARN, "MO disk %i: Read %i sector(s) at offset %i",
-               dnum, MOdata.size/MO_SECTORSIZE, sector_num);
+    MOdata.size = MO_SECTORSIZE;
     
-	/* seek to the position */
+    Log_Printf(LOG_WARN, "MO disk %i: Read sector at offset %i (%i sectors remaining)",
+               dnum, sector_num, mo.sector_count-1);
+
+    /* seek to the position */
 	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
     fread(MOdata.buf, MOdata.size, 1, modrv[dnum].dsk);
 
-    printf("%c%c%c%c\n",MOdata.buf[0],MOdata.buf[1],MOdata.buf[2],MOdata.buf[3]);
-#if 1 // experimental, needs to be timed with DMA!
-    mo_raise_irq(MOINT_OPER_COMPL);
-    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MO);
-#endif
     dma_mo_write_memory();
-}
-void mo_read_done(void) {
-    mo_move_head_end();
-    mo.sector_count = 0;
     
-    //mo_raise_irq(MOINT_OPER_COMPL);
-    //CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MO);
+    if (MOdata.rpos==MOdata.size) {
+        MOdata.rpos=MOdata.size=0;
+        mo_move_head_next();
+        mo.sector_count--; // if count==0, count=255 ?
+        if (mo.sector_count==0) { /* done */
+            io_mode = DISK_IDLE;
+            mo.intstatus|=MOINT_OPER_COMPL;
+            if (mo.intstatus&mo.intmask) {
+                set_interrupt(INT_DISK, SET_INT);
+            }
+            return;
+        }
+    } else {
+        // indicate error?
+        Log_Printf(LOG_WARN, "MO disk %i: Error! Incomplete DMA transfer (%i byte)",
+                   dnum, MOdata.size-MOdata.rpos);
+        return;
+    }
+    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
+void mo_write_sector(void) {
+    Uint32 sector_num = mo_get_sector();
+    MOdata.size = MO_SECTORSIZE;
+            
+    dma_mo_read_memory();
+    
+    if (MOdata.rpos==MOdata.size) {
+        Log_Printf(LOG_WARN, "MO disk %i: Write sector at offset %i (%i sectors remaining)",
+                   dnum, sector_num, mo.sector_count-1);
+
+        /* seek to the position */
+        /* NO FILE WRITE */
+        Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
+#if 0
+        fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
+        fwrite(MOdata.buf, MOdata.size, 1, modrv[dnum].dsk);
+#endif
+        MOdata.rpos=MOdata.size=0;
+
+        mo_move_head_next();
+        mo.sector_count--; // if count==0, count=255 ?
+        if (mo.sector_count==0) { /* done */
+            io_mode = DISK_IDLE;
+            mo_raise_irq(MOINT_OPER_COMPL);
+            CycInt_AddRelativeInterrupt(500, INT_CPU_CYCLE, INTERRUPT_MO); // delay to be after dma interrupt
+            return;
+        }
+    } else {
+        // indicate error?
+        Log_Printf(LOG_WARN, "MO disk %i: Error! Incomplete DMA transfer (%i byte)",
+                   dnum, MOdata.size);
+        return;
+    }
+    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);    
+}
+
+void mo_erase_sector(void) {
+    Uint32 sector_num = mo_get_sector();
+    MOdata.size = MOdata.rpos = MO_SECTORSIZE;
+    
+    Log_Printf(LOG_WARN, "MO disk %i: Erase sector at offset %i (%i sectors remaining)",
+               dnum, sector_num, mo.sector_count-1);
+    
+    if (MOdata.rpos==MOdata.size) {
+        MOdata.rpos=MOdata.size=0;
+        mo_move_head_next();
+        mo.sector_count--; // if count==0, count=255 ?
+        if (mo.sector_count==0) { /* done */
+            io_mode = DISK_IDLE;
+            mo.intstatus|=MOINT_OPER_COMPL;
+            if (mo.intstatus&mo.intmask) {
+                set_interrupt(INT_DISK, SET_INT);
+            }
+            return;
+        }
+    }
+    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+}
+
+void mo_verify_sector(void) {
+    Uint32 sector_num = mo_get_sector();
+    MOdata.size = MOdata.rpos = MO_SECTORSIZE;
+    
+    Log_Printf(LOG_WARN, "MO disk %i: Verify sector at offset %i (%i sectors remaining)",
+               dnum, sector_num, mo.sector_count-1);
+    
+    if (MOdata.rpos==MOdata.size) {
+        MOdata.rpos=MOdata.size=0;
+        mo_move_head_next();
+        mo.sector_count--; // if count==0, count=255 ?
+        if (mo.sector_count==0) { /* done */
+            io_mode = DISK_IDLE;
+            mo.intstatus|=(MOINT_OPER_COMPL|MOINT_ECC_DONE);
+            if (mo.intstatus&mo.intmask) {
+                set_interrupt(INT_DISK, SET_INT);
+            }
+            return;
+        }
+    }
+    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+}
+
+
+
+void mo_read_disk(void) {
+    io_mode = DISK_READ;
+    mo_move_head_start();
+    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+}
 
 void mo_write_disk(void) {
-    MOdata.size = mo.sector_count*MO_SECTORSIZE;
-    if (mo.sector_count==0) /* 0 is maximum size (256 sectors) */
-        MOdata.size=0x100*MO_SECTORSIZE;
-    dma_mo_read_memory();
-}
-void mo_write_done(void) {
-    Uint32 sector_num = mo_get_sector();
-    
+    io_mode = DISK_WRITE;
     mo_move_head_start();
-    
-    
-    
-    Log_Printf(LOG_WARN, "MO disk %i: Write %i sector(s) at offset %i",
-               dnum, MOdata.size/MO_SECTORSIZE, sector_num);
-    
-    
-    /* NO FILE WRITE */
-    Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
-#if 0
-    return; // just to be sure
-	/* seek to the position */
-	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
-    fwrite(MOdata.buf, MOdata.size, 1, modrv[dnum].dsk);
-#endif
-    printf("%c%c%c%c\n",MOdata.buf[0],MOdata.buf[1],MOdata.buf[2],MOdata.buf[3]);
-    
-    mo_move_head_end();
-    mo.sector_count = 0;
-    
-    mo_raise_irq(MOINT_OPER_COMPL);
-    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MO);
+    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 void mo_erase_disk(void) {
-    Uint32 datasize = mo.sector_count*MO_SECTORSIZE;
-    Uint32 sector_num = mo_get_sector();
-    
+    io_mode = DISK_ERASE;
     mo_move_head_start();
-
-    Log_Printf(LOG_WARN, "MO disk %i: Erase %i sector(s) at offset %i",
-               dnum, datasize/MO_SECTORSIZE, sector_num);
-    
-    mo_move_head_end();
-    mo.sector_count = 0;
-    
-    mo_raise_irq(MOINT_OPER_COMPL);
+    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 void mo_verify_disk(void) {
-    Uint32 datasize = mo.sector_count*MO_SECTORSIZE;
-    Uint32 sector_num = mo_get_sector();
-    
+    io_mode = DISK_VERIFY;
     mo_move_head_start();
-
-    Log_Printf(LOG_WARN, "MO disk %i: Verify %i sector(s) at offset %i",
-               dnum, datasize/MO_SECTORSIZE, sector_num);
-    
-    mo_move_head_end();
-    mo.sector_count = 0;
-    
-    mo_raise_irq(MOINT_OPER_COMPL);
-    mo_raise_irq(MOINT_ECC_DONE); /* TODO: check! */
+    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 void mo_eject_disk(void) {
@@ -884,21 +994,6 @@ void mo_eject_disk(void) {
 }
 
 
-/* EXPERIMENTAL */
-void mo_dma_done(bool write) {
-    Log_Printf(LOG_WARN, "[MO] DMA transfer done: MO residual bytes: %i",MOdata.size-MOdata.rpos);
-    
-    if (MOdata.size == MOdata.rpos) { /* Transfer done */
-        if (write) {
-            mo_read_done();
-        } else {
-            mo_write_done();
-        }
-        MOdata.size=MOdata.rpos=0;
-    }
-}
-
-
 /* ECC functions */
 
 void mo_read_ecc(void) {
@@ -908,7 +1003,7 @@ void mo_read_ecc(void) {
     }
 #endif
     mo_raise_irq(MOINT_ECC_DONE);
-    dma_mo_write_memory();
+    //dma_mo_write_memory();
 }
 
 void mo_write_ecc(void) {
@@ -917,7 +1012,7 @@ void mo_write_ecc(void) {
         MOdata.size=1024; // hack
     }
 #endif
-    dma_mo_read_memory();
+    //dma_mo_read_memory();
     mo_raise_irq(MOINT_ECC_DONE);
 }
 

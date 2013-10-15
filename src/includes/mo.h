@@ -15,9 +15,9 @@ struct {
     Uint32 rpos;
 } MOdata;
 
-void mo_dma_done(bool write);
 
 void MO_InterruptHandler(void);
+void MO_IO_Handler(void);
 
 void MO_TrackNumH_Read(void);
 void MO_TrackNumH_Write(void);
