@@ -148,17 +148,17 @@ void mo_read_ecc(void);
 void mo_write_ecc(void);
 
 void mo_jump_head(Uint16 command);
+void mo_read_id(void);
 
 void MO_Init(void);
 void MO_Uninit(void);
 
 /* Experimental */
-//int drv_num = 0;
-//FILE* mo_disk[2];
-//Uint32 head_pos;
-//Uint32 ho_head_pos;
+#define SECTOR_IO_DELAY 1000
+#define CMD_DELAY       500
+
 Uint8 delayed_intr = 0;
-void mo_raise_irq(Uint8 interrupt);
+void mo_raise_irq(Uint8 interrupt, Uint32 delay);
 bool no_disk(void) {
     if (modrv[dnum].dsk==NULL) {
         return true;
@@ -432,6 +432,7 @@ void mo_formatter_cmd(void) { /* TODO: commands can be combined! (read|eccread)*
             break;
         case FMT_ID_READ:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: ID Read (%02X)\n", mo.ctrlr_csr1);
+            mo_read_id();
             break;
         case FMT_VERIFY:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Verify (%02X)\n", mo.ctrlr_csr1);
@@ -490,8 +491,7 @@ void mo_formatter_cmd(void) { /* TODO: commands can be combined! (read|eccread)*
             break;
     }
     
-    mo_raise_irq(MOINT_CMD_COMPL);
-    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MO);
+    mo_raise_irq(MOINT_CMD_COMPL, CMD_DELAY);
 }
 
 /* Drive commands */
@@ -687,20 +687,26 @@ void mo_drive_cmd(void) {
         }
     }
     
-    mo_raise_irq(MOINT_CMD_COMPL);
-    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_MO);
+    mo_raise_irq(MOINT_CMD_COMPL, CMD_DELAY);
 }
 
 
 /* Interrupts */
-#define INTDELAY_CMD    100
-#define INTDELAY_OPER   2000
-#define INTDELAY_ECC    3000
-#define INTDELAY_OTHER  4000
 
-void mo_raise_irq(Uint8 interrupt) {
+void mo_interrupt(Uint8 interrupt) {
+    mo.intstatus|=interrupt;
+    if (mo.intstatus&mo.intmask) {
+        set_interrupt(INT_DISK, SET_INT);
+    }
+}
 
-    delayed_intr|=interrupt;
+void mo_raise_irq(Uint8 interrupt, Uint32 delay) {
+    if (delay>0) {
+        delayed_intr|=interrupt;
+        CycInt_AddRelativeInterrupt(delay, INT_CPU_CYCLE, INTERRUPT_MO);
+    } else {
+        mo_interrupt(interrupt);
+    }
 }
 
 void MO_InterruptHandler(void) {
@@ -827,6 +833,14 @@ void mo_move_head_next(void) {
     modrv[dnum].sec_offset%=MO_SEC_PER_TRACK;
 }
 
+void mo_read_id(void) { /* FIXME: need to track IDs with every head move? */
+    Uint16 track = modrv[dnum].head_pos+1;
+    mo.tracknumh = (track>>8)&0xFF;
+    mo.tracknuml = track&0xFF;
+    mo.sector_incrnum = 0x10;
+    mo_raise_irq(MOINT_OPER_COMPL, 100);
+}
+
 
 /* Helpers */
 
@@ -860,10 +874,7 @@ void mo_read_sector(void) {
         mo.sector_count--; // if count==0, count=255 ?
         if (mo.sector_count==0) { /* done */
             io_mode = DISK_IDLE;
-            mo.intstatus|=MOINT_OPER_COMPL;
-            if (mo.intstatus&mo.intmask) {
-                set_interrupt(INT_DISK, SET_INT);
-            }
+            mo_raise_irq(MOINT_OPER_COMPL, 0);
             return;
         }
     } else {
@@ -881,10 +892,10 @@ void mo_write_sector(void) {
             
     dma_mo_read_memory();
     
+    Log_Printf(LOG_WARN, "MO disk %i: Write sector at offset %i (%i sectors remaining)",
+               dnum, sector_num, mo.sector_count-1);
+    
     if (MOdata.rpos==MOdata.size) {
-        Log_Printf(LOG_WARN, "MO disk %i: Write sector at offset %i (%i sectors remaining)",
-                   dnum, sector_num, mo.sector_count-1);
-
         /* seek to the position */
         /* NO FILE WRITE */
         Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
@@ -898,8 +909,7 @@ void mo_write_sector(void) {
         mo.sector_count--; // if count==0, count=255 ?
         if (mo.sector_count==0) { /* done */
             io_mode = DISK_IDLE;
-            mo_raise_irq(MOINT_OPER_COMPL);
-            CycInt_AddRelativeInterrupt(500, INT_CPU_CYCLE, INTERRUPT_MO); // delay to be after dma interrupt
+            mo_raise_irq(MOINT_OPER_COMPL, SECTOR_IO_DELAY); /* delay to be after dma interrupt */
             return;
         }
     } else {
@@ -914,20 +924,26 @@ void mo_write_sector(void) {
 void mo_erase_sector(void) {
     Uint32 sector_num = mo_get_sector();
     MOdata.size = MOdata.rpos = MO_SECTORSIZE;
+    memset(MOdata.buf, 0, MOdata.size);
     
     Log_Printf(LOG_WARN, "MO disk %i: Erase sector at offset %i (%i sectors remaining)",
                dnum, sector_num, mo.sector_count-1);
     
     if (MOdata.rpos==MOdata.size) {
+        /* seek to the position */
+        /* NO FILE WRITE */
+        Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
+#if 0
+        fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
+        fwrite(MOdata.buf, MOdata.size, 1, modrv[dnum].dsk);
+#endif        
         MOdata.rpos=MOdata.size=0;
+        
         mo_move_head_next();
         mo.sector_count--; // if count==0, count=255 ?
         if (mo.sector_count==0) { /* done */
             io_mode = DISK_IDLE;
-            mo.intstatus|=MOINT_OPER_COMPL;
-            if (mo.intstatus&mo.intmask) {
-                set_interrupt(INT_DISK, SET_INT);
-            }
+            mo_raise_irq(MOINT_OPER_COMPL, 0);
             return;
         }
     }
@@ -947,10 +963,7 @@ void mo_verify_sector(void) {
         mo.sector_count--; // if count==0, count=255 ?
         if (mo.sector_count==0) { /* done */
             io_mode = DISK_IDLE;
-            mo.intstatus|=(MOINT_OPER_COMPL|MOINT_ECC_DONE);
-            if (mo.intstatus&mo.intmask) {
-                set_interrupt(INT_DISK, SET_INT);
-            }
+            mo_raise_irq(MOINT_OPER_COMPL|MOINT_ECC_DONE, 0);
             return;
         }
     }
@@ -1002,7 +1015,8 @@ void mo_read_ecc(void) {
         MOdata.size=1296;// hack
     }
 #endif
-    mo_raise_irq(MOINT_ECC_DONE);
+    //mo_raise_irq(MOINT_ECC_DONE);
+    mo_raise_irq(MOINT_ECC_DONE, SECTOR_IO_DELAY);
     //dma_mo_write_memory();
 }
 
@@ -1013,7 +1027,8 @@ void mo_write_ecc(void) {
     }
 #endif
     //dma_mo_read_memory();
-    mo_raise_irq(MOINT_ECC_DONE);
+    //mo_raise_irq(MOINT_ECC_DONE);
+    mo_raise_irq(MOINT_ECC_DONE, SECTOR_IO_DELAY);
 }
 
 
