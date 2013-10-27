@@ -131,7 +131,7 @@ int dnum;
 
 /* Disk layout */
 #define MO_SEC_PER_TRACK    16
-#define MO_TRACK_OFFSET     4149
+#define MO_TRACK_OFFSET     4096 /* offset to first logical sector is 4149 */
 #define MO_SECTORSIZE       1024
 
 
@@ -149,6 +149,8 @@ void mo_write_ecc(void);
 
 void mo_jump_head(Uint16 command);
 void mo_read_id(void);
+
+void mo_reset(void);
 
 void MO_Init(void);
 void MO_Uninit(void);
@@ -227,6 +229,7 @@ void MO_IntStatus_Write(void) {
     }
     if (val&MOINT_RESET) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Hard reset\n");
+        mo_reset();
     }
 }
 
@@ -381,6 +384,29 @@ void MO_Flag6_Write(void) {
     mo.flag[6]=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Flag 6 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
+
+/* Register debugging */
+void print_regs(void) {
+    int i;
+    Log_Printf(LOG_WARN,"sector ID:  %02X%02X%02X",mo.tracknumh,mo.tracknuml,mo.sector_incrnum);
+    Log_Printf(LOG_WARN,"head pos:   %04X",modrv[dnum].head_pos);
+    Log_Printf(LOG_WARN,"sector cnt: %02X",mo.sector_count);
+    Log_Printf(LOG_WARN,"intstatus:  %02X",mo.intstatus);
+    Log_Printf(LOG_WARN,"intmask:    %02X",mo.intmask);
+    Log_Printf(LOG_WARN,"ctrlr csr2: %02X",mo.ctrlr_csr2);
+    Log_Printf(LOG_WARN,"ctrlr csr1: %02X",mo.ctrlr_csr1);
+    Log_Printf(LOG_WARN,"drive csrl: %02X",mo.csrl);
+    Log_Printf(LOG_WARN,"drive csrh: %02X",mo.csrh);
+    Log_Printf(LOG_WARN,"errstat:    %02X",mo.err_stat);
+    Log_Printf(LOG_WARN,"ecc count:  %02X",mo.ecc_cnt);
+    Log_Printf(LOG_WARN,"init:       %02X",mo.init);
+    Log_Printf(LOG_WARN,"format:     %02X",mo.format);
+    Log_Printf(LOG_WARN,"mark:       %02X",mo.mark);
+    for (i=0; i<7; i++) {
+        Log_Printf(LOG_WARN,"flag %i:     %02X",i+1,mo.flag[i]);
+    }
+}
+
 
 
 /* Formatter commands */
@@ -831,10 +857,19 @@ void mo_move_head_next(void) {
     modrv[dnum].sec_offset++;
     modrv[dnum].head_pos+=modrv[dnum].sec_offset/MO_SEC_PER_TRACK;
     modrv[dnum].sec_offset%=MO_SEC_PER_TRACK;
+    
+    if (mo.sector_count==0) {
+        mo.sector_count=255;
+    } else {
+        mo.sector_count--;
+    }
 }
 
 void mo_read_id(void) { /* FIXME: need to track IDs with every head move? */
-    Uint16 track = modrv[dnum].head_pos+1;
+    Uint16 track = modrv[dnum].head_pos;
+    if (!(mo.ctrlr_csr2&MOCSR2_SECT_TIMER)) {
+        track++; /* FIXME: This is a hack for diagnostics to seek correct track. */
+    }
     mo.tracknumh = (track>>8)&0xFF;
     mo.tracknuml = track&0xFF;
     mo.sector_incrnum = 0x10;
@@ -847,7 +882,16 @@ void mo_read_id(void) { /* FIXME: need to track IDs with every head move? */
 Uint32 mo_get_sector(void) { /* must be called after move_head_start */
     Sint32 tracknum = modrv[dnum].head_pos;
 #if 1
+    if (!(mo.ctrlr_csr2&MOCSR2_SECT_TIMER)) {
+        tracknum++; /* FIXME: This is a hack for diagnostics to seek correct track. */
+    }
+    
     tracknum-=MO_TRACK_OFFSET;
+    if (tracknum<0) {
+        Log_Printf(LOG_WARN, "MO disk %i: Error! Bad sector (%i)", dnum,
+                   (tracknum*MO_SEC_PER_TRACK)+modrv[dnum].sec_offset);
+        abort();
+    }
 #endif
     return (tracknum*MO_SEC_PER_TRACK)+modrv[dnum].sec_offset;
 }
@@ -871,7 +915,6 @@ void mo_read_sector(void) {
     if (MOdata.rpos==MOdata.size) {
         MOdata.rpos=MOdata.size=0;
         mo_move_head_next();
-        mo.sector_count--; // if count==0, count=255 ?
         if (mo.sector_count==0) { /* done */
             io_mode = DISK_IDLE;
             mo_raise_irq(MOINT_OPER_COMPL, 0);
@@ -883,7 +926,7 @@ void mo_read_sector(void) {
                    dnum, MOdata.size-MOdata.rpos);
         return;
     }
-    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+    CycInt_AddRelativeInterrupt(SECTOR_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 void mo_write_sector(void) {
@@ -906,7 +949,6 @@ void mo_write_sector(void) {
         MOdata.rpos=MOdata.size=0;
 
         mo_move_head_next();
-        mo.sector_count--; // if count==0, count=255 ?
         if (mo.sector_count==0) { /* done */
             io_mode = DISK_IDLE;
             mo_raise_irq(MOINT_OPER_COMPL, SECTOR_IO_DELAY); /* delay to be after dma interrupt */
@@ -918,7 +960,7 @@ void mo_write_sector(void) {
                    dnum, MOdata.size);
         return;
     }
-    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);    
+    CycInt_AddRelativeInterrupt(SECTOR_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 void mo_erase_sector(void) {
@@ -940,14 +982,13 @@ void mo_erase_sector(void) {
         MOdata.rpos=MOdata.size=0;
         
         mo_move_head_next();
-        mo.sector_count--; // if count==0, count=255 ?
         if (mo.sector_count==0) { /* done */
             io_mode = DISK_IDLE;
             mo_raise_irq(MOINT_OPER_COMPL, 0);
             return;
         }
     }
-    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+    CycInt_AddRelativeInterrupt(SECTOR_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 void mo_verify_sector(void) {
@@ -960,14 +1001,13 @@ void mo_verify_sector(void) {
     if (MOdata.rpos==MOdata.size) {
         MOdata.rpos=MOdata.size=0;
         mo_move_head_next();
-        mo.sector_count--; // if count==0, count=255 ?
         if (mo.sector_count==0) { /* done */
             io_mode = DISK_IDLE;
             mo_raise_irq(MOINT_OPER_COMPL|MOINT_ECC_DONE, 0);
             return;
         }
     }
-    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+    CycInt_AddRelativeInterrupt(SECTOR_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 
@@ -975,25 +1015,25 @@ void mo_verify_sector(void) {
 void mo_read_disk(void) {
     io_mode = DISK_READ;
     mo_move_head_start();
-    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+    CycInt_AddRelativeInterrupt(SECTOR_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 void mo_write_disk(void) {
     io_mode = DISK_WRITE;
     mo_move_head_start();
-    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+    CycInt_AddRelativeInterrupt(SECTOR_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 void mo_erase_disk(void) {
     io_mode = DISK_ERASE;
     mo_move_head_start();
-    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+    CycInt_AddRelativeInterrupt(SECTOR_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 void mo_verify_disk(void) {
     io_mode = DISK_VERIFY;
     mo_move_head_start();
-    CycInt_AddRelativeInterrupt(1000, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+    CycInt_AddRelativeInterrupt(SECTOR_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_MO_IO);
 }
 
 void mo_eject_disk(void) {
@@ -1015,7 +1055,6 @@ void mo_read_ecc(void) {
         MOdata.size=1296;// hack
     }
 #endif
-    //mo_raise_irq(MOINT_ECC_DONE);
     mo_raise_irq(MOINT_ECC_DONE, SECTOR_IO_DELAY);
     //dma_mo_write_memory();
 }
@@ -1027,8 +1066,15 @@ void mo_write_ecc(void) {
     }
 #endif
     //dma_mo_read_memory();
-    //mo_raise_irq(MOINT_ECC_DONE);
     mo_raise_irq(MOINT_ECC_DONE, SECTOR_IO_DELAY);
+}
+
+
+/* Miscellaneous functions */
+
+void mo_reset(void) {
+    mo.intstatus=0;
+    //modrv[dnum].dstat=DS_RESET;
 }
 
 
