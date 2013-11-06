@@ -156,7 +156,7 @@ void MO_Init(void);
 void MO_Uninit(void);
 
 /* Experimental */
-#define SECTOR_IO_DELAY 1000
+#define SECTOR_IO_DELAY 2000
 #define CMD_DELAY       500
 
 Uint8 delayed_intr = 0;

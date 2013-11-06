@@ -277,13 +277,15 @@ void Main_WaitOnVbl(void)
 	CurrentTicks = Time_GetTicks();
 
 	if ( DestTicks == 0 )					/* first call, init DestTicks */
+    {
 		DestTicks = CurrentTicks + FrameDuration_micro;
+    }
 
 	nDelay = DestTicks - CurrentTicks;
 
 	/* Do not wait if we are in fast forward mode or if we are totally out of sync */
 	if (ConfigureParams.System.bFastForward == true
-	        || nDelay < -4*FrameDuration_micro)
+	        || nDelay < -4*FrameDuration_micro || nDelay > 50*FrameDuration_micro)
 	{
 		if (ConfigureParams.System.bFastForward == true)
 		{
@@ -328,6 +330,10 @@ void Main_WaitOnVbl(void)
 	{
 		CurrentTicks = Time_GetTicks();
 		nDelay = DestTicks - CurrentTicks;
+        /* If the delay is still bigger than one frame, somebody
+         * played tricks with the system clock and we have to abort */
+        if (nDelay > FrameDuration_micro)
+            break;
 	}
 
 //printf ( "tick %lld\n" , CurrentTicks );
