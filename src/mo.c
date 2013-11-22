@@ -31,7 +31,7 @@
 struct {
     Uint8 tracknuml;
     Uint8 tracknumh;
-    Uint8 sector_incrnum;
+    Uint8 sector_num;
     Uint8 sector_count;
     Uint8 intstatus;
     Uint8 intmask;
@@ -56,7 +56,7 @@ struct {
     Uint32 head_pos;
     Uint32 ho_head_pos;
     
-    Uint32 sec_offset;
+    //Uint32 sec_offset;
     
     FILE* dsk;
     
@@ -71,6 +71,9 @@ int dnum;
 //Uint16 mo_estat = 0;
 //Uint16 mo_hstat = 0;
 
+/* Sector increment and number */
+#define MOSEC_NUM_MASK      0x0F /* rw */
+#define MOSEC_INCR_MASK     0xF0 /* wo */
 
 /* Interrupt status */
 #define MOINT_CMD_COMPL     0x01 /* ro */
@@ -131,7 +134,8 @@ int dnum;
 
 /* Disk layout */
 #define MO_SEC_PER_TRACK    16
-#define MO_TRACK_OFFSET     4096 /* offset to first logical sector is 4149 */
+#define MO_TRACK_OFFSET     4096 /* offset to first logical sector of kernel driver is 4149 */
+#define MO_TRACK_LIMIT      19819-(MO_TRACK_OFFSET) /* no more tracks beyond this offset */
 #define MO_SECTORSIZE       1024
 
 
@@ -159,6 +163,7 @@ void MO_Uninit(void);
 #define SECTOR_IO_DELAY 2000
 #define CMD_DELAY       500
 
+int sector_increment = 0;
 Uint8 delayed_intr = 0;
 void mo_raise_irq(Uint8 interrupt, Uint32 delay);
 bool no_disk(void) {
@@ -192,13 +197,15 @@ void MO_TrackNumL_Write(void) {
 }
 
 void MO_SectorIncr_Read(void) { // 0x02012002
-    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.sector_incrnum;
- 	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Sector increment read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.sector_num&MOSEC_NUM_MASK;
+ 	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Sector increment and number read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void MO_SectorIncr_Write(void) {
-    mo.sector_incrnum=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
- 	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Sector increment write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    Uint8 val = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+    mo.sector_num = val&MOSEC_NUM_MASK;
+    sector_increment = (val&MOSEC_INCR_MASK)>>4;
+ 	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Sector increment and number write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void MO_SectorCnt_Read(void) { // 0x02012003
@@ -388,7 +395,7 @@ void MO_Flag6_Write(void) {
 /* Register debugging */
 void print_regs(void) {
     int i;
-    Log_Printf(LOG_WARN,"sector ID:  %02X%02X%02X",mo.tracknumh,mo.tracknuml,mo.sector_incrnum);
+    Log_Printf(LOG_WARN,"sector ID:  %02X%02X%02X",mo.tracknumh,mo.tracknuml,mo.sector_num);
     Log_Printf(LOG_WARN,"head pos:   %04X",modrv[dnum].head_pos);
     Log_Printf(LOG_WARN,"sector cnt: %02X",mo.sector_count);
     Log_Printf(LOG_WARN,"intstatus:  %02X",mo.intstatus);
@@ -849,15 +856,23 @@ void mo_jump_head(Uint16 command) {
 }
 
 void mo_move_head_start(void) {
-    modrv[dnum].head_pos+=mo.sector_incrnum/MO_SEC_PER_TRACK;
-    modrv[dnum].sec_offset=mo.sector_incrnum%MO_SEC_PER_TRACK;
+    Uint16 track = (mo.tracknumh<<8)|mo.tracknuml;
+    if (modrv[dnum].head_pos>track) {
+        Log_Printf(LOG_WARN, "MO disk %i: Error! Head already moved beyond target track (head: %04X, target: %04X).",
+                   dnum, modrv[dnum].head_pos, track);
+        abort(); /* TODO: report some error and continue */
+    }
+    
+    modrv[dnum].head_pos = track;
 }
 
 void mo_move_head_next(void) {
-    modrv[dnum].sec_offset++;
-    modrv[dnum].head_pos+=modrv[dnum].sec_offset/MO_SEC_PER_TRACK;
-    modrv[dnum].sec_offset%=MO_SEC_PER_TRACK;
-    
+    mo.sector_num+=sector_increment;
+    modrv[dnum].head_pos+=mo.sector_num/MO_SEC_PER_TRACK;
+    mo.sector_num%=MO_SEC_PER_TRACK;
+    mo.tracknumh = (modrv[dnum].head_pos>>8)&0xFF;
+    mo.tracknuml = modrv[dnum].head_pos&0xFF;
+    /* CHECK: decrement with sector_increment value? */
     if (mo.sector_count==0) {
         mo.sector_count=255;
     } else {
@@ -865,14 +880,10 @@ void mo_move_head_next(void) {
     }
 }
 
-void mo_read_id(void) { /* FIXME: need to track IDs with every head move? */
-    Uint16 track = modrv[dnum].head_pos;
-    if (!(mo.ctrlr_csr2&MOCSR2_SECT_TIMER)) {
-        track++; /* FIXME: This is a hack for diagnostics to seek correct track. */
-    }
-    mo.tracknumh = (track>>8)&0xFF;
-    mo.tracknuml = track&0xFF;
-    mo.sector_incrnum = 0x10;
+void mo_read_id(void) {
+    mo.tracknumh = (modrv[dnum].head_pos>>8)&0xFF;
+    mo.tracknuml = modrv[dnum].head_pos&0xFF;
+    mo.sector_num = 0; /* TODO: check if correct */
     mo_raise_irq(MOINT_OPER_COMPL, 100);
 }
 
@@ -882,18 +893,14 @@ void mo_read_id(void) { /* FIXME: need to track IDs with every head move? */
 Uint32 mo_get_sector(void) { /* must be called after move_head_start */
     Sint32 tracknum = modrv[dnum].head_pos;
 #if 1
-    if (!(mo.ctrlr_csr2&MOCSR2_SECT_TIMER)) {
-        tracknum++; /* FIXME: This is a hack for diagnostics to seek correct track. */
-    }
-    
     tracknum-=MO_TRACK_OFFSET;
-    if (tracknum<0) {
-        Log_Printf(LOG_WARN, "MO disk %i: Error! Bad sector (%i)", dnum,
-                   (tracknum*MO_SEC_PER_TRACK)+modrv[dnum].sec_offset);
+    if (tracknum<0 || tracknum>=MO_TRACK_LIMIT) {
+        Log_Printf(LOG_WARN, "MO disk %i: Error! Bad sector (%i)! Disk limit exceeded.", dnum,
+                   (tracknum*MO_SEC_PER_TRACK)+mo.sector_num);
         abort();
     }
 #endif
-    return (tracknum*MO_SEC_PER_TRACK)+modrv[dnum].sec_offset;
+    return (tracknum*MO_SEC_PER_TRACK)+mo.sector_num;
 }
 
 
