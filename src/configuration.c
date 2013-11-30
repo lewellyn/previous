@@ -610,6 +610,60 @@ void Configuration_Apply(bool bReset)
 
 /*-----------------------------------------------------------------------*/
 /**
+ * Set defaults depending on selected machine type.
+ */
+void Configuration_SetSystemDefaults(void) {
+    switch (ConfigureParams.System.nMachineType) {
+        case NEXT_CUBE030:
+            ConfigureParams.System.bTurbo = false;
+            ConfigureParams.System.bColor = false;
+            ConfigureParams.System.nCpuLevel = 3;
+            ConfigureParams.System.nCpuFreq = 25;
+            ConfigureParams.System.n_FPUType = FPU_68882;
+            ConfigureParams.System.nSCSI = NCR53C90;
+            ConfigureParams.System.nRTC = MC68HC68T1;
+            ConfigureParams.System.bADB = false;
+            break;
+            
+        case NEXT_CUBE040:
+            ConfigureParams.System.bColor = false;
+            ConfigureParams.System.nCpuLevel = 4;
+            if (ConfigureParams.System.bTurbo) {
+                ConfigureParams.System.nCpuFreq = 33;
+                ConfigureParams.System.nRTC = MCCS1850;
+            } else {
+                ConfigureParams.System.nCpuFreq = 25;
+                ConfigureParams.System.nRTC = MC68HC68T1;
+            }
+            ConfigureParams.System.n_FPUType = FPU_CPU;
+            ConfigureParams.System.nSCSI = NCR53C90A;
+            ConfigureParams.System.bADB = false;
+            break;
+            
+        case NEXT_STATION:
+            ConfigureParams.System.nCpuLevel = 4;
+            if (ConfigureParams.System.bTurbo) {
+                ConfigureParams.System.nCpuFreq = 33;
+                ConfigureParams.System.nRTC = MCCS1850;
+            } else if (ConfigureParams.System.bColor) {
+                ConfigureParams.System.nCpuFreq = 25;
+                ConfigureParams.System.nRTC = MCCS1850;
+            } else {
+                ConfigureParams.System.nCpuFreq = 25;
+                ConfigureParams.System.nRTC = MC68HC68T1;
+            }
+            ConfigureParams.System.n_FPUType = FPU_CPU;
+            ConfigureParams.System.nSCSI = NCR53C90A;
+            ConfigureParams.System.bADB = false;
+            break;
+        default:
+            break;
+    }
+}
+
+
+/*-----------------------------------------------------------------------*/
+/**
  * Check memory bank sizes for compatibility with the selected system.
  */
 int Configuration_CheckMemory(int *banksize) {

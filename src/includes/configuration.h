@@ -381,6 +381,7 @@ extern CNF_PARAMS ConfigureParams;
 extern char sConfigFileName[FILENAME_MAX];
 
 extern void Configuration_SetDefault(void);
+extern void Configuration_SetSystemDefaults(void);
 extern void Configuration_Apply(bool bReset);
 extern int Configuration_CheckMemory(int *banksize);
 extern void Configuration_Load(const char *psFileName);
