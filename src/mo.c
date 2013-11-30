@@ -155,13 +155,14 @@ void mo_jump_head(Uint16 command);
 void mo_read_id(void);
 
 void mo_reset(void);
+void mo_select(int drive);
 
 void MO_Init(void);
 void MO_Uninit(void);
 
 /* Experimental */
-#define SECTOR_IO_DELAY 2000
-#define CMD_DELAY       500
+#define SECTOR_IO_DELAY 5000
+#define CMD_DELAY       2000
 
 int sector_increment = 0;
 Uint8 delayed_intr = 0;
@@ -221,9 +222,6 @@ void MO_SectorCnt_Write(void) {
 void MO_IntStatus_Read(void) { // 0x02012004
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.intstatus;
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Interrupt status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-    /* temporary hack */
-    //mo.intstatus = 0x00;
-    //set_interrupt(INT_DISK, RELEASE_INT);
 }
 
 void MO_IntStatus_Write(void) {
@@ -259,8 +257,7 @@ void MOctrl_CSR2_Write(void) {
     mo.ctrlr_csr2=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO Controller] CSR2 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     
-    dnum = (mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
-    mo.intstatus &= ~MOINT_CMD_COMPL; // experimental!
+    mo_select(mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
 }
 
 void MOctrl_CSR1_Read(void) { // 0x02012007
@@ -414,7 +411,18 @@ void print_regs(void) {
     }
 }
 
+/* Drive selection (formatter command 2) */
 
+void mo_select(int drive) {
+    Log_Printf(LOG_MO_CMD_LEVEL, "[MO] Selecting drive %i",drive);
+    dnum=drive;
+    mo.intstatus &= ~MOINT_CMD_COMPL;
+    if (modrv[dnum].connected) {
+        mo_raise_irq(MOINT_CMD_COMPL, CMD_DELAY);
+    } else {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[MO] Selection failed! Drive %i not connected.",drive);
+    }
+}
 
 /* Formatter commands */
 
@@ -428,27 +436,12 @@ void print_regs(void) {
 #define FMT_READ        0x02
 #define FMT_WRITE       0x01
 
-#define FMT_SPINUP      0xF0
-#define FMT_EJECT       0xF1
-#define FMT_SEEK        0xF2
-#define FMT_SPIRAL_OFF  0xF3
-#define FMT_RESPIN      0xF4
-#define FMT_TEST        0xF5
-#define FMT_EJECT_NOW   0xF6
-
 void mo_formatter_cmd(void) { /* TODO: commands can be combined! (read|eccread)*/
-    
-    if (!modrv[dnum].connected) { /* TODO: Add support for empty drive */
-        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Drive %i not connected.\n", dnum);
-        return;
-    }
-    
-    /* Command in progress */
-    mo.intstatus &= ~MOINT_CMD_COMPL;
     
     switch (mo.ctrlr_csr1) {
         case FMT_RESET:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Reset (%02X)\n", mo.ctrlr_csr1);
+            /* do something? */
             break;
         case FMT_ECC_READ:
             Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: ECC Read (%02X)\n", mo.ctrlr_csr1);
@@ -495,36 +488,11 @@ void mo_formatter_cmd(void) { /* TODO: commands can be combined! (read|eccread)*
             mo_write_ecc();
             break;
             
-#if 0
-        case FMT_SPINUP:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Spin Up (%02X)\n", mo.ctrlr_csr1);
-            break;
-        case FMT_EJECT:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Eject (%02X)\n", mo.ctrlr_csr1);
-            break;
-        case FMT_SEEK:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Seek (%02X)\n", mo.ctrlr_csr1);
-            break;
-        case FMT_SPIRAL_OFF:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Spiral Off (%02X)\n", mo.ctrlr_csr1);
-            break;
-        case FMT_RESPIN:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Respin (%02X)\n", mo.ctrlr_csr1);
-            break;
-        case FMT_TEST:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Test (%02X)\n", mo.ctrlr_csr1);
-            break;
-        case FMT_EJECT_NOW:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Eject now (%02X)\n", mo.ctrlr_csr1);
-            break;
-#endif
         default:
             Log_Printf(LOG_WARN,"[MO] Formatter command: Unknown command! (%02X)\n", mo.ctrlr_csr1);
             abort();
             break;
     }
-    
-    mo_raise_irq(MOINT_CMD_COMPL, CMD_DELAY);
 }
 
 /* Drive commands */
@@ -884,7 +852,7 @@ void mo_read_id(void) {
     mo.tracknumh = (modrv[dnum].head_pos>>8)&0xFF;
     mo.tracknuml = modrv[dnum].head_pos&0xFF;
     mo.sector_num = 0; /* TODO: check if correct */
-    mo_raise_irq(MOINT_OPER_COMPL, 100);
+    mo_raise_irq(MOINT_OPER_COMPL, SECTOR_IO_DELAY);
 }
 
 
