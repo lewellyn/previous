@@ -167,10 +167,6 @@ Uint32 get_logical_sector(Uint32 sector_id) {
 void mo_formatter_cmd(void);
 void mo_drive_cmd(void);
 
-void mo_read_disk(void);
-void mo_write_disk(void);
-void mo_erase_disk(void);
-void mo_verify_disk(void);
 void mo_eject_disk(void);
 void mo_read_ecc(void);
 void mo_write_ecc(void);
@@ -199,6 +195,7 @@ void mo_start_spiraling(void);
 void mo_stop_spiraling(void);
 void mo_spiraling_operation(void);
 void mo_reset_attn_status(void);
+void mo_recalibrate(void);
 
 int sector_increment = 0;
 Uint8 delayed_intr = 0;
@@ -347,7 +344,7 @@ void MO_Init_Write(void) { // 0x0201200c
 
 void MO_Format_Write(void) { // 0x0201200d
     mo.format=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
- 	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Format at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+ 	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Format write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void MO_Mark_Write(void) { // 0x0201200e
@@ -842,6 +839,7 @@ void mo_drive_cmd(void) {
         switch (command&0xFFFF) {
             case DRV_REC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Recalibrate (%04X)\n", command);
+                mo_recalibrate();
                 break;
             case DRV_RDS:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Drive Status (%04X)\n", command);
@@ -892,11 +890,11 @@ void mo_drive_cmd(void) {
                 break;
             case DRV_SPM:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Stop Spindle Motor (%04X)\n", command);
-                mo_start_spinning();
+                mo_stop_spinning();
                 break;
             case DRV_STM:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Start Spindle Motor (%04X)\n", command);
-                mo_stop_spinning();
+                mo_start_spinning();
                 break;
             case DRV_LC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Lock Cartridge (%04X)\n", command);
@@ -934,7 +932,14 @@ void mo_reset(void) {
     /* TODO: reset more things */
     mo.intstatus=0;
     modrv[dnum].dstat=DS_RESET;
-    mo_reset_attn_status();
+    //modrv[dnum].spinning=false;
+    //modrv[dnum].spiraling=false;
+    
+    if (!modrv[dnum].inserted) {
+        modrv[dnum].dstat|=DS_EMPTY;
+    } else if (!modrv[dnum].spinning) {
+        modrv[dnum].dstat|=DS_STOPPED;
+    }
     mo_raise_irq(MOINT_ATTN, 100000);
 }
 
@@ -948,7 +953,7 @@ void mo_reset_attn_status(void) {
         modrv[dnum].dstat|=DS_STOPPED;
     }
 #endif
-    /* TODO: re-enable status messages */
+    /* TODO: re-enable status messages? */
 }
 
 void mo_eject_disk(void) {
@@ -975,6 +980,12 @@ void mo_insert_disk(int drv) {
     
     modrv[drv].dstat|=DS_INSERT;
     mo_raise_irq(MOINT_ATTN, 0);
+}
+
+void mo_recalibrate(void) {
+    modrv[dnum].head_pos = 0; /* FIXME: What is real base head position? */
+    modrv[dnum].sec_offset = 0;
+    modrv[dnum].spiraling = false;
 }
 
 void mo_jump_head(Uint16 command) {
@@ -1019,6 +1030,7 @@ void mo_start_spinning(void) {
 
 void mo_stop_spinning(void) {
     modrv[dnum].spinning=false;
+    modrv[dnum].spiraling=false;
 }
 
 void mo_start_spiraling(void) {
