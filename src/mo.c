@@ -555,6 +555,42 @@ void fmt_sector_done(void) {
     }
 }
 
+int sector_timer=0;
+#define SECTOR_TIMEOUT_COUNT    100 /* FIXME: what is the correct value? */
+bool fmt_match_id(Uint32 sector_id) {
+    if ((mo.init&MOINIT_ID_MASK)==MOINIT_ID_0) {
+        Log_Printf(LOG_MO_CMD_LEVEL, "MO disk %i: Sector ID matching disabled!",dnum);
+        abort(); /* CHECK: this routine is critical to disk image corruption, check if it gives correct results */
+        return true;
+    }
+    
+    Uint32 fmt_id = (mo.tracknumh<<16)|(mo.tracknuml<<8)|mo.sector_num;
+    
+    if (mo.init&MOINIT_ID_CMP_TRK) {
+        Log_Printf(LOG_MO_CMD_LEVEL, "MO disk %i: Compare only track.",dnum);
+        fmt_id=(fmt_id>>8)&0xFFFF;
+        sector_id=(sector_id>>8)&0xFFFF;
+    }
+    
+    if (sector_id==fmt_id) {
+        sector_timer=0;
+        return true;
+    } else {
+        Log_Printf(LOG_MO_CMD_LEVEL, "MO disk %i: Sector ID mismatch (Sector ID=%06X, Looking for %06X)",
+                   dnum,sector_id,fmt_id);
+        if (mo.ctrlr_csr2&MOCSR2_SECT_TIMER) {
+            sector_timer++;
+            if (sector_timer>SECTOR_TIMEOUT_COUNT) {
+                Log_Printf(LOG_MO_CMD_LEVEL, "MO disk %i: Sector timeout!",dnum);
+                sector_timer=0;
+                fmt_mode=FMT_MODE_IDLE;
+                mo_raise_irq(MOINT_TIMEOUT, 0);
+            }
+        }
+        return false;
+    }
+}
+
 void fmt_io(Uint32 sector_id) {
     if (fmt_mode==FMT_MODE_IDLE) {
         return;
@@ -568,10 +604,7 @@ void fmt_io(Uint32 sector_id) {
     }
     
     /* Compare sector ID to formatter registers */
-    Uint32 fmt_id = (mo.tracknumh<<16)|(mo.tracknuml<<8)|mo.sector_num;
-    if (sector_id!=fmt_id) {
-        Log_Printf(LOG_MO_CMD_LEVEL, "MO disk %i: Sector mismatch (Sector ID=%06X, Looking for %06X)",
-                   dnum,sector_id,fmt_id);
+    if (fmt_match_id(sector_id)==false) {
         return;
     }
     
