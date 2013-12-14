@@ -5,19 +5,17 @@ void MOdrive_Write(void);
 
 void MOdrive_Execute_Command(Uint16 command);
 
-
-//Uint8 mo_dma_buffer[256*1024]; // old
-Uint32 mo_buf_size; // old
-
 struct {
-    Uint8 buf[256*1024];
+    Uint8 data[1296];
     Uint32 size;
-    Uint32 rpos;
-} MOdata;
-
+    Uint32 limit;
+    bool encoded;
+} ecc_buffer[2];
+int ecc_act_buf; /* Currently active buffer */
 
 void MO_InterruptHandler(void);
 void MO_IO_Handler(void);
+void ECC_IO_Handler(void);
 
 void MO_TrackNumH_Read(void);
 void MO_TrackNumH_Write(void);
