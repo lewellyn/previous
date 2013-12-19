@@ -146,7 +146,7 @@ int dnum;
 #define MO_SEC_PER_TRACK    16
 #define MO_TRACK_OFFSET     4096 /* offset to first logical sector of kernel driver is 4149 */
 #define MO_TRACK_LIMIT      19819-(MO_TRACK_OFFSET) /* no more tracks beyond this offset */
-#define MO_SECTORSIZE       1024
+//#define MO_SECTORSIZE       1024
 
 Uint32 get_logical_sector(Uint32 sector_id) {
     Sint32 tracknum = (sector_id&0xFFFF00)>>8;
@@ -166,11 +166,10 @@ Uint32 get_logical_sector(Uint32 sector_id) {
 
 /* Functions */
 void mo_formatter_cmd(void);
+void mo_formatter_cmd2(void);
 void mo_drive_cmd(void);
 
 void mo_eject_disk(void);
-void mo_read_ecc(void);
-void mo_write_ecc(void);
 
 void mo_jump_head(Uint16 command);
 void mo_read_id(void);
@@ -185,10 +184,14 @@ void MO_Uninit(void);
 #define SECTOR_IO_DELAY 5000
 #define CMD_DELAY       2000
 
-void fmt_read_sector(Uint32 sector_id);
-void fmt_write_sector(Uint32 sector_id);
-void fmt_erase_sector(Uint32 sector_id);
-void fmt_verify_sector(Uint32 sector_id);
+void ecc_read(void);
+void ecc_write(void);
+void ecc_verify(void);
+
+void mo_read_sector(Uint32 sector_id);
+void mo_write_sector(Uint32 sector_id);
+void mo_erase_sector(Uint32 sector_id);
+void mo_verify_sector(Uint32 sector_id);
 
 void mo_start_spinning(void);
 void mo_stop_spinning(void);
@@ -294,7 +297,7 @@ void MOctrl_CSR2_Write(void) {
     mo.ctrlr_csr2=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO Controller] CSR2 write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     
-    mo_select(mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
+    mo_formatter_cmd2();
 }
 
 void MOctrl_CSR1_Read(void) { // 0x02012007
@@ -448,21 +451,33 @@ void print_regs(void) {
     }
 }
 
+/* ------------------------ OPTICAL STORAGE PROCESSOR ------------------------ */
+
 /* Drive selection (formatter command 2) */
 /* FIXME: Selecting a drive connects its actual command complete
  * signal to the interrupt register. If there is no drive 
  * connected, the signal will always be low.
  */
-void mo_select(int drive) {
-    Log_Printf(LOG_MO_CMD_LEVEL, "[MO] Selecting drive %i",drive);
-    dnum=drive;
-    mo.intstatus &= ~MOINT_CMD_COMPL;
-    if (modrv[dnum].connected) {
-        mo_raise_irq(MOINT_CMD_COMPL, CMD_DELAY);
-    } else {
-        Log_Printf(LOG_MO_CMD_LEVEL, "[MO] Selection failed! Drive %i not connected.",drive);
-    }
-}
+
+
+#define MO_SECTORSIZE_DISK      1296 /* size of encoded sector, like stored on disk */
+#define MO_SECTORSIZE_DISK_HACK 1024 /* while ECC is not fully emulated */
+#define MO_SECTORSIZE_DATA      1024 /* size of decoded sector, like handled by software */
+
+enum {
+    ECC_MODE_READ,
+    ECC_MODE_WRITE,
+    ECC_MODE_VERIFY,
+    ECC_MODE_IDLE
+} ecc_mode;
+
+enum {
+    ECC_STATE_FILLING,
+    ECC_STATE_DRAINING,
+    ECC_STATE_ENCODING,
+    ECC_STATE_DECODING,
+    ECC_STATE_DONE
+} ecc_state;
 
 /* Formatter commands */
 
@@ -485,62 +500,46 @@ enum {
     FMT_MODE_IDLE
 } fmt_mode;
 
-void mo_formatter_cmd(void) { /* TODO: commands can be combined! (read|eccread)*/
+void mo_formatter_cmd(void) {
     
-    switch (mo.ctrlr_csr1) {
-        case FMT_RESET:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Reset (%02X)\n", mo.ctrlr_csr1);
-            fmt_mode = FMT_MODE_IDLE;
-            break;
-        case FMT_ECC_READ:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: ECC Read (%02X)\n", mo.ctrlr_csr1);
-            mo_read_ecc();
-            break;
-        case FMT_ECC_WRITE:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: ECC Write (%02X)\n", mo.ctrlr_csr1);
-            mo_write_ecc();
-            break;
-        case FMT_RD_STAT:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Read Status (%02X)\n", mo.ctrlr_csr1);
-            mo.csrh = (modrv[dnum].status>>8)&0xFF;
-            mo.csrl = modrv[dnum].status&0xFF;
-            break;
-        case FMT_ID_READ:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: ID Read (%02X)\n", mo.ctrlr_csr1);
-            fmt_mode = FMT_MODE_READ_ID;
-            break;
-        case FMT_VERIFY:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Verify (%02X)\n", mo.ctrlr_csr1);
-            fmt_mode = FMT_MODE_VERIFY;
-            break;
-        case FMT_ERASE:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Erase (%02X)\n", mo.ctrlr_csr1);
-            fmt_mode = FMT_MODE_ERASE;
-            break;
-        case FMT_READ:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Read (%02X)\n", mo.ctrlr_csr1);
-            fmt_mode = FMT_MODE_READ;
-            break;
-        case FMT_WRITE:
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Write (%02X)\n", mo.ctrlr_csr1);
-            fmt_mode = FMT_MODE_WRITE;
-            break;
-        /* Combined commands */
-        case (FMT_READ|FMT_ECC_READ):
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Read using ECC (%02X)\n", mo.ctrlr_csr1);
-            fmt_mode = FMT_MODE_READ;
-            mo_read_ecc();
-            break;
-        case (FMT_WRITE|FMT_ECC_WRITE):
-            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Formatter command: Write using ECC (%02X)\n", mo.ctrlr_csr1);
-            fmt_mode = FMT_MODE_WRITE;
-            mo_write_ecc();
-            break;
-            
-        default:
-            Log_Printf(LOG_WARN,"[MO] Formatter command: Unknown command! (%02X)\n", mo.ctrlr_csr1);
-            abort();
-            break;
+    if (mo.ctrlr_csr1==FMT_RESET) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: Reset (%02X)\n", mo.ctrlr_csr1);
+        fmt_mode = FMT_MODE_IDLE;
+        ecc_state = ECC_STATE_DONE;
+        return;
+    }
+    if (mo.ctrlr_csr1&FMT_ECC_READ) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: ECC Read (%02X)\n", mo.ctrlr_csr1);
+        ecc_read();
+    }
+    if (mo.ctrlr_csr1&FMT_ECC_WRITE) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: ECC Write (%02X)\n", mo.ctrlr_csr1);
+        ecc_write();
+    }
+    if (mo.ctrlr_csr1&FMT_RD_STAT) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: Read Status (%02X)\n", mo.ctrlr_csr1);
+        mo.csrh = (modrv[dnum].status>>8)&0xFF;
+        mo.csrl = modrv[dnum].status&0xFF;
+    }
+    if (mo.ctrlr_csr1&FMT_ID_READ) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: ID Read (%02X)\n", mo.ctrlr_csr1);
+        fmt_mode = FMT_MODE_READ_ID;
+    }
+    if (mo.ctrlr_csr1&FMT_VERIFY) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: Verify (%02X)\n", mo.ctrlr_csr1);
+        fmt_mode = FMT_MODE_VERIFY;
+    }
+    if (mo.ctrlr_csr1&FMT_ERASE) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: Erase (%02X)\n", mo.ctrlr_csr1);
+        fmt_mode = FMT_MODE_ERASE;
+    }
+    if (mo.ctrlr_csr1&FMT_READ) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: Read (%02X)\n", mo.ctrlr_csr1);
+        fmt_mode = FMT_MODE_READ;
+    }
+    if (mo.ctrlr_csr1&FMT_WRITE) {
+        Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: Write (%02X)\n", mo.ctrlr_csr1);
+        fmt_mode = FMT_MODE_WRITE;
     }
 }
 
@@ -552,21 +551,19 @@ void fmt_sector_done(void) {
     mo.tracknumh = (track>>8)&0xFF;
     mo.tracknuml = track&0xFF;
     /* CHECK: decrement with sector_increment value? */
-#if 0
-    if (mo.sector_count==0) {
-        mo.sector_count=255;
-    } else {
-        mo.sector_count--;
-    }
-#endif
     sector_counter--;
+    /* Check if the operation is complete */
+    if (sector_counter==0) {
+        fmt_mode = FMT_MODE_IDLE;
+        mo_raise_irq(MOINT_OPER_COMPL, 0);
+    }
 }
 
 int sector_timer=0;
 #define SECTOR_TIMEOUT_COUNT    100 /* FIXME: what is the correct value? */
 bool fmt_match_id(Uint32 sector_id) {
     if ((mo.init&MOINIT_ID_MASK)==MOINIT_ID_0) {
-        Log_Printf(LOG_MO_CMD_LEVEL, "MO disk %i: Sector ID matching disabled!",dnum);
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Sector ID matching disabled!");
         abort(); /* CHECK: this routine is critical to disk image corruption, check if it gives correct results */
         return true;
     }
@@ -574,7 +571,7 @@ bool fmt_match_id(Uint32 sector_id) {
     Uint32 fmt_id = (mo.tracknumh<<16)|(mo.tracknuml<<8)|mo.sector_num;
     
     if (mo.init&MOINIT_ID_CMP_TRK) {
-        Log_Printf(LOG_MO_CMD_LEVEL, "MO disk %i: Compare only track.",dnum);
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Compare only track ID.");
         fmt_id=(fmt_id>>8)&0xFFFF;
         sector_id=(sector_id>>8)&0xFFFF;
     }
@@ -583,12 +580,12 @@ bool fmt_match_id(Uint32 sector_id) {
         sector_timer=0;
         return true;
     } else {
-        Log_Printf(LOG_MO_CMD_LEVEL, "MO disk %i: Sector ID mismatch (Sector ID=%06X, Looking for %06X)",
-                   dnum,sector_id,fmt_id);
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Sector ID mismatch (Sector ID=%06X, Looking for %06X)",
+                   sector_id,fmt_id);
         if (mo.ctrlr_csr2&MOCSR2_SECT_TIMER) {
             sector_timer++;
             if (sector_timer>SECTOR_TIMEOUT_COUNT) {
-                Log_Printf(LOG_MO_CMD_LEVEL, "MO disk %i: Sector timeout!",dnum);
+                Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Sector timeout!");
                 sector_timer=0;
                 fmt_mode=FMT_MODE_IDLE;
                 mo_raise_irq(MOINT_TIMEOUT, 0);
@@ -598,9 +595,6 @@ bool fmt_match_id(Uint32 sector_id) {
     }
 }
 
-void ecc_read_sector(void);
-void ecc_write_sector(void);
-void ecc_verify_sector(void);
 void fmt_io(Uint32 sector_id) {
 
     switch (fmt_mode) {
@@ -618,243 +612,342 @@ void fmt_io(Uint32 sector_id) {
             }
             if (fmt_match_id(sector_id)) {
                 /* First read sector from disk to ECC buffer */
-                fmt_read_sector(sector_id);
+                mo_read_sector(sector_id);
                 /* Then decode data and write to memory using DMA */
-                ecc_write_sector();
+                ecc_read();
                 fmt_sector_done();
-                break;
             }
-            return;
+            break;
         case FMT_MODE_WRITE:
             if (modrv[dnum].head!=WRITE_HEAD) {
                 abort();
             }
-            /* First read data from memory using DMA and encode */
-            ecc_read_sector();
-            /* IMPORTANT: Here must be a time gap (do not match first sector)! */
-            /* Then write sector from ECC buffer to disk */
+            /* WARNING: first sector must be mismatch to pre-fill the ECC buffer for writing */
             if (fmt_match_id(sector_id)) {
-                fmt_write_sector(sector_id);
-                ecc_read_sector(); /* ECC is empty, refill it for next disk write */
+                /* Write sector from ECC buffer to disk */
+                mo_write_sector(sector_id);
                 fmt_sector_done();
-                break;
             }
-            return;
+            /* (Re)fill ECC buffer from memory using DMA */
+            ecc_write();
+            break;
         case FMT_MODE_ERASE:
             if (modrv[dnum].head!=ERASE_HEAD) {
                 abort();
             }
             if (fmt_match_id(sector_id)) {
-                fmt_erase_sector(sector_id);
+                mo_erase_sector(sector_id);
                 fmt_sector_done();
-                break;
             }
-            return;
+            break;
         case FMT_MODE_VERIFY:
             if (modrv[dnum].head!=VERIFY_HEAD) {
                 abort();
             }
             if (fmt_match_id(sector_id)) {
                 /* First read sector from disk to ECC buffer */
-                fmt_verify_sector(sector_id);
+                mo_verify_sector(sector_id);
                 /* Then verify data */
-                ecc_verify_sector();
+                ecc_verify();
                 fmt_sector_done();
                 break;
             }
-            return;
+            break;
             
         default:
             abort();
             break;
     }
-
+#if 0
     /* Check if the operation is complete */
     if (sector_counter==0) {
         fmt_mode = FMT_MODE_IDLE;
         mo_raise_irq(MOINT_OPER_COMPL, 0);
     }
+#endif
 }
 
+
+#if 0
+#define MOCSR2_DRIVE_SEL    0x01
+#define MOCSR2_ECC_CMP      0x02
+#define MOCSR2_BUF_TOGGLE   0x04
+#define MOCSR2_CLR_BUFP     0x08
+#define MOCSR2_ECC_BLOCKS   0x10
+#define MOCSR2_ECC_MODE     0x20
+#define MOCSR2_ECC_DIS      0x40
+#define MOCSR2_SECT_TIMER   0x80
+#endif
+
+void ecc_toggle_buffer(void) {
+    if (eccin==0) {
+        eccout=0;
+        eccin=1;
+    } else {
+        eccout=1;
+        eccin=0;
+    }
+    eccin=eccout=0;
+    Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Switching buffer (in: %i, out: %i)",eccin,eccout);
+}
+
+void ecc_clear_buffer(void) {
+    ecc_buffer[eccin].size=ecc_buffer[eccout].size=0;
+    ecc_buffer[eccin].limit=ecc_buffer[eccout].limit=MO_SECTORSIZE_DATA;
+}
+void mo_select(int drive) {
+    Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Selecting drive %i",drive);
+    dnum=drive;
+    mo.intstatus &= ~MOINT_CMD_COMPL;
+    if (modrv[dnum].connected) {
+        mo_raise_irq(MOINT_CMD_COMPL, CMD_DELAY);
+    } else {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Selection failed! Drive %i not connected.",drive);
+    }
+}
+
+void mo_formatter_cmd2(void) {
+    if (mo.ctrlr_csr2&MOCSR2_BUF_TOGGLE) {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Toggle ECC buffer.");
+        ecc_toggle_buffer();
+    }
+    if (mo.ctrlr_csr2&MOCSR2_ECC_CMP) {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] ECC compare.");
+    }
+    if (mo.ctrlr_csr2&MOCSR2_CLR_BUFP) {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Clear ECC buffer.");
+        ecc_clear_buffer();
+    }
+    if (mo.ctrlr_csr2&MOCSR2_ECC_BLOCKS) {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] ECC blocks.");
+    }
+    if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] ECC decoding mode.");
+    } else {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] ECC encoding mode.");
+    }
+    if (mo.ctrlr_csr2&MOCSR2_SECT_TIMER) {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Sector timer enabled.");
+    } else {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Sector timer disabled.");
+    }
+    if (mo.ctrlr_csr2&MOCSR2_ECC_DIS) {
+        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Disable ECC passthrough.");
+    }
+    
+    mo_select(mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
+}
 
 /* ECC emulation */
 #define ECC_DELAY SECTOR_IO_DELAY/4
 
-enum {
-    ECC_MODE_READ,
-    ECC_MODE_WRITE,
-    ECC_MODE_VERIFY,
-    ECC_MODE_IDLE
-} ecc_mode;
+int eccin=0;
+int eccout=0;
 
-#define ECC_SECTORSIZE  1024 /* really 1296 after ECC encoding */
-
-void ecc_decode(void) {
-    Log_Printf(LOG_WARN, "[ECC] Decoding buffer.");
-    ecc_buffer[ecc_act_buf].limit=MO_SECTORSIZE;
-    ecc_buffer[ecc_act_buf].encoded=false;
-    if (sector_counter==0) {
-        mo_raise_irq(MOINT_ECC_DONE, 0);
-    }
-}
-
-void ecc_encode(void) {
-    Log_Printf(LOG_WARN, "[ECC] Encoding buffer.");
-    ecc_buffer[ecc_act_buf].limit=ECC_SECTORSIZE;
-    ecc_buffer[ecc_act_buf].encoded=true;
-    if (sector_counter==0) {
-        mo_raise_irq(MOINT_ECC_DONE, 0);
-    }
-}
-
-void ecc_read_sector(void) {
-    ecc_mode = ECC_MODE_READ;
-    CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
-}
-
-void ecc_fill_and_encode(void) {
-    if (ecc_buffer[ecc_act_buf].limit==ECC_SECTORSIZE && ecc_buffer[ecc_act_buf].encoded) {
-        Log_Printf(LOG_WARN, "[ECC] Read sector: ECC buffer full.");
-        return;
-    }
-    
-    if (sector_counter>0) {
-        dma_mo_read_memory();
+bool ecc_decode(void) {
+    if (ecc_mode==ECC_MODE_READ && mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* CHECK: is this correct? */
+        Log_Printf(LOG_WARN, "[ECC] Decoding disabled.");
+    } else if (ecc_buffer[eccin].size!=MO_SECTORSIZE_DISK) {
+        Log_Printf(LOG_WARN, "[ECC] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccin].size);
+        return false;
     } else {
+        Log_Printf(LOG_WARN, "[ECC] Decoding buffer.");
+        ecc_buffer[eccout].limit=ecc_buffer[eccout].size=MO_SECTORSIZE_DATA;
+        /* TODO: add real ECC decoding here. */
+        ecc_buffer[eccout].encoded=false;
+    }
+    if (ecc_mode==ECC_MODE_VERIFY) {
+        ecc_clear_buffer();
+    }
+    if (sector_counter==0 || mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* FIXME: not only if dis */
+        mo_raise_irq(MOINT_ECC_DONE, 0);
+    }
+    ecc_toggle_buffer();
+    return true;
+}
+
+bool ecc_encode(void) {
+    if (ecc_mode==ECC_MODE_READ && mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* CHECK: is this correct? */
+        Log_Printf(LOG_WARN, "[ECC] Encoding disabled.");
+    } else if (ecc_buffer[eccout].size!=MO_SECTORSIZE_DATA) {
+        Log_Printf(LOG_WARN, "[ECC] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccout].size);
+        return false;
+    } else {
+        Log_Printf(LOG_WARN, "[ECC] Encoding buffer.");
+        ecc_buffer[eccin].limit=ecc_buffer[eccin].size=MO_SECTORSIZE_DISK;
+        /* TODO: add real ECC encoding here. */
+        ecc_buffer[eccin].encoded=true;
+    }
+    if (sector_counter==0 || 1 /*mo.ctrlr_csr2&MOCSR2_ECC_DIS*/) { /* FIXME: not only if dis */
+        mo_raise_irq(MOINT_ECC_DONE, 0);
+    }
+    ecc_toggle_buffer();
+    return true;
+}
+/* ecc_mode = ecc_decode */
+void ecc_write(void) {
+    if (ecc_state!=ECC_STATE_DONE) {
+        Log_Printf(LOG_WARN,"[OSP] ERROR: ECC busy (%i)", ecc_state);
         return;
     }
-    
-    if (ecc_buffer[ecc_act_buf].size==ecc_buffer[ecc_act_buf].limit) {
-        ecc_encode();
+    ecc_mode=ECC_MODE_WRITE;
+    ecc_state=ECC_STATE_FILLING;
+    CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
+}
+void ecc_read(void) {
+    if (ecc_state!=ECC_STATE_DONE) {
+        Log_Printf(LOG_WARN,"[OSP] ERROR: ECC busy (%i)", ecc_state);
         return;
     }
-    
-    CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
-}
-
-void ecc_write_sector(void) {
-    ecc_mode = ECC_MODE_WRITE;
-    CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
-}
-
-void ecc_decode_and_empty(void) {
-    if (ecc_buffer[ecc_act_buf].limit==MO_SECTORSIZE && !ecc_buffer[ecc_act_buf].encoded) {
-        dma_mo_write_memory();
-        if (ecc_buffer[ecc_act_buf].size==0) {
-            return;
-        }
+    if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
+        ecc_state=ECC_STATE_ENCODING;
+    } else {
+        ecc_state=ECC_STATE_DECODING;
     }
-    
-    if (ecc_buffer[ecc_act_buf].size==ecc_buffer[ecc_act_buf].limit) {
-        ecc_decode();
-    }
-    
+    ecc_mode=ECC_MODE_READ;
     CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
 }
-
-void ecc_verify_sector(void) {
-    ecc_mode = ECC_MODE_VERIFY;
-    CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
-}
-
-void ecc_decode_and_clear(void ) {
-    if (ecc_buffer[ecc_act_buf].limit==MO_SECTORSIZE && !ecc_buffer[ecc_act_buf].encoded) {
-        ecc_buffer[ecc_act_buf].size=0;
+void ecc_verify(void) {
+    if (ecc_state!=ECC_STATE_DONE) {
+        Log_Printf(LOG_WARN,"[OSP] ERROR: ECC busy (%i)", ecc_state);
         return;
     }
-    
-    if (ecc_buffer[ecc_act_buf].size==ecc_buffer[ecc_act_buf].limit) {
-        ecc_decode();
-    }
-    
+    ecc_mode=ECC_MODE_VERIFY;
+    ecc_state=ECC_STATE_DECODING;
     CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
 }
-
 void ECC_IO_Handler(void) {
     CycInt_AcknowledgeInterrupt();
     
-    switch (ecc_mode) {
-        case ECC_MODE_READ:
-            ecc_fill_and_encode();
+    switch (ecc_state) {
+        case ECC_STATE_FILLING:
+            if (ecc_buffer[eccin].size<ecc_buffer[eccin].limit) {
+                if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
+                    ecc_buffer[eccin].limit=MO_SECTORSIZE_DISK;
+                } else {
+                    ecc_buffer[eccin].limit=MO_SECTORSIZE_DATA;
+                }
+                dma_mo_read_memory();
+            }
+            if (ecc_buffer[eccin].size==ecc_buffer[eccin].limit) {
+                if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
+                    ecc_state=ECC_STATE_DECODING;
+                } else {
+                    ecc_state=ECC_STATE_ENCODING;
+                }
+            }
             break;
-        case ECC_MODE_WRITE:
-            ecc_decode_and_empty();
+        case ECC_STATE_DRAINING:
+            dma_mo_write_memory();
+            if (ecc_buffer[eccout].size==0) {
+                ecc_state=ECC_STATE_DONE;
+                return;
+            }
             break;
-        case ECC_MODE_VERIFY:
-            ecc_decode_and_clear();
+        case ECC_STATE_ENCODING:
+            if (!ecc_encode()) {
+                ecc_state=ECC_STATE_DONE; /* TODO: remove this */
+                return; /* TODO: loop and wait for content to be encoded */
+            }
+            if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
+                ecc_state=ECC_STATE_DRAINING;
+            } else {
+                ecc_state=ECC_STATE_DONE;
+                return;
+            }
+            break;
+        case ECC_STATE_DECODING:
+            if  (!ecc_decode()) {
+                ecc_state=ECC_STATE_DONE;  /* TODO: remove this */
+                return; /* TODO: loop and wait for content to be decoded */
+            }
+            if (mo.ctrlr_csr2&MOCSR2_ECC_MODE || ecc_mode==ECC_MODE_VERIFY) {
+                ecc_state=ECC_STATE_DONE;
+                return;
+            } else {
+                ecc_state=ECC_STATE_DRAINING;
+            }
             break;
             
         default:
+            Log_Printf(LOG_WARN, "[ECC] Bad status! (%i)",ecc_state);
+            return;
+            abort();
             break;
     }
+    
+    CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
 }
+
+
+/* ------------------------ MAGNETO-OPTICAL DISK DRIVE ------------------------ */
 
 /* I/O functions */
 
-void fmt_read_sector(Uint32 sector_id) {
+void mo_read_sector(Uint32 sector_id) {
     Uint32 sector_num = get_logical_sector(sector_id);
     
     Log_Printf(LOG_WARN, "MO disk %i: Read sector at offset %i (%i sectors remaining)",
                dnum, sector_num, sector_counter-1);
     
     /* seek to the position */
-	fseek(modrv[dnum].dsk, sector_num*ECC_SECTORSIZE, SEEK_SET);
-    fread(ecc_buffer[ecc_act_buf].data, ECC_SECTORSIZE, 1, modrv[dnum].dsk);
+	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
+    fread(ecc_buffer[eccin].data, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
     
-    ecc_buffer[ecc_act_buf].limit = ecc_buffer[ecc_act_buf].size = ECC_SECTORSIZE;
-    ecc_buffer[ecc_act_buf].encoded=true;
+    ecc_buffer[eccin].limit = ecc_buffer[eccin].size = MO_SECTORSIZE_DISK;
+    ecc_buffer[eccin].encoded=true;
 }
 
-void fmt_write_sector(Uint32 sector_id) {
+void mo_write_sector(Uint32 sector_id) {
     Uint32 sector_num = get_logical_sector(sector_id);
     
     Log_Printf(LOG_WARN, "MO disk %i: Write sector at offset %i (%i sectors remaining)",
                dnum, sector_num, sector_counter-1);
     
-    if (ecc_buffer[ecc_act_buf].limit==ECC_SECTORSIZE && ecc_buffer[ecc_act_buf].encoded) {
+    if (ecc_buffer[eccout].limit==MO_SECTORSIZE_DISK && ecc_buffer[eccout].encoded) {
         /* seek to the position */
         /* NO FILE WRITE */
         Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
-#if 0
-        fseek(modrv[dnum].dsk, sector_num*ECC_SECTORSIZE, SEEK_SET);
-        fwrite(ecc_buffer[ecc_act_buf].data, ECC_SECTORSIZE, 1, modrv[dnum].dsk);
+#if 1
+        fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
+        fwrite(ecc_buffer[eccout].data, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
 #endif
-        ecc_buffer[ecc_act_buf].size = 0;
-        ecc_buffer[ecc_act_buf].limit = MO_SECTORSIZE;
-        ecc_buffer[ecc_act_buf].encoded = false;
+        ecc_buffer[eccout].size = 0;
+        ecc_buffer[eccout].limit = MO_SECTORSIZE_DATA;
+        ecc_buffer[eccout].encoded = false;
     }
 }
 
-void fmt_erase_sector(Uint32 sector_id) {
+void mo_erase_sector(Uint32 sector_id) {
     Uint32 sector_num = get_logical_sector(sector_id);
     
     Log_Printf(LOG_WARN, "MO disk %i: Erase sector at offset %i (%i sectors remaining)",
                dnum, sector_num, sector_counter-1);
     
-    Uint8 erase_buf[ECC_SECTORSIZE];
-    memset(erase_buf, 0, ECC_SECTORSIZE);
+    Uint8 erase_buf[MO_SECTORSIZE_DISK];
+    memset(erase_buf, 0, MO_SECTORSIZE_DISK);
     
     /* seek to the position */
     /* NO FILE WRITE */
     Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
 #if 0
-    fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE, SEEK_SET);
-    fwrite(erase_buf, ECC_SECTORSIZE, 1, modrv[dnum].dsk);
+    fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
+    fwrite(erase_buf, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
 #endif
 }
 
-void fmt_verify_sector(Uint32 sector_id) {
+void mo_verify_sector(Uint32 sector_id) {
     Uint32 sector_num = get_logical_sector(sector_id);
     
     Log_Printf(LOG_WARN, "MO disk %i: Verify sector at offset %i (%i sectors remaining)",
                dnum, sector_num, sector_counter-1);
     
     /* seek to the position */
-	fseek(modrv[dnum].dsk, sector_num*ECC_SECTORSIZE, SEEK_SET);
-    fread(ecc_buffer[ecc_act_buf].data, ECC_SECTORSIZE, 1, modrv[dnum].dsk);
+	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
+    fread(ecc_buffer[eccin].data, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
     
-    ecc_buffer[ecc_act_buf].limit = ecc_buffer[ecc_act_buf].size = ECC_SECTORSIZE;
-    ecc_buffer[ecc_act_buf].encoded=true;
+    ecc_buffer[eccin].limit = ecc_buffer[eccin].size = MO_SECTORSIZE_DISK;
+    ecc_buffer[eccin].encoded=true;
 }
 
 
@@ -1285,8 +1378,6 @@ void MO_Init(void) {
 
         Log_Printf(LOG_WARN, "MO Disk%i: %s\n",i,ConfigureParams.MO.drive[i].szImageName);
     }
-    
-    ecc_act_buf=0;
 }
 
 void MO_Uninit(void) {
@@ -1302,31 +1393,6 @@ void MO_Uninit(void) {
 void MO_Reset(void) {
     MO_Uninit();
     MO_Init();
-}
-
-
-
-
-/* ECC functions */
-
-void mo_read_ecc(void) {
-#if 0
-    if (!MOdata.size) {
-        MOdata.size=1296;// hack
-    }
-#endif
-    mo_raise_irq(MOINT_ECC_DONE, SECTOR_IO_DELAY);
-    //dma_mo_write_memory();
-}
-
-void mo_write_ecc(void) {
-#if 0
-    if (!MOdata.size) {
-        MOdata.size=1024; // hack
-    }
-#endif
-    //dma_mo_read_memory();
-    mo_raise_irq(MOINT_ECC_DONE, SECTOR_IO_DELAY);
 }
 
 

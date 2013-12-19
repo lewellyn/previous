@@ -214,14 +214,7 @@ void DMA_CSR_Write(void) {
                 else
                     dma_esp_read_memory();
                 break;
-#if 0
-            case CHANNEL_DISK:
-                if (dma[channel].direction==DMA_DEV2M)
-                    dma_mo_write_memory();
-                else
-                    dma_mo_read_memory();
-                break;
-#endif
+
             default: break;
         }
     }
@@ -392,12 +385,6 @@ void ESPDMA_InterruptHandler(void) {
     
     /* Let ESP check if it needs to interrupt */
     esp_dma_done(write);
-}
-
-/* Handler function for DMA ESP delayed interrupt */
-void MODMA_InterruptHandler(void) {
-	CycInt_AcknowledgeInterrupt();
-    dma_interrupt(CHANNEL_DISK);
 }
 
 /* Handler functions for DMA M2M delyed interrupts */
@@ -608,7 +595,7 @@ void dma_mo_write_memory(void) {
         if (modma_buf_size>0) {
             Log_Printf(LOG_WARN, "[DMA] Channel MO: %i residual bytes in DMA buffer.", modma_buf_size);
             while (modma_buf_size>=4) {
-                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(ecc_buffer[ecc_act_buf].data, ecc_buffer[ecc_act_buf].limit-ecc_buffer[ecc_act_buf].size));
+                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(ecc_buffer[eccout].data, ecc_buffer[eccout].limit-ecc_buffer[eccout].size));
                 dma[CHANNEL_DISK].next+=4;
                 modma_buf_size-=4;
             }
@@ -618,12 +605,12 @@ void dma_mo_write_memory(void) {
         if (dma[CHANNEL_DISK].next%DMA_BURST_SIZE) {
             Log_Printf(LOG_WARN, "[DMA] Channel MO: Start memory address is not 16 byte aligned ($%08X).",
                        dma[CHANNEL_DISK].next);
-            while ((dma[CHANNEL_DISK].next+modma_buf_size)%DMA_BURST_SIZE && ecc_buffer[ecc_act_buf].size>0) {
-                ecc_buffer[ecc_act_buf].size--;
+            while ((dma[CHANNEL_DISK].next+modma_buf_size)%DMA_BURST_SIZE && ecc_buffer[eccout].size>0) {
+                ecc_buffer[eccout].size--;
                 modma_buf_size++;
             }
             while (modma_buf_size>=4) {
-                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(ecc_buffer[ecc_act_buf].data, ecc_buffer[ecc_act_buf].limit-ecc_buffer[ecc_act_buf].size-modma_buf_size));
+                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(ecc_buffer[eccout].data, ecc_buffer[eccout].limit-ecc_buffer[eccout].size-modma_buf_size));
                 dma[CHANNEL_DISK].next+=4;
                 modma_buf_size-=4;
             }
@@ -631,15 +618,15 @@ void dma_mo_write_memory(void) {
         
         while (dma[CHANNEL_DISK].next<=dma[CHANNEL_DISK].limit && !(modma_buf_size%DMA_BURST_SIZE)) {
             /* Fill DMA internal buffer (no real buffer, we use an imaginary one) */
-            while (modma_buf_size<DMA_BURST_SIZE && ecc_buffer[ecc_act_buf].size>0) {
-                ecc_buffer[ecc_act_buf].size--;
+            while (modma_buf_size<DMA_BURST_SIZE && ecc_buffer[eccout].size>0) {
+                ecc_buffer[eccout].size--;
                 modma_buf_size++;
             }
                         
             /* If buffer is full, burst write to memory */
             if (modma_buf_size==DMA_BURST_SIZE && dma[CHANNEL_DISK].next<dma[CHANNEL_DISK].limit) {
                 while (modma_buf_size>0) {
-                    NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(ecc_buffer[ecc_act_buf].data, ecc_buffer[ecc_act_buf].limit-ecc_buffer[ecc_act_buf].size-modma_buf_size));
+                    NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(ecc_buffer[eccout].data, ecc_buffer[eccout].limit-ecc_buffer[eccout].size-modma_buf_size));
                     dma[CHANNEL_DISK].next+=4;
                     modma_buf_size-=4;
                 }
@@ -678,8 +665,8 @@ void dma_mo_read_memory(void) {
         if (modma_buf_size>0) {
             Log_Printf(LOG_WARN, "[DMA] Channel MO: %i residual bytes in DMA buffer.", modma_buf_size);
             while (modma_buf_size>=4) {
-                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_DISK].next-modma_buf_size), ecc_buffer[ecc_act_buf].data, ecc_buffer[ecc_act_buf].size);
-                ecc_buffer[ecc_act_buf].size+=4;
+                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_DISK].next-modma_buf_size), ecc_buffer[eccin].data, ecc_buffer[eccin].size);
+                ecc_buffer[eccin].size+=4;
                 modma_buf_size-=4;
             }
         }
@@ -688,13 +675,13 @@ void dma_mo_read_memory(void) {
         if (dma[CHANNEL_DISK].next%DMA_BURST_SIZE) {
             Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Start memory address is not 16 byte aligned ($%08X).",
                        dma[CHANNEL_DISK].next);
-            while (dma[CHANNEL_DISK].next%DMA_BURST_SIZE && ecc_buffer[ecc_act_buf].size<ecc_buffer[ecc_act_buf].limit) {
-                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_DISK].next), ecc_buffer[ecc_act_buf].data, ecc_buffer[ecc_act_buf].size+modma_buf_size);
+            while (dma[CHANNEL_DISK].next%DMA_BURST_SIZE && ecc_buffer[eccin].size<ecc_buffer[eccin].limit) {
+                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_DISK].next), ecc_buffer[eccin].data, ecc_buffer[eccin].size+modma_buf_size);
                 dma[CHANNEL_DISK].next+=4;
                 modma_buf_size+=4;
             }
             while (modma_buf_size>0) {
-                ecc_buffer[ecc_act_buf].size++;
+                ecc_buffer[eccin].size++;
                 modma_buf_size--;
             }
         }
@@ -702,13 +689,13 @@ void dma_mo_read_memory(void) {
         while (dma[CHANNEL_DISK].next<dma[CHANNEL_DISK].limit && modma_buf_size==0) {
             /* Read data from memory to internal DMA buffer (no real buffer, we use an imaginary one) */
             while (modma_buf_size<DMA_BURST_SIZE) {
-                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_DISK].next), ecc_buffer[ecc_act_buf].data, ecc_buffer[ecc_act_buf].size+modma_buf_size);
+                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_DISK].next), ecc_buffer[eccin].data, ecc_buffer[eccin].size+modma_buf_size);
                 dma[CHANNEL_DISK].next+=4;
                 modma_buf_size+=4;
             }
             /* Empty DMA internal buffer */
-            while (modma_buf_size>0 && ecc_buffer[ecc_act_buf].size<ecc_buffer[ecc_act_buf].limit) {
-                ecc_buffer[ecc_act_buf].size++;
+            while (modma_buf_size>0 && ecc_buffer[eccin].size<ecc_buffer[eccin].limit) {
+                ecc_buffer[eccin].size++;
                 modma_buf_size--;
             }
         }

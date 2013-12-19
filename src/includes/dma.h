@@ -58,7 +58,6 @@ void dma_m2m_write_memory(void);
 
 
 void ESPDMA_InterruptHandler(void);
-void MODMA_InterruptHandler(void);
 void M2RDMA_InterruptHandler(void);
 void R2MDMA_InterruptHandler(void);
 void Video_InterruptHandler(void);

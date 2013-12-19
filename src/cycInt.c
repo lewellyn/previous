@@ -78,7 +78,6 @@ static void (* const pIntHandlerFunctions[MAX_INTERRUPTS])(void) =
     M2RDMA_InterruptHandler,
     R2MDMA_InterruptHandler,
     MO_InterruptHandler,
-    MODMA_InterruptHandler,
     MO_IO_Handler,
     ECC_IO_Handler
 };

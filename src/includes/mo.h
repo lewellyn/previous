@@ -11,7 +11,8 @@ struct {
     Uint32 limit;
     bool encoded;
 } ecc_buffer[2];
-int ecc_act_buf; /* Currently active buffer */
+extern int eccin;
+extern int eccout;
 
 void MO_InterruptHandler(void);
 void MO_IO_Handler(void);
