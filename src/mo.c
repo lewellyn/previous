@@ -6,8 +6,19 @@
  Canon Magneto-Optical Disk Drive and NeXT Optical Storage Processor emulation.
   
  NeXT Optical Storage Processor uses Reed-Solomon algorithm for error correction.
- It has 2 128 byte internal buffers and uses double-buffering to perform error correction.
+ It has two 1296 (128?) byte internal buffers and uses double-buffering to perform
+ error correction.
   
+ */
+
+/* TODO:
+ *
+ * - Find out how "ECC blocks" mode works
+ * - Add correct ECC buffer toggle
+ * - Add support for DMA and ECC starve
+ * - Add real Reed Solomon ECC
+ * - Improve drive error handling (attn conditions)
+ *
  */
 
 #include "ioMem.h"
@@ -22,6 +33,7 @@
 
 #define LOG_MO_REG_LEVEL    LOG_DEBUG
 #define LOG_MO_CMD_LEVEL    LOG_WARN
+#define LOG_MO_ECC_LEVEL    LOG_WARN
 
 #define IO_SEG_MASK	0x1FFFF
 
@@ -32,7 +44,7 @@ struct {
     Uint8 tracknuml;
     Uint8 tracknumh;
     Uint8 sector_num;
-    //Uint8 sector_count;
+    Uint8 sector_count;
     Uint8 intstatus;
     Uint8 intmask;
     Uint8 ctrlr_csr2;
@@ -146,19 +158,24 @@ int dnum;
 #define MO_SEC_PER_TRACK    16
 #define MO_TRACK_OFFSET     4096 /* offset to first logical sector of kernel driver is 4149 */
 #define MO_TRACK_LIMIT      19819-(MO_TRACK_OFFSET) /* no more tracks beyond this offset */
-//#define MO_SECTORSIZE       1024
+
+#define MO_SECTORSIZE_DISK  1296 /* size of encoded sector, like stored on disk */
+#define MO_SECTORSIZE_DATA  1024 /* size of decoded sector, like handled by software */
+
+#define MO_SECTORSIZE_DISK_HACK 1024 /* while ECC is not fully emulated */
+
 
 Uint32 get_logical_sector(Uint32 sector_id) {
     Sint32 tracknum = (sector_id&0xFFFF00)>>8;
     Uint8 sectornum = sector_id&0x0F;
-#if 1
+
     tracknum-=MO_TRACK_OFFSET;
     if (tracknum<0 || tracknum>=MO_TRACK_LIMIT) {
         Log_Printf(LOG_WARN, "MO disk %i: Error! Bad sector (%i)! Disk limit exceeded.", dnum,
                    (tracknum*MO_SEC_PER_TRACK)+mo.sector_num);
         abort();
     }
-#endif
+
     return (tracknum*MO_SEC_PER_TRACK)+sectornum;
 }
 
@@ -212,7 +229,9 @@ bool no_disk(void) {
     }
 }
 
-/* MO drive and controller registers */
+/* ------------------------ OPTICAL STORAGE PROCESSOR ------------------------ */
+
+/* OSP registers */
 
 void MO_TrackNumH_Read(void) { // 0x02012000
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.tracknumh;
@@ -451,18 +470,6 @@ void print_regs(void) {
     }
 }
 
-/* ------------------------ OPTICAL STORAGE PROCESSOR ------------------------ */
-
-/* Drive selection (formatter command 2) */
-/* FIXME: Selecting a drive connects its actual command complete
- * signal to the interrupt register. If there is no drive 
- * connected, the signal will always be low.
- */
-
-
-#define MO_SECTORSIZE_DISK      1296 /* size of encoded sector, like stored on disk */
-#define MO_SECTORSIZE_DISK_HACK 1024 /* while ECC is not fully emulated */
-#define MO_SECTORSIZE_DATA      1024 /* size of decoded sector, like handled by software */
 
 enum {
     ECC_MODE_READ,
@@ -658,43 +665,15 @@ void fmt_io(Uint32 sector_id) {
             abort();
             break;
     }
-#if 0
-    /* Check if the operation is complete */
-    if (sector_counter==0) {
-        fmt_mode = FMT_MODE_IDLE;
-        mo_raise_irq(MOINT_OPER_COMPL, 0);
-    }
-#endif
 }
 
 
-#if 0
-#define MOCSR2_DRIVE_SEL    0x01
-#define MOCSR2_ECC_CMP      0x02
-#define MOCSR2_BUF_TOGGLE   0x04
-#define MOCSR2_CLR_BUFP     0x08
-#define MOCSR2_ECC_BLOCKS   0x10
-#define MOCSR2_ECC_MODE     0x20
-#define MOCSR2_ECC_DIS      0x40
-#define MOCSR2_SECT_TIMER   0x80
-#endif
+/* Drive selection (formatter command 2) */
+/* FIXME: Selecting a drive connects its actual command complete
+ * signal to the interrupt register. If there is no drive
+ * connected, the signal will always be low.
+ */
 
-void ecc_toggle_buffer(void) {
-    if (eccin==0) {
-        eccout=0;
-        eccin=1;
-    } else {
-        eccout=1;
-        eccin=0;
-    }
-    eccin=eccout=0;
-    Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Switching buffer (in: %i, out: %i)",eccin,eccout);
-}
-
-void ecc_clear_buffer(void) {
-    ecc_buffer[eccin].size=ecc_buffer[eccout].size=0;
-    ecc_buffer[eccin].limit=ecc_buffer[eccout].limit=MO_SECTORSIZE_DATA;
-}
 void mo_select(int drive) {
     Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Selecting drive %i",drive);
     dnum=drive;
@@ -706,25 +685,42 @@ void mo_select(int drive) {
     }
 }
 
+void ecc_toggle_buffer(void) {
+    if (eccin==0) {
+        eccout=0;
+        eccin=1;
+    } else {
+        eccout=1;
+        eccin=0;
+    }
+    eccin=eccout=0;
+    Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC switching buffer (in: %i, out: %i)",eccin,eccout);
+}
+
+void ecc_clear_buffer(void) {
+    ecc_buffer[eccin].size=ecc_buffer[eccout].size=0;
+    ecc_buffer[eccin].limit=ecc_buffer[eccout].limit=MO_SECTORSIZE_DATA;
+}
+
 void mo_formatter_cmd2(void) {
     if (mo.ctrlr_csr2&MOCSR2_BUF_TOGGLE) {
-        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Toggle ECC buffer.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] Toggle ECC buffer.");
         ecc_toggle_buffer();
     }
     if (mo.ctrlr_csr2&MOCSR2_ECC_CMP) {
-        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] ECC compare.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC compare.");
     }
     if (mo.ctrlr_csr2&MOCSR2_CLR_BUFP) {
-        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Clear ECC buffer.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] Clear ECC buffer.");
         ecc_clear_buffer();
     }
     if (mo.ctrlr_csr2&MOCSR2_ECC_BLOCKS) {
-        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] ECC blocks.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC blocks.");
     }
     if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
-        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] ECC decoding mode.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC decoding mode.");
     } else {
-        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] ECC encoding mode.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC encoding mode.");
     }
     if (mo.ctrlr_csr2&MOCSR2_SECT_TIMER) {
         Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Sector timer enabled.");
@@ -732,7 +728,7 @@ void mo_formatter_cmd2(void) {
         Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Sector timer disabled.");
     }
     if (mo.ctrlr_csr2&MOCSR2_ECC_DIS) {
-        Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Disable ECC passthrough.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] Disable ECC passthrough.");
     }
     
     mo_select(mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
@@ -746,18 +742,14 @@ int eccout=0;
 
 bool ecc_decode(void) {
     if (ecc_mode==ECC_MODE_READ && mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* CHECK: is this correct? */
-        Log_Printf(LOG_WARN, "[ECC] Decoding disabled.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC decoding disabled.");
     } else if (ecc_buffer[eccin].size!=MO_SECTORSIZE_DISK) {
-        Log_Printf(LOG_WARN, "[ECC] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccin].size);
+        Log_Printf(LOG_WARN, "[OSP] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccin].size);
         return false;
     } else {
-        Log_Printf(LOG_WARN, "[ECC] Decoding buffer.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC decoding buffer.");
         ecc_buffer[eccout].limit=ecc_buffer[eccout].size=MO_SECTORSIZE_DATA;
         /* TODO: add real ECC decoding here. */
-        ecc_buffer[eccout].encoded=false;
-    }
-    if (ecc_mode==ECC_MODE_VERIFY) {
-        ecc_clear_buffer();
     }
     if (sector_counter==0 || mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* FIXME: not only if dis */
         mo_raise_irq(MOINT_ECC_DONE, 0);
@@ -768,17 +760,16 @@ bool ecc_decode(void) {
 
 bool ecc_encode(void) {
     if (ecc_mode==ECC_MODE_READ && mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* CHECK: is this correct? */
-        Log_Printf(LOG_WARN, "[ECC] Encoding disabled.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC encoding disabled.");
     } else if (ecc_buffer[eccout].size!=MO_SECTORSIZE_DATA) {
-        Log_Printf(LOG_WARN, "[ECC] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccout].size);
+        Log_Printf(LOG_WARN, "[OSP] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccout].size);
         return false;
     } else {
-        Log_Printf(LOG_WARN, "[ECC] Encoding buffer.");
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC encoding buffer.");
         ecc_buffer[eccin].limit=ecc_buffer[eccin].size=MO_SECTORSIZE_DISK;
         /* TODO: add real ECC encoding here. */
-        ecc_buffer[eccin].encoded=true;
     }
-    if (sector_counter==0 || 1 /*mo.ctrlr_csr2&MOCSR2_ECC_DIS*/) { /* FIXME: not only if dis */
+    if (sector_counter==0 || 1 /*mo.ctrlr_csr2&MOCSR2_ECC_DIS*/) { /* FIXME: always intr if fmt_mode==IDLE? */
         mo_raise_irq(MOINT_ECC_DONE, 0);
     }
     ecc_toggle_buffer();
@@ -787,7 +778,7 @@ bool ecc_encode(void) {
 /* ecc_mode = ecc_decode */
 void ecc_write(void) {
     if (ecc_state!=ECC_STATE_DONE) {
-        Log_Printf(LOG_WARN,"[OSP] ERROR: ECC busy (%i)", ecc_state);
+        Log_Printf(LOG_WARN,"[OSP] Warning: ECC not accepting command (busy %i)", ecc_state);
         return;
     }
     ecc_mode=ECC_MODE_WRITE;
@@ -796,7 +787,7 @@ void ecc_write(void) {
 }
 void ecc_read(void) {
     if (ecc_state!=ECC_STATE_DONE) {
-        Log_Printf(LOG_WARN,"[OSP] ERROR: ECC busy (%i)", ecc_state);
+        Log_Printf(LOG_WARN,"[OSP] Warning: ECC not accepting command (busy %i)", ecc_state);
         return;
     }
     if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
@@ -809,7 +800,7 @@ void ecc_read(void) {
 }
 void ecc_verify(void) {
     if (ecc_state!=ECC_STATE_DONE) {
-        Log_Printf(LOG_WARN,"[OSP] ERROR: ECC busy (%i)", ecc_state);
+        Log_Printf(LOG_WARN,"[OSP] Warning: ECC not accepting command (busy %i)", ecc_state);
         return;
     }
     ecc_mode=ECC_MODE_VERIFY;
@@ -861,7 +852,12 @@ void ECC_IO_Handler(void) {
                 ecc_state=ECC_STATE_DONE;  /* TODO: remove this */
                 return; /* TODO: loop and wait for content to be decoded */
             }
-            if (mo.ctrlr_csr2&MOCSR2_ECC_MODE || ecc_mode==ECC_MODE_VERIFY) {
+            if (ecc_mode==ECC_MODE_VERIFY) {
+                ecc_clear_buffer();
+                ecc_state=ECC_STATE_DONE;
+                return;
+            }
+            if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
                 ecc_state=ECC_STATE_DONE;
                 return;
             } else {
@@ -870,10 +866,8 @@ void ECC_IO_Handler(void) {
             break;
             
         default:
-            Log_Printf(LOG_WARN, "[ECC] Bad status! (%i)",ecc_state);
+            Log_Printf(LOG_WARN, "[OSP] Warning: ECC was reset while busy!");
             return;
-            abort();
-            break;
     }
     
     CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
@@ -895,7 +889,6 @@ void mo_read_sector(Uint32 sector_id) {
     fread(ecc_buffer[eccin].data, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
     
     ecc_buffer[eccin].limit = ecc_buffer[eccin].size = MO_SECTORSIZE_DISK;
-    ecc_buffer[eccin].encoded=true;
 }
 
 void mo_write_sector(Uint32 sector_id) {
@@ -904,17 +897,16 @@ void mo_write_sector(Uint32 sector_id) {
     Log_Printf(LOG_WARN, "MO disk %i: Write sector at offset %i (%i sectors remaining)",
                dnum, sector_num, sector_counter-1);
     
-    if (ecc_buffer[eccout].limit==MO_SECTORSIZE_DISK && ecc_buffer[eccout].encoded) {
+    if (ecc_buffer[eccout].limit==MO_SECTORSIZE_DISK) {
         /* seek to the position */
-        /* NO FILE WRITE */
-        Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
-#if 1
+#if 0
         fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
         fwrite(ecc_buffer[eccout].data, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
+#else
+        Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
 #endif
         ecc_buffer[eccout].size = 0;
         ecc_buffer[eccout].limit = MO_SECTORSIZE_DATA;
-        ecc_buffer[eccout].encoded = false;
     }
 }
 
@@ -928,11 +920,11 @@ void mo_erase_sector(Uint32 sector_id) {
     memset(erase_buf, 0, MO_SECTORSIZE_DISK);
     
     /* seek to the position */
-    /* NO FILE WRITE */
-    Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
 #if 0
     fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
     fwrite(erase_buf, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
+#else
+    Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
 #endif
 }
 
@@ -947,7 +939,6 @@ void mo_verify_sector(Uint32 sector_id) {
     fread(ecc_buffer[eccin].data, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
     
     ecc_buffer[eccin].limit = ecc_buffer[eccin].size = MO_SECTORSIZE_DISK;
-    ecc_buffer[eccin].encoded=true;
 }
 
 
@@ -1393,249 +1384,4 @@ void MO_Uninit(void) {
 void MO_Reset(void) {
     MO_Uninit();
     MO_Init();
-}
-
-
-
-
-/* old stuff, remove later */
-
-//Uint8 ECC_buffer[1600];
-Uint32 length;
-Uint8 sector_position;
-
-/* MO Drive Registers */
-#define MO_INTSTATUS    4
-#define MO_INTMASK      5
-#define MO_CTRLR_CSR2   6
-#define MO_CTRLR_CSR1   7
-#define MO_COMMAND_HI   8
-#define MO_COMMAND_LO   9
-#define MO_INIT         12
-#define MO_FORMAT       13
-#define MO_MARK         14
-
-/* MO Drive Register Constants */
-#define INTSTAT_CLR     0xFC
-#define INTSTAT_RESET   0x01
-// controller csr 2
-//#define ECC_MODE        0x20
-// controller csr 1
-#define ECC_READ        0x80
-#define ECC_WRITE       0x40
-
-// drive commands
-#define OD_SEEK         0x0000
-#define OD_HOS          0xA000
-#define OD_RECALIB      0x1000
-#define OD_RDS          0x2000
-#define OD_RCA          0x2200
-
-#define OD_RID          0x5000
-
-void check_ecc(void);
-void compute_ecc(void);
-
-struct {
-    Uint16 track_num;
-    Uint8 sector_incrnum;
-    Uint8 sector_count;
-    Uint8 intstatus;
-    Uint8 intmask;
-    Uint8 ctrlr_csr2;
-    Uint8 ctrlr_csr1;
-    Uint16 command;
-} mo_drive;
-
-void MOdrive_Read(void) {
-    Uint8 val;
-	Uint8 reg = IoAccessCurrentAddress&0x1F;
-    
-    switch (reg) {
-        case MO_INTSTATUS:
-            val = mo_drive.intstatus;
-            mo_drive.intstatus |= 0x01;
-            break;
-            
-        case MO_INTMASK:
-            val = mo_drive.intmask;
-            break;
-            
-        case MO_CTRLR_CSR2:
-            val = mo_drive.ctrlr_csr2;
-            break;
-
-        case MO_CTRLR_CSR1:
-            val = mo_drive.ctrlr_csr1;
-            break;
-
-        case MO_COMMAND_HI:
-            val = 0x00;
-            break;
-
-        case MO_COMMAND_LO:
-            val = 0x00;
-            break;
-            
-        case 10:
-            val = 0x00;
-            break;
-
-        case 11:
-            val = 0x24;
-            break;
-
-        case 16:
-            val = 0x00;
-            break;
-
-        default:
-            val = 0;
-            break;
-    }
-    
-    IoMem[IoAccessCurrentAddress&IO_SEG_MASK] = val;
-    Log_Printf(LOG_MO_REG_LEVEL, "[MO Drive] read reg %d val %02x PC=%x %s at %d",reg,val,m68k_getpc(),__FILE__,__LINE__);
-}
-
-
-void MOdrive_Write(void) {
-    Uint8 val = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
-	Uint8 reg = IoAccessCurrentAddress&0x1F;
-    
-    Log_Printf(LOG_MO_REG_LEVEL, "[MO Drive] write reg %d val %02x PC=%x %s at %d",reg,val,m68k_getpc(),__FILE__,__LINE__);
-    
-    switch (reg) {
-        case MO_INTSTATUS: // reg 4
-            switch (val) {
-                case INTSTAT_CLR:
-                    mo_drive.intstatus &= 0x02;
-                    mo_drive.intstatus |= 0x01;
-                    break;
-                    
-                case INTSTAT_RESET:
-                    mo_drive.intstatus |= 0x01;
-                    //MOdrive_Reset();
-
-                default:
-                    break;
-                    
-                //mo_drive.intstatus = (mo_drive.intstatus & (~val & 0xfc)) | (val & 3);
-            }
-            break;
-            
-        case MO_INTMASK: // reg 5
-            mo_drive.intmask = val;
-            break;
-            
-        case MO_CTRLR_CSR2: // reg 6
-            mo_drive.ctrlr_csr2 = val;
-            break;
-            
-        case MO_CTRLR_CSR1: // reg 7
-            mo_drive.ctrlr_csr1 = val;
-            switch (mo_drive.ctrlr_csr1) {
-                case ECC_WRITE:
-                    //dma_memory_read(ECC_buffer, &length, CHANNEL_DISK);
-                    mo_drive.intstatus |= 0xFF;
-                    if (mo_drive.ctrlr_csr2/*&ECC_MODE*/)
-                        check_ecc();
-                    else
-                        compute_ecc();
-                    break;
-                    
-                case ECC_READ:
-                    //dma_memory_write(ECC_buffer, length, CHANNEL_DISK);
-                    mo_drive.intstatus |= 0xFF;
-                    break;
-                    
-                case 0x20: // RD_STAT
-                    mo_drive.intstatus |= 0x01; // set cmd complete
-                    break;
-                    
-                default:
-                    break;
-            }
-            break;
-        case MO_COMMAND_HI:
-            mo_drive.command = (val << 8)&0xFF00;
-            break;
-        case MO_COMMAND_LO:
-            mo_drive.command |= val&0xFF;
-            MOdrive_Execute_Command(mo_drive.command);
-//            mo_drive.intstatus &= ~0x01; // release cmd complete
-//            set_interrupt(INT_DISK, SET_INT);
-            break;
-            
-        case MO_INIT: // reg 12
-            if (val&0x80) { // sector > enable
-                printf("MO Init: sector > enable\n");
-            }
-            if (val&0x40) { // ECC starve disable
-                printf("MO Init: ECC starve disable\n");
-            }
-            if (val&0x20) { // ID cmp on track, not sector
-                printf("MO Init: ID cmp on track not sector\n");
-            }
-            if (val&0x10) { // 25 MHz ECC clk for 3600 RPM
-                printf("MO Init: 25 MHz ECC clk for 3600 RPM\n");
-            }
-            if (val&0x08) { // DMA starve enable
-                printf("MO Init: DMA starve enable\n");
-            }
-            if (val&0x04) { // diag: generate bad parity
-                printf("MO Init: diag: generate bad parity\n");
-            }
-            if (val&0x03) {
-                printf("MO Init: %i IDs must match\n", val&0x03);
-            }
-            break;
-            
-        case MO_FORMAT: // reg 13
-            break;
-            
-        case MO_MARK: // reg 14
-            break;
-            
-        case 16:
-        case 17:
-        case 18:
-        case 19:
-        case 20:
-        case 21:
-        case 22:
-            break; // flag strategy
-            
-        default:
-            break;
-    }
-}
-
-
-void MOdrive_Execute_Command(Uint16 command) {
-    mo_drive.intstatus &= ~0x01; // release cmd complete
-    switch (command) {
-        case OD_SEEK:
-//            set_interrupt(INT_DISK, SET_INT);
-            break;
-        case OD_RDS:
-            break;
-            
-        case OD_RID:
-            break;
-            
-        default:
-            break;
-    }
-}
-
-
-void check_ecc(void) {
-    //int i;
-	//for(i=0; i<0x400; i++)
-		//ECC_buffer[i] = i;
-}
-
-void compute_ecc(void) {
-	//memset(ECC_buffer+0x400, 0, 0x110);
 }
