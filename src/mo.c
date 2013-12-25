@@ -77,6 +77,9 @@ struct {
     bool spinning;
     bool spiraling;
     
+    bool attn;
+    bool complete;
+    
     bool protected;
     bool inserted;
     bool connected;
@@ -108,6 +111,9 @@ int dnum;
 #define MOINT_DATA_ERR      0x80 /* rw */
 #define MOINT_RESET         0x01 /* wo */
 #define MOINT_GPO           0x02 /* wo */
+
+#define MOINT_OSP_MASK      0xFC
+#define MOINT_MO_MASK       0x03
 
 /* Controller CSR 2 */
 #define MOCSR2_DRIVE_SEL    0x01
@@ -186,13 +192,8 @@ void mo_formatter_cmd(void);
 void mo_formatter_cmd2(void);
 void mo_drive_cmd(void);
 
-void mo_eject_disk(void);
-
-void mo_jump_head(Uint16 command);
-void mo_read_id(void);
-
 void mo_reset(void);
-void mo_select(int drive);
+void osp_select(int drive);
 
 void MO_Init(void);
 void MO_Uninit(void);
@@ -200,6 +201,9 @@ void MO_Uninit(void);
 /* Experimental */
 #define SECTOR_IO_DELAY 5000
 #define CMD_DELAY       2000
+
+void mo_set_signals(bool complete, bool attn, int delay);
+void osp_poll_mo_signals(void);
 
 void ecc_read(void);
 void ecc_write(void);
@@ -210,24 +214,31 @@ void mo_write_sector(Uint32 sector_id);
 void mo_erase_sector(Uint32 sector_id);
 void mo_verify_sector(Uint32 sector_id);
 
-void mo_start_spinning(void);
+void mo_seek(Uint16 command);
+void mo_high_order_seek(Uint16 command);
+void mo_jump_head(Uint16 command);
+void mo_recalibrate(void);
+void mo_return_drive_status(void);
+void mo_return_track_addr(void);
+void mo_return_extended_status(void);
+void mo_return_hardware_status(void);
+void mo_return_version(void);
+void mo_select_head(int head);
+void mo_reset_attn_status(void);
 void mo_stop_spinning(void);
+void mo_start_spinning(void);
+void mo_eject_disk(void);
 void mo_start_spiraling(void);
 void mo_stop_spiraling(void);
+
+void mo_unimplemented_cmd(void);
+
 void mo_spiraling_operation(void);
-void mo_reset_attn_status(void);
-void mo_recalibrate(void);
 
 int sector_increment = 0;
-Uint8 delayed_intr = 0;
-void mo_raise_irq(Uint8 interrupt, Uint32 delay);
-bool no_disk(void) {
-    if (!modrv[dnum].inserted) {
-        return true;
-    } else {
-        return false;
-    }
-}
+
+void osp_interrupt(Uint8 interrupt);
+
 
 /* ------------------------ OPTICAL STORAGE PROCESSOR ------------------------ */
 
@@ -279,17 +290,22 @@ void MO_SectorCnt_Write(void) {
 }
 
 void MO_IntStatus_Read(void) { // 0x02012004
+    osp_poll_mo_signals();
     IoMem[IoAccessCurrentAddress & IO_SEG_MASK] = mo.intstatus;
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Interrupt status read at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
 }
 
 void MO_IntStatus_Write(void) {
     Uint8 val = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
-    mo.intstatus &= ~val;
+    mo.intstatus &= ~(val&MOINT_OSP_MASK);
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Interrupt status write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
     /* TODO: check if correct */
-    if (!(mo.intstatus&mo.intmask)||(mo.intstatus&mo.intmask)==MOINT_CMD_COMPL) {
+    if (((mo.intstatus&MOINT_OSP_MASK)&mo.intmask)==0) {
         set_interrupt(INT_DISK, RELEASE_INT);
+    }
+    if (val&MOINT_GPO) {
+        Log_Printf(LOG_WARN,"[OSP] General purpose output (unimplemented)\n");
+        //abort();
     }
     if (val&MOINT_RESET) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Hard reset\n");
@@ -470,6 +486,13 @@ void print_regs(void) {
     }
 }
 
+void osp_interrupt(Uint8 interrupt) {
+    mo.intstatus|=interrupt;
+    if (mo.intstatus&mo.intmask) {
+        set_interrupt(INT_DISK, SET_INT);
+    }
+}
+
 
 enum {
     ECC_MODE_READ,
@@ -562,7 +585,7 @@ void fmt_sector_done(void) {
     /* Check if the operation is complete */
     if (sector_counter==0) {
         fmt_mode = FMT_MODE_IDLE;
-        mo_raise_irq(MOINT_OPER_COMPL, 0);
+        osp_interrupt(MOINT_OPER_COMPL);
     }
 }
 
@@ -595,7 +618,7 @@ bool fmt_match_id(Uint32 sector_id) {
                 Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Sector timeout!");
                 sector_timer=0;
                 fmt_mode=FMT_MODE_IDLE;
-                mo_raise_irq(MOINT_TIMEOUT, 0);
+                osp_interrupt(MOINT_TIMEOUT);
             }
         }
         return false;
@@ -611,7 +634,7 @@ void fmt_io(Uint32 sector_id) {
             mo.tracknumh = (sector_id>>16)&0xFF;
             mo.tracknuml = (sector_id>>8)&0xFF;
             mo.sector_num = sector_id&0x0F;
-            mo_raise_irq(MOINT_OPER_COMPL, 0);
+            osp_interrupt(MOINT_OPER_COMPL);
             return;
         case FMT_MODE_READ:
             if (modrv[dnum].head!=READ_HEAD) {
@@ -635,7 +658,7 @@ void fmt_io(Uint32 sector_id) {
                 mo_write_sector(sector_id);
                 fmt_sector_done();
             }
-            /* (Re)fill ECC buffer from memory using DMA */
+            /* (Re)fill ECC buffer from memory using DMA and encode data */
             ecc_write();
             break;
         case FMT_MODE_ERASE:
@@ -657,7 +680,6 @@ void fmt_io(Uint32 sector_id) {
                 /* Then verify data */
                 ecc_verify();
                 fmt_sector_done();
-                break;
             }
             break;
             
@@ -669,19 +691,25 @@ void fmt_io(Uint32 sector_id) {
 
 
 /* Drive selection (formatter command 2) */
-/* FIXME: Selecting a drive connects its actual command complete
- * signal to the interrupt register. If there is no drive
- * connected, the signal will always be low.
- */
-
-void mo_select(int drive) {
+void osp_select(int drive) {
     Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Selecting drive %i",drive);
     dnum=drive;
-    mo.intstatus &= ~MOINT_CMD_COMPL;
-    if (modrv[dnum].connected) {
-        mo_raise_irq(MOINT_CMD_COMPL, CMD_DELAY);
-    } else {
+    if (!modrv[dnum].connected) {
         Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Selection failed! Drive %i not connected.",drive);
+    }
+}
+
+/* Check for MO drive signals (used for interrupt status register) */
+void osp_poll_mo_signals(void) {
+    if (modrv[dnum].complete) {
+        mo.intstatus |= MOINT_CMD_COMPL;
+    } else {
+        mo.intstatus &= ~MOINT_CMD_COMPL;
+    }
+    if (modrv[dnum].attn) {
+        mo.intstatus |= MOINT_ATTN;
+    } else {
+        mo.intstatus &= ~MOINT_ATTN;
     }
 }
 
@@ -731,7 +759,7 @@ void mo_formatter_cmd2(void) {
         Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] Disable ECC passthrough.");
     }
     
-    mo_select(mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
+    osp_select(mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
 }
 
 /* ECC emulation */
@@ -752,7 +780,7 @@ bool ecc_decode(void) {
         /* TODO: add real ECC decoding here. */
     }
     if (sector_counter==0 || mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* FIXME: not only if dis */
-        mo_raise_irq(MOINT_ECC_DONE, 0);
+        osp_interrupt(MOINT_ECC_DONE);
     }
     ecc_toggle_buffer();
     return true;
@@ -770,7 +798,7 @@ bool ecc_encode(void) {
         /* TODO: add real ECC encoding here. */
     }
     if (sector_counter==0 || 1 /*mo.ctrlr_csr2&MOCSR2_ECC_DIS*/) { /* FIXME: always intr if fmt_mode==IDLE? */
-        mo_raise_irq(MOINT_ECC_DONE, 0);
+        osp_interrupt(MOINT_ECC_DONE);
     }
     ecc_toggle_buffer();
     return true;
@@ -1039,37 +1067,20 @@ void mo_drive_cmd(void) {
     Uint16 command = (mo.csrh<<8) | mo.csrl;
     
     /* Command in progress */
-    mo.intstatus &= ~MOINT_CMD_COMPL;
-    
-    if (no_disk()) {
-        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Drive %i: No disk inserted.\n", dnum);
-        switch (command) {
-            case DRV_RDS:
-            case DRV_RES:
-            case DRV_RHS:
-            case DRV_RGC:
-            case DRV_RVI:
-            case DRV_RID:
-            case DRV_RSD:
-                break;
-            default:
-                modrv[dnum].dstat |= DS_EMPTY;
-                mo_raise_irq(MOINT_CMD_COMPL|MOINT_ATTN, CMD_DELAY);
-                return;
-        }
-    }
+    modrv[dnum].complete=false;
     
     if ((command&0xF000)==DRV_SEK) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Seek (%04X)\n", command);
-        modrv[dnum].head_pos = (modrv[dnum].ho_head_pos&0xF000) | (command&0x0FFF);
+        mo_seek(command);
     } else if ((command&0xF000)==DRV_SD) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Send Data (%04X)\n", command);
+        abort();
     } else if ((command&0xFF00)==DRV_RJ) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Relative Jump (%04X)\n", command);
         mo_jump_head(command);
     } else if ((command&0xFFF0)==DRV_HOS) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: High Order Seek (%04X)\n", command);
-        modrv[dnum].ho_head_pos = (command&0xF)<<12; /* CHECK: only seek command actually moves head? */
+        mo_high_order_seek(command);
     } else {
     
         switch (command&0xFFFF) {
@@ -1079,46 +1090,47 @@ void mo_drive_cmd(void) {
                 break;
             case DRV_RDS:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Drive Status (%04X)\n", command);
-                modrv[dnum].status = modrv[dnum].dstat;
+                mo_return_drive_status();
                 break;
             case DRV_RCA:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Current Track Address (%04X)\n", command);
-                modrv[dnum].status = modrv[dnum].head_pos; /* TODO: check if correct */
+                mo_return_track_addr();
                 break;
             case DRV_RES:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Extended Status (%04X)\n", command);
-                modrv[dnum].status = modrv[dnum].estat;
+                mo_return_extended_status();
                 break;
             case DRV_RHS:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Hardware Status (%04X)\n", command);
-                modrv[dnum].status = modrv[dnum].hstat;
+                mo_return_hardware_status();
                 break;
             case DRV_RGC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return General Config (%04X)\n", command);
+                abort();
                 break;
             case DRV_RVI:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Return Version Information (%04X)\n", command);
-                modrv[dnum].status = VI_VERSION;
+                mo_return_version();
                 break;
             case DRV_SRH:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Select Read Head (%04X)\n", command);
-                modrv[dnum].head = READ_HEAD;
+                mo_select_head(READ_HEAD);
                 break;
             case DRV_SVH:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Select Verify Head (%04X)\n", command);
-                modrv[dnum].head = VERIFY_HEAD;
+                mo_select_head(VERIFY_HEAD);
                 break;
             case DRV_SWH:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Select Write Head (%04X)\n", command);
-                modrv[dnum].head = WRITE_HEAD;
+                mo_select_head(WRITE_HEAD);
                 break;
             case DRV_SEH:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Select Erase Head (%04X)\n", command);
-                modrv[dnum].head = ERASE_HEAD;
+                mo_select_head(ERASE_HEAD);
                 break;
             case DRV_SFH:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Select RF Head (%04X)\n", command);
-                modrv[dnum].head = RF_HEAD;
+                mo_select_head(RF_HEAD);
                 break;
             case DRV_RID:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Reset Attn and Status (%04X)\n", command);
@@ -1134,9 +1146,11 @@ void mo_drive_cmd(void) {
                 break;
             case DRV_LC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Lock Cartridge (%04X)\n", command);
+                abort();
                 break;
             case DRV_ULC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Unlock Cartridge (%04X)\n", command);
+                abort();
                 break;
             case DRV_EC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Eject (%04X)\n", command);
@@ -1152,79 +1166,57 @@ void mo_drive_cmd(void) {
                 break;
             case DRV_RSD:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Request Self-Diagnostic (%04X)\n", command);
+                abort();
                 break;
                 
             default:
-                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Unknown command! (%04X)\n", command);
+                Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Unimplemented command! (%04X)\n", command);
+                mo_unimplemented_cmd();
                 break;
         }
     }
-    
-    mo_raise_irq(MOINT_CMD_COMPL, CMD_DELAY);
 }
 
 
-void mo_reset(void) {
-    /* TODO: reset more things */
-    mo.intstatus=0;
-    modrv[dnum].dstat=DS_RESET;
-    //modrv[dnum].spinning=false;
-    //modrv[dnum].spiraling=false;
-    
+bool mo_drive_empty(void) {
     if (!modrv[dnum].inserted) {
-        modrv[dnum].dstat|=DS_EMPTY;
-    } else if (!modrv[dnum].spinning) {
-        modrv[dnum].dstat|=DS_STOPPED;
-    }
-    mo_raise_irq(MOINT_ATTN, 100000);
-}
-
-void mo_reset_attn_status(void) {
-    modrv[dnum].dstat=modrv[dnum].estat=modrv[dnum].hstat=0;
-    mo.intstatus &= ~MOINT_ATTN;
-#if 1
-    if (!modrv[dnum].inserted) {
-        modrv[dnum].dstat|=DS_EMPTY;
-    } else if (!modrv[dnum].spinning) {
-        modrv[dnum].dstat|=DS_STOPPED;
-    }
-#endif
-    /* TODO: re-enable status messages? */
-}
-
-void mo_eject_disk(void) {
-    Log_Printf(LOG_WARN, "MO disk %i: Eject",dnum);
-    
-    File_Close(modrv[dnum].dsk);
-    modrv[dnum].dsk=NULL;
-    modrv[dnum].inserted=false;
-    
-    ConfigureParams.MO.drive[dnum].bDiskInserted=false;
-    ConfigureParams.MO.drive[dnum].szImageName[0]='\0';
-}
-
-void mo_insert_disk(int drv) {
-    Log_Printf(LOG_WARN, "MO disk %i: Insert %s",dnum,ConfigureParams.MO.drive[dnum].szImageName);
-    modrv[drv].inserted=true;
-    if (ConfigureParams.MO.drive[drv].bWriteProtected) {
-        modrv[drv].dsk = File_Open(ConfigureParams.MO.drive[drv].szImageName, "r");
-        modrv[drv].protected=true;
+        Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Drive %i: No disk inserted.\n", dnum);
+        modrv[dnum].dstat |= DS_EMPTY;
+        mo_set_signals(true, true, CMD_DELAY);
+        return true;
     } else {
-        modrv[drv].dsk = File_Open(ConfigureParams.MO.drive[drv].szImageName, "r+");
-        modrv[drv].protected=false;
+        return false;
     }
-    
-    modrv[drv].dstat|=DS_INSERT;
-    mo_raise_irq(MOINT_ATTN, 0);
 }
 
-void mo_recalibrate(void) {
-    modrv[dnum].head_pos = 0; /* FIXME: What is real base head position? */
-    modrv[dnum].sec_offset = 0;
-    modrv[dnum].spiraling = false;
+void mo_seek(Uint16 command) {
+    if (mo_drive_empty()) {
+        return;
+    }
+    modrv[dnum].head_pos = (modrv[dnum].ho_head_pos&0xF000) | (command&0x0FFF);
+    modrv[dnum].sec_offset = 0; /* CHECK: is this needed? */
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_high_order_seek(Uint16 command) {
+    if (mo_drive_empty()) {
+        return;
+    }
+    /* CHECK: only seek command actually moves head? */
+    if ((command&0xF)>4) {
+        modrv[dnum].dstat|=DS_SEEK;
+        mo_set_signals(true, true, CMD_DELAY);
+    } else {
+        modrv[dnum].ho_head_pos = (command&0xF)<<12;
+        mo_set_signals(true, false, CMD_DELAY);
+    }
 }
 
 void mo_jump_head(Uint16 command) {
+    if (mo_drive_empty()) {
+        return;
+    }
+
     int offset = command&0x7;
     if (command&0x8) {
         offset = 8 - offset;
@@ -1232,7 +1224,7 @@ void mo_jump_head(Uint16 command) {
     } else {
         modrv[dnum].head_pos+=offset;
     }
-    modrv[dnum].sec_offset=0; /* CHECK: is this needed? same for seek? */
+    modrv[dnum].sec_offset=0; /* CHECK: is this needed? */
     
     switch (command&0xF0) {
         case RJ_READ:
@@ -1258,26 +1250,141 @@ void mo_jump_head(Uint16 command) {
                (command&0xF0)==RJ_VERIFY?"verify":
                (command&0xF0)==RJ_WRITE?"write":
                (command&0xF0)==RJ_ERASE?"erase":"unknown");
+    
+    mo_set_signals(true, false, CMD_DELAY);
 }
 
-void mo_start_spinning(void) {
-    modrv[dnum].spinning=true;
+void mo_recalibrate(void) {
+    if (mo_drive_empty()) {
+        return;
+    }
+    modrv[dnum].head_pos = 0;
+    modrv[dnum].sec_offset = 0;
+    modrv[dnum].spiraling = false;
+    
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_return_drive_status(void) {
+    modrv[dnum].status = modrv[dnum].dstat;
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_return_track_addr(void) {
+    modrv[dnum].status = modrv[dnum].head_pos;
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_return_extended_status(void) {
+    modrv[dnum].status = modrv[dnum].estat;
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_return_hardware_status(void) {
+    modrv[dnum].status = modrv[dnum].hstat;
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_return_version(void) {
+    modrv[dnum].status = VI_VERSION;
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_select_head(int head) {
+    if (mo_drive_empty()) {
+        return;
+    }
+    modrv[dnum].head = head;
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_reset_attn_status(void) {
+    modrv[dnum].dstat=modrv[dnum].estat=modrv[dnum].hstat=0;
+    modrv[dnum].attn=false;
+
+    if (!modrv[dnum].inserted) {
+        modrv[dnum].dstat|=DS_EMPTY;
+    } else if (!modrv[dnum].spinning) {
+        modrv[dnum].dstat|=DS_STOPPED;
+    } /* more status messages? */
+
+    mo_set_signals(true, false, CMD_DELAY);
 }
 
 void mo_stop_spinning(void) {
+    if (mo_drive_empty()) {
+        return;
+    }
     modrv[dnum].spinning=false;
     modrv[dnum].spiraling=false;
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_start_spinning(void) {
+    if (mo_drive_empty()) {
+        return;
+    }
+    modrv[dnum].dstat &= ~DS_STOPPED;
+    modrv[dnum].spinning=true;
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_eject_disk(void) {
+    if (mo_drive_empty()) {
+        return;
+    }
+
+    Log_Printf(LOG_WARN, "MO disk %i: Eject",dnum);
+    
+    File_Close(modrv[dnum].dsk);
+    modrv[dnum].dsk=NULL;
+    modrv[dnum].inserted=false;
+    
+    ConfigureParams.MO.drive[dnum].bDiskInserted=false;
+    ConfigureParams.MO.drive[dnum].szImageName[0]='\0';
+    
+    mo_set_signals(true, false, CMD_DELAY);
+}
+
+void mo_insert_disk(int drv) {
+    Log_Printf(LOG_WARN, "MO disk %i: Insert %s",dnum,ConfigureParams.MO.drive[dnum].szImageName);
+    modrv[drv].inserted=true;
+    if (ConfigureParams.MO.drive[drv].bWriteProtected) {
+        modrv[drv].dsk = File_Open(ConfigureParams.MO.drive[drv].szImageName, "r");
+        modrv[drv].protected=true;
+    } else {
+        modrv[drv].dsk = File_Open(ConfigureParams.MO.drive[drv].szImageName, "r+");
+        modrv[drv].protected=false;
+    }
+    
+    modrv[drv].dstat|=DS_INSERT;
+    mo_set_signals(false, true, 0);
 }
 
 void mo_start_spiraling(void) {
+    if (mo_drive_empty()) {
+        return;
+    }
+    if (!modrv[dnum].spinning) {
+        modrv[dnum].dstat|=DS_STOPPED;
+        mo_set_signals(true, true, CMD_DELAY);
+        return;
+    }
+
     if (!modrv[0].spiraling && !modrv[1].spiraling) { /* periodic disk operation already active? */
         CycInt_AddRelativeInterrupt(SECTOR_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_MO_IO);
     }
     modrv[dnum].spiraling=true;
+
+    mo_set_signals(true, false, CMD_DELAY);
 }
 
 void mo_stop_spiraling(void) {
+    if (mo_drive_empty()) {
+        return;
+    }
     modrv[dnum].spiraling=false;
+    mo_set_signals(true, false, CMD_DELAY);
 }
 
 void mo_spiraling_operation(void) {
@@ -1309,34 +1416,87 @@ void MO_IO_Handler(void) {
     mo_spiraling_operation();
 }
 
+void mo_unimplemented_cmd(void) {
+    modrv[dnum].dstat|=DS_CMD;
+    mo_set_signals(true, true, CMD_DELAY);
+}
 
-/* Interrupts */
+void mo_reset(void) {
+    if (modrv[dnum].connected) {
+        /* TODO: reset more things */
+        mo.intstatus=0;
+        modrv[dnum].dstat=DS_RESET;
+        //modrv[dnum].spinning=false;
+        //modrv[dnum].spiraling=false;
+        
+        if (!modrv[dnum].inserted) {
+            modrv[dnum].dstat|=DS_EMPTY;
+        } else if (!modrv[dnum].spinning) {
+            modrv[dnum].dstat|=DS_STOPPED;
+        }
+        mo_set_signals(true,true,100000);
+    }
+}
 
-void mo_interrupt(Uint8 interrupt) {
-    mo.intstatus|=interrupt;
-    if (mo.intstatus&mo.intmask) {
+
+/* MO drive signals */
+
+void mo_push_signals(bool complete, bool attn, int drive) {
+    if (drive<0) {
+        Log_Printf(LOG_WARN, "[MO] Error: No drive specified for delayed interrupt.");
+        abort();
+    }
+    bool interrupt = false;
+    
+    if (!modrv[dnum].complete) {
+        modrv[dnum].complete=complete;
+        if (modrv[dnum].complete) {
+            if (drive==dnum && mo.intmask&MOINT_CMD_COMPL) {
+                interrupt=true;
+            }
+        }
+    }
+    if (!modrv[dnum].attn) {
+        modrv[dnum].attn=attn;
+        if (modrv[dnum].attn) {
+            if (drive==dnum && mo.intmask&MOINT_ATTN) {
+                interrupt=true;
+            }
+        }
+    }
+
+    if (interrupt) {
         set_interrupt(INT_DISK, SET_INT);
     }
 }
 
-void mo_raise_irq(Uint8 interrupt, Uint32 delay) {
+bool delayed_compl;
+bool delayed_attn;
+int delayed_drive=-1;
+
+void mo_set_signals(bool complete, bool attn, int delay) {
     if (delay>0) {
-        delayed_intr|=interrupt;
+        if (delayed_drive>=0) {
+            Log_Printf(LOG_WARN, "[MO] Error: Delayed interrupt already in progress!");
+            abort();
+        }
+        delayed_drive=dnum;
+        delayed_compl=complete;
+        delayed_attn=attn;
         CycInt_AddRelativeInterrupt(delay, INT_CPU_CYCLE, INTERRUPT_MO);
     } else {
-        mo_interrupt(interrupt);
+        mo_push_signals(complete, attn, dnum);
     }
 }
 
 void MO_InterruptHandler(void) {
     CycInt_AcknowledgeInterrupt();
     
-    mo.intstatus |= delayed_intr;
-    delayed_intr = 0;
+    mo_push_signals(delayed_compl,delayed_attn,delayed_drive);
     
-    if (mo.intstatus&mo.intmask) {
-        set_interrupt(INT_DISK, SET_INT);
-    }
+    delayed_compl=false;
+    delayed_attn=false;
+    delayed_drive=-1;
 }
 
 
@@ -1349,6 +1509,7 @@ void MO_Init(void) {
         /* Check if files exist. */
         if (ConfigureParams.MO.drive[i].bDriveConnected) {
             modrv[i].connected=true;
+            modrv[i].complete=true;
             if (ConfigureParams.MO.drive[i].bDiskInserted &&
                 File_Exists(ConfigureParams.MO.drive[i].szImageName)) {
                 modrv[i].inserted=true;
@@ -1365,6 +1526,8 @@ void MO_Init(void) {
             }
         } else {
             modrv[i].connected=false;
+            modrv[i].complete=false;
+            modrv[i].attn=false;
         }
 
         Log_Printf(LOG_WARN, "MO Disk%i: %s\n",i,ConfigureParams.MO.drive[i].szImageName);
@@ -1379,6 +1542,10 @@ void MO_Uninit(void) {
     }
     modrv[0].dsk = modrv[1].dsk = NULL;
     modrv[0].inserted = modrv[1].inserted = false;
+}
+
+void MO_Insert(int disk) {
+    mo_insert_disk(disk);
 }
 
 void MO_Reset(void) {
