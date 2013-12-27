@@ -12,13 +12,9 @@
  */
 
 /* TODO:
- *
- * - Find out how "ECC blocks" mode works
- * - Add correct ECC buffer toggle
  * - Add support for DMA and ECC starve
  * - Add real Reed Solomon ECC
  * - Improve drive error handling (attn conditions)
- *
  */
 
 #include "ioMem.h"
@@ -488,7 +484,7 @@ void print_regs(void) {
 
 void osp_interrupt(Uint8 interrupt) {
     mo.intstatus|=interrupt;
-    if (mo.intstatus&mo.intmask) {
+    if (interrupt&mo.intmask) {
         set_interrupt(INT_DISK, SET_INT);
     }
 }
@@ -506,6 +502,7 @@ enum {
     ECC_STATE_DRAINING,
     ECC_STATE_ENCODING,
     ECC_STATE_DECODING,
+    ECC_STATE_WAITING,
     ECC_STATE_DONE
 } ecc_state;
 
@@ -721,7 +718,6 @@ void ecc_toggle_buffer(void) {
         eccout=1;
         eccin=0;
     }
-    eccin=eccout=0;
     Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC switching buffer (in: %i, out: %i)",eccin,eccout);
 }
 
@@ -762,48 +758,62 @@ void mo_formatter_cmd2(void) {
     osp_select(mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
 }
 
-/* ECC emulation */
-#define ECC_DELAY SECTOR_IO_DELAY/4
+/* ECC emulation:
+ *
+ * read     mem <-de-- buf <----- disk
+ * write    mem --en-> buf -----> disk
+ *
+ * ecc_dis
+ * read     mem <----- buf
+ * write    mem --en-> buf
+ *
+ * ecc_dis|ecc_mode
+ * read     mem <-de-- buf
+ * write    mem -----> buf
+ */
+
+#define ECC_DELAY SECTOR_IO_DELAY/4 /* must be a fraction of sector delay */
 
 int eccin=0;
-int eccout=0;
+int eccout=1;
 
 bool ecc_decode(void) {
-    if (ecc_mode==ECC_MODE_READ && mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* CHECK: is this correct? */
+    if (ecc_mode==ECC_MODE_READ && mo.ctrlr_csr2&MOCSR2_ECC_DIS && !(mo.ctrlr_csr2&MOCSR2_ECC_MODE)) {
         Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC decoding disabled.");
-    } else if (ecc_buffer[eccin].size!=MO_SECTORSIZE_DISK) {
+        ecc_buffer[eccin].limit=ecc_buffer[eccin].size=MO_SECTORSIZE_DISK; /* CHECK: for ECC blocks. */
+    } else if (ecc_buffer[eccin].size==MO_SECTORSIZE_DISK) {
+        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC decoding buffer.");
+        ecc_buffer[eccin].limit=ecc_buffer[eccin].size=MO_SECTORSIZE_DATA;
+        /* TODO: add real ECC decoding here. */
+        ecc_toggle_buffer();
+    } else {
         Log_Printf(LOG_WARN, "[OSP] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccin].size);
         return false;
-    } else {
-        Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC decoding buffer.");
-        ecc_buffer[eccout].limit=ecc_buffer[eccout].size=MO_SECTORSIZE_DATA;
-        /* TODO: add real ECC decoding here. */
     }
     if (sector_counter==0 || mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* FIXME: not only if dis */
         osp_interrupt(MOINT_ECC_DONE);
     }
-    ecc_toggle_buffer();
     return true;
 }
-
 bool ecc_encode(void) {
-    if (ecc_mode==ECC_MODE_READ && mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* CHECK: is this correct? */
+    if (ecc_mode==ECC_MODE_WRITE && mo.ctrlr_csr2&MOCSR2_ECC_DIS && mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
         Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC encoding disabled.");
-    } else if (ecc_buffer[eccout].size!=MO_SECTORSIZE_DATA) {
-        Log_Printf(LOG_WARN, "[OSP] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccout].size);
-        return false;
-    } else {
+        ecc_buffer[eccin].limit=ecc_buffer[eccin].size=MO_SECTORSIZE_DISK; /* CHECK: for ECC blocks. */
+    } else if (ecc_buffer[eccin].limit==MO_SECTORSIZE_DATA) {
         Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC encoding buffer.");
         ecc_buffer[eccin].limit=ecc_buffer[eccin].size=MO_SECTORSIZE_DISK;
         /* TODO: add real ECC encoding here. */
+        ecc_toggle_buffer();
+    } else {
+        Log_Printf(LOG_WARN, "[OSP] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccin].size);
+        return false;
     }
     if (sector_counter==0 || 1 /*mo.ctrlr_csr2&MOCSR2_ECC_DIS*/) { /* FIXME: always intr if fmt_mode==IDLE? */
         osp_interrupt(MOINT_ECC_DONE);
     }
-    ecc_toggle_buffer();
     return true;
 }
-/* ecc_mode = ecc_decode */
+
 void ecc_write(void) {
     if (ecc_state!=ECC_STATE_DONE) {
         Log_Printf(LOG_WARN,"[OSP] Warning: ECC not accepting command (busy %i)", ecc_state);
@@ -811,6 +821,7 @@ void ecc_write(void) {
     }
     ecc_mode=ECC_MODE_WRITE;
     ecc_state=ECC_STATE_FILLING;
+    ecc_buffer[eccin].size=0; /* FIXME: find a better place for this */
     CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
 }
 void ecc_read(void) {
@@ -818,11 +829,7 @@ void ecc_read(void) {
         Log_Printf(LOG_WARN,"[OSP] Warning: ECC not accepting command (busy %i)", ecc_state);
         return;
     }
-    if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
-        ecc_state=ECC_STATE_ENCODING;
-    } else {
-        ecc_state=ECC_STATE_DECODING;
-    }
+    ecc_state=ECC_STATE_DECODING;
     ecc_mode=ECC_MODE_READ;
     CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
 }
@@ -834,6 +841,21 @@ void ecc_verify(void) {
     ecc_mode=ECC_MODE_VERIFY;
     ecc_state=ECC_STATE_DECODING;
     CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
+}
+void ecc_sequence_done(void) {
+    ecc_state=ECC_STATE_DONE;
+#if 1 /* TODO: check if this is correct */
+    if (mo.ctrlr_csr2&MOCSR2_ECC_BLOCKS) {
+        if (ecc_mode==ECC_MODE_READ) {
+            ecc_toggle_buffer(); /* FIXME: find a better place for this */
+            ecc_read();
+        } else if (ecc_mode==ECC_MODE_WRITE) {
+            ecc_write();
+        } else {
+            abort();
+        }
+    }
+#endif
 }
 void ECC_IO_Handler(void) {
     CycInt_AcknowledgeInterrupt();
@@ -849,48 +871,43 @@ void ECC_IO_Handler(void) {
                 dma_mo_read_memory();
             }
             if (ecc_buffer[eccin].size==ecc_buffer[eccin].limit) {
-                if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
-                    ecc_state=ECC_STATE_DECODING;
-                } else {
-                    ecc_state=ECC_STATE_ENCODING;
-                }
+                ecc_state=ECC_STATE_ENCODING;
             }
             break;
         case ECC_STATE_DRAINING:
             dma_mo_write_memory();
             if (ecc_buffer[eccout].size==0) {
-                ecc_state=ECC_STATE_DONE;
+                ecc_sequence_done();
                 return;
             }
             break;
         case ECC_STATE_ENCODING:
-            if (!ecc_encode()) {
-                ecc_state=ECC_STATE_DONE; /* TODO: remove this */
-                return; /* TODO: loop and wait for content to be encoded */
-            }
-            if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
-                ecc_state=ECC_STATE_DRAINING;
-            } else {
-                ecc_state=ECC_STATE_DONE;
+            if (!ecc_encode())
+                return; /* Sequence not successfully completed */
+            if (mo.ctrlr_csr2&MOCSR2_ECC_DIS) {
+                ecc_sequence_done();
                 return;
             }
+            ecc_state=ECC_STATE_WAITING;
             break;
         case ECC_STATE_DECODING:
-            if  (!ecc_decode()) {
-                ecc_state=ECC_STATE_DONE;  /* TODO: remove this */
-                return; /* TODO: loop and wait for content to be decoded */
+            if (!ecc_decode()) {
+                break; /* Loop and wait for data */
             }
             if (ecc_mode==ECC_MODE_VERIFY) {
                 ecc_clear_buffer();
                 ecc_state=ECC_STATE_DONE;
                 return;
             }
-            if (mo.ctrlr_csr2&MOCSR2_ECC_MODE) {
+            ecc_state=ECC_STATE_DRAINING;
+            break;
+        case ECC_STATE_WAITING:
+            if (ecc_buffer[eccout].size==0) {
                 ecc_state=ECC_STATE_DONE;
+                ecc_write();
                 return;
-            } else {
-                ecc_state=ECC_STATE_DRAINING;
             }
+            Log_Printf(LOG_WARN, "[OSP] ECC waiting for disk write!");
             break;
             
         default:
