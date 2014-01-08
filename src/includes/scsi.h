@@ -80,6 +80,15 @@ struct {
 #define MSG_LUNMASK         0x07
 
 /* Sense Keys */
+#define KCQ_NO_ERROR        0x00000
+#define KCQ_NO_SECTOR       0x40100
+#define KCQ_WRITE_FAULT     0x40300
+#define KCQ_INVALID_CMD     0x52000
+#define KCQ_INVALID_LBA     0x52100
+#define KCQ_INVALID_CDB     0x52400
+#define KCQ_INVALID_LUN     0x52500
+#define KCQ_WRITE_PROTECT   0x72700
+
 #define SENSE_NOSENSE       0x00
 #define SENSE_RECOVERED     0x01
 #define SENSE_NOTREADY      0x02
@@ -107,16 +116,15 @@ typedef struct {
 } MODEPAGE;
 
 /* This buffer temporarily stores data to be written to memory or disk */
-#define SCSI_BUFFER_SIZE 65536
 
 struct {
-    Uint8 buffer[SCSI_BUFFER_SIZE];
+    Uint8 data[512]; /* FIXME: BLOCKSIZE */
+    Uint32 limit;
     Uint32 size;
-    Uint32 rpos; /* actual read pointer */
-} SCSIdata;
+    bool disk;
+} scsi_buffer;
 
 int SCSI_FillDataBuffer(void *buf, Uint32 size, bool disk);
-void SCSI_WriteFromBuffer(Uint8 *buf, Uint32 size);
 
 void SCSI_Init(void);
 void SCSI_Uninit(void);
@@ -124,8 +132,8 @@ void SCSI_Reset(void);
 
 Uint8 SCSIdisk_Send_Status(void);
 Uint8 SCSIdisk_Send_Message(void);
-void SCSIdisk_Send_Data(void);
-void SCSIdisk_Receive_Data(void);
+Uint8 SCSIdisk_Send_Data(void);
+void SCSIdisk_Receive_Data(Uint8);
 bool SCSIdisk_Select(Uint8 target);
 void SCSIdisk_Receive_Command(Uint8 *commandbuf, Uint8 identify);
 

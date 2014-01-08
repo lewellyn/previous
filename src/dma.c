@@ -25,7 +25,10 @@
 
 /* DMA internal buffers */
 #define DMA_BURST_SIZE  16
-int act_buf_size = 0;
+
+int espdma_buf_size = 0;
+int espdma_buf_limit = 0;
+Uint8 espdma_buf[DMA_BURST_SIZE];
 int modma_buf_size = 0;
 Uint8 modma_buf[DMA_BURST_SIZE];
 
@@ -179,7 +182,7 @@ void DMA_CSR_Write(void) {
     if (writecsr&DMA_INITBUF) {
         if (channel==CHANNEL_SCSI) {
             esp_dma.status = 0x00; /* just a guess */
-            act_buf_size = 0;
+            espdma_buf_size = 0;
         }
         if (channel==CHANNEL_DISK) {
             modma_buf_size = 0;
@@ -207,7 +210,7 @@ void DMA_CSR_Write(void) {
     }
     if (writecsr&DMA_CLRCOMPLETE) {
         dma[channel].csr &= ~DMA_COMPLETE;
-
+#if 0
         switch (channel) {
             case CHANNEL_SCSI:
                 if (dma[channel].direction==DMA_DEV2M)
@@ -218,6 +221,7 @@ void DMA_CSR_Write(void) {
 
             default: break;
         }
+#endif
     }
 
     set_interrupt(interrupt, RELEASE_INT); // experimental
@@ -330,7 +334,7 @@ void DMA_Init_Write(void) {
     dma[channel].next = dma[channel].init = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK); /* hack */
     if (channel==CHANNEL_SCSI) {
         esp_dma.status = 0x00; /* just a guess */
-        act_buf_size = 0;
+        espdma_buf_size = 0;
     }
     if (channel==CHANNEL_DISK) {
         modma_buf_size = 0;
@@ -377,17 +381,6 @@ void dma_interrupt(channel) {
 
 /* Functions for delayed interrupts */
 
-/* Handler function for DMA ESP delayed interrupt */
-void ESPDMA_InterruptHandler(void) {
-    bool write = (dma[CHANNEL_SCSI].direction==DMA_DEV2M) ? true : false;
-    
-	CycInt_AcknowledgeInterrupt();
-    dma_interrupt(CHANNEL_SCSI);
-    
-    /* Let ESP check if it needs to interrupt */
-    esp_dma_done(write);
-}
-
 /* Handler functions for DMA M2M delyed interrupts */
 void M2RDMA_InterruptHandler(void) {
     CycInt_AcknowledgeInterrupt();
@@ -402,8 +395,6 @@ void R2MDMA_InterruptHandler(void) {
 /* DMA Read and Write Memory Functions */
 
 /* Channel SCSI */
-#define DMAESP_DELAY 5000 /* Delay for interrupt in microseconds */
-
 void dma_esp_write_memory(void) {
     Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Write to memory at $%08x, %i bytes (ESP counter %i)",
                dma[CHANNEL_SCSI].next,dma[CHANNEL_SCSI].limit-dma[CHANNEL_SCSI].next,esp_counter);
@@ -422,42 +413,51 @@ void dma_esp_write_memory(void) {
      * End address is always burst-size aligned. For now we use a hack. */
     
     TRY(prb) {
+        if (espdma_buf_size>0) {
+            Log_Printf(LOG_WARN, "[DMA] Channel SCSI: %i residual bytes in DMA buffer.", espdma_buf_size);
+            while (espdma_buf_size>0) {
+                NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next, dma_getlong(espdma_buf, espdma_buf_limit-espdma_buf_size));
+                dma[CHANNEL_SCSI].next+=4;
+                espdma_buf_size-=4;
+            }
+        }
+
         /* This is a hack to handle non-burstsize-aligned DMA start */
         if (dma[CHANNEL_SCSI].next%DMA_BURST_SIZE) {
             Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Start memory address is not 16 byte aligned ($%08X).",
                        dma[CHANNEL_SCSI].next);
-            while ((dma[CHANNEL_SCSI].next+act_buf_size)%DMA_BURST_SIZE && esp_counter>0 && SCSIbus.phase==PHASE_DI) {
+            while ((dma[CHANNEL_SCSI].next+espdma_buf_size)%DMA_BURST_SIZE && esp_counter>0 && SCSIbus.phase==PHASE_DI) {
+                espdma_buf[espdma_buf_size]=SCSIdisk_Send_Data();
                 esp_counter--;
-                SCSIdisk_Send_Data();
-                act_buf_size++;
+                espdma_buf_size++;
             }
-            while (act_buf_size>=4) {
-                NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next, dma_getlong(SCSIdata.buffer, SCSIdata.rpos-act_buf_size));
+            espdma_buf_limit=espdma_buf_size;
+            while (espdma_buf_size>0) {
+                NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next, dma_getlong(espdma_buf, espdma_buf_limit-espdma_buf_size));
                 dma[CHANNEL_SCSI].next+=4;
-                act_buf_size-=4;
+                espdma_buf_size-=4;
             }
         }
 
-        while (dma[CHANNEL_SCSI].next<=dma[CHANNEL_SCSI].limit && act_buf_size==0) {
-            /* Fill DMA internal buffer (no real buffer, we use an imaginary one) */
-            while (act_buf_size<DMA_BURST_SIZE && esp_counter>0 && SCSIbus.phase==PHASE_DI) {
+        while (dma[CHANNEL_SCSI].next<=dma[CHANNEL_SCSI].limit && !(espdma_buf_size%DMA_BURST_SIZE)) {
+            /* Fill DMA internal buffer */
+            while (espdma_buf_size<DMA_BURST_SIZE && esp_counter>0 && SCSIbus.phase==PHASE_DI) {
+                espdma_buf[espdma_buf_size]=SCSIdisk_Send_Data();
                 esp_counter--;
-                SCSIdisk_Send_Data();
-                act_buf_size++;
+                espdma_buf_size++;
             }
             ESP_DMA_set_status();
             
-            //Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Internal buffer size: %i bytes",act_buf_size);
-            
             /* If buffer is full, burst write to memory */
-            if (act_buf_size==DMA_BURST_SIZE && dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit) {
-                while (act_buf_size>0) {
-                    NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next, dma_getlong(SCSIdata.buffer, SCSIdata.rpos-act_buf_size));
+            if (espdma_buf_size==DMA_BURST_SIZE && dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit) {
+                while (espdma_buf_size>0) {
+                    NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next, dma_getlong(espdma_buf, DMA_BURST_SIZE-espdma_buf_size));
                     dma[CHANNEL_SCSI].next+=4;
-                    act_buf_size-=4;
+                    espdma_buf_size-=4;
                 }
             } else { /* else do not write the bytes to memory but keep them inside the buffer */ 
-                Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Residual bytes in DMA buffer: %i bytes",act_buf_size);
+                Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Residual bytes in DMA buffer: %i bytes",espdma_buf_size);
+                espdma_buf_limit=espdma_buf_size;
                 break;
             }
         }
@@ -467,33 +467,21 @@ void dma_esp_write_memory(void) {
         dma[CHANNEL_SCSI].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
-#if DMAESP_DELAY > 0
-    CycInt_AddRelativeInterrupt(DMAESP_DELAY*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_ESPDMA);
-#else
     dma_interrupt(CHANNEL_SCSI);
-    
-    /* Let ESP check if it needs to interrupt */
-    esp_dma_done(true);
-#endif
 }
 
 void dma_esp_flush_buffer(void) {
 
     TRY(prb) {
-        if (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit) {
+        if (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit && espdma_buf_size>0) {
             Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Flush buffer to memory at $%08x, 4 bytes",dma[CHANNEL_SCSI].next);
 
             /* Write one long word to memory */
-            NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next, dma_getlong(SCSIdata.buffer, SCSIdata.rpos-act_buf_size));
-
-            dma[CHANNEL_SCSI].next += 4;
-            /* TODO: Check if we should also change rpos if act_buf_size is exceeded 
-             * to write correct data from SCSI buffer. */
-            if (act_buf_size>4) {
-                act_buf_size -= 4;
-            } else {
-                act_buf_size = 0;
-            }
+            NEXTMemory_WriteLong(dma[CHANNEL_SCSI].next, dma_getlong(espdma_buf, espdma_buf_limit-espdma_buf_size));
+            dma[CHANNEL_SCSI].next+=4;
+            espdma_buf_size-=4;
+        } else if (espdma_buf_size==0) {
+            Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Not flushing buffer (empty)");
         }
     } CATCH(prb) {
         dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE;
@@ -519,60 +507,63 @@ void dma_esp_read_memory(void) {
      * End address should be always burst-size aligned. For now we use a hack. */
     
     TRY(prb) {
+        if (espdma_buf_size>0) {
+            Log_Printf(LOG_WARN, "[DMA] Channel SCSI: %i residual bytes in DMA buffer.", espdma_buf_size);
+            while (espdma_buf_size>0) {
+                SCSIdisk_Receive_Data(modma_buf[espdma_buf_limit-espdma_buf_size]);
+                esp_counter--;
+                espdma_buf_size--;
+            }
+        }
+
         /* This is a hack to handle non-burstsize-aligned DMA start */
         if (dma[CHANNEL_SCSI].next%DMA_BURST_SIZE) {
             Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Start memory address is not 16 byte aligned ($%08X).",
                        dma[CHANNEL_SCSI].next);
             while (dma[CHANNEL_SCSI].next%DMA_BURST_SIZE) {
-                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_SCSI].next), SCSIdata.buffer, SCSIdata.rpos+act_buf_size);
+                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_SCSI].next), espdma_buf, espdma_buf_size);
                 dma[CHANNEL_SCSI].next+=4;
-                act_buf_size+=4;
+                espdma_buf_size+=4;
             }
-            while (act_buf_size>0 && esp_counter>0 && SCSIbus.phase==PHASE_DO) {
+            espdma_buf_limit=espdma_buf_size;
+            while (espdma_buf_size>0 && esp_counter>0 && SCSIbus.phase==PHASE_DO) {
+                SCSIdisk_Receive_Data(modma_buf[espdma_buf_limit-espdma_buf_size]);
                 esp_counter--;
-                SCSIdisk_Receive_Data();
-                act_buf_size--;
+                espdma_buf_size--;
             }
         }
 
-        while (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit && act_buf_size==0) {
-            /* Read data from memory to internal DMA buffer (no real buffer, we use an imaginary one) */
-            for (act_buf_size=0; act_buf_size<DMA_BURST_SIZE; act_buf_size+=4) {
-                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_SCSI].next+act_buf_size), SCSIdata.buffer, SCSIdata.rpos+act_buf_size);
+        while (dma[CHANNEL_SCSI].next<dma[CHANNEL_SCSI].limit && espdma_buf_size==0) {
+            /* Read data from memory to internal DMA buffer */
+            while (espdma_buf_size<DMA_BURST_SIZE) {
+                dma_putlong(NEXTMemory_ReadLong(dma[CHANNEL_SCSI].next), espdma_buf, espdma_buf_size);
+                dma[CHANNEL_SCSI].next+=4;
+                espdma_buf_size+=4;
             }
-            dma[CHANNEL_SCSI].next+=DMA_BURST_SIZE;
-            
             /* Empty DMA internal buffer */
-            while (act_buf_size>0 && esp_counter>0 && SCSIbus.phase==PHASE_DO) {
+            while (espdma_buf_size>0 && esp_counter>0 && SCSIbus.phase==PHASE_DO) {
+                SCSIdisk_Receive_Data(modma_buf[DMA_BURST_SIZE-espdma_buf_size]);
                 esp_counter--;
-                SCSIdisk_Receive_Data();
-                act_buf_size--;
+                espdma_buf_size--;
             }
-
             ESP_DMA_set_status();
         }
     } CATCH(prb) {
-        Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Bus error while writing to %08x",dma[CHANNEL_SCSI].next+act_buf_size);
+        Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Bus error while writing to %08x",dma[CHANNEL_SCSI].next+espdma_buf_size);
         dma[CHANNEL_SCSI].csr &= ~DMA_ENABLE;
         dma[CHANNEL_SCSI].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
-    if (act_buf_size!=0) {
-        Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Residual bytes in DMA buffer: %i bytes",act_buf_size);
+    if (espdma_buf_size!=0) {
+        espdma_buf_limit=espdma_buf_size;
+        Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Residual bytes in DMA buffer: %i bytes",espdma_buf_size);
     }
     if (SCSIbus.phase==PHASE_DO) {
         Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Warning! Data not yet written to disk.");
         abort(); /* This should not happen */
     }
     
-#if DMAESP_DELAY > 0
-    CycInt_AddRelativeInterrupt(DMAESP_DELAY*ConfigureParams.System.nCpuFreq, INT_CPU_CYCLE, INTERRUPT_ESPDMA);
-#else
     dma_interrupt(CHANNEL_SCSI);
-    
-    /* Let ESP check if it needs to interrupt */
-    esp_dma_done(false);
-#endif
 }
 
 

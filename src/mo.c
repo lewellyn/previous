@@ -230,6 +230,7 @@ void mo_start_spinning(void);
 void mo_eject_disk(void);
 void mo_start_spiraling(void);
 void mo_stop_spiraling(void);
+void mo_self_diagnostic(void);
 
 void mo_unimplemented_cmd(void);
 
@@ -947,6 +948,7 @@ void rs_decode(Uint8 *sector_buf)
  *
  * read     mem <----- buf <-de-- disk
  * write    mem -----> buf --en-> disk
+ * verify              buf <-de-- disk
  *
  * ecc_dis
  * read     mem <-en-- buf
@@ -1420,7 +1422,7 @@ void mo_drive_cmd(void) {
                 break;
             case DRV_RSD:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Request Self-Diagnostic (%04X)\n", command);
-                abort();
+                mo_self_diagnostic();
                 break;
                 
             default:
@@ -1662,6 +1664,10 @@ void mo_spiraling_operation(void) {
         }
     }
     CycInt_AddRelativeInterrupt(SECTOR_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_MO_IO);
+}
+
+void mo_self_diagnostic(void) {
+    mo_set_signals(true, false, CMD_DELAY);
 }
 
 void MO_IO_Handler(void) {

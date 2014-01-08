@@ -74,7 +74,7 @@ static void (* const pIntHandlerFunctions[MAX_INTERRUPTS])(void) =
 	Video_InterruptHandler_VBL,
 	Hardclock_InterruptHandler,
     ESP_InterruptHandler,
-    ESPDMA_InterruptHandler,
+    ESP_IO_Handler,
     M2RDMA_InterruptHandler,
     R2MDMA_InterruptHandler,
     MO_InterruptHandler,

@@ -72,9 +72,10 @@ void esp_select(bool atn);
 void esp_raise_irq(void);
 void esp_lower_irq(void);
 
-void esp_dma_done(bool write);
+bool esp_transfer_done(bool write);
 
 
 extern Uint32 esp_counter;
 
 void ESP_InterruptHandler(void);
+void ESP_IO_Handler(void);

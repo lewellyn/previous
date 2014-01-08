@@ -141,7 +141,7 @@ Uint8 mode_dma;
 
 /* Experimental */
 #define ESP_CLOCK_FREQ  20      /* ESP is clocked at 20 MHz */
-#define ESP_DELAY       330000  /* Standard wait time for ESP interrupt (except bus reset and selection timeout) */
+#define ESP_DELAY       20000   /* Standard wait time for ESP interrupt (except bus reset and selection timeout) */
 
 
 /* ESP DMA control and status registers */
@@ -735,67 +735,98 @@ void esp_select(bool atn) {
 
 /* DMA done: this is called as part of transfer info or transfer pad
  * after DMA transfer has completed. */
-void esp_dma_done(bool write) {
-    Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] DMA transfer done: ESP counter = %i, SCSI residual bytes: %i",
-               esp_counter,SCSIdata.size-SCSIdata.rpos);
+
+enum {
+    ESP_IO_STATE_TRANSFERING,
+    ESP_IO_STATE_FLUSHING,
+    ESP_IO_STATE_DONE
+} esp_io_state;
+
+bool esp_transfer_done(bool write) {
+    Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Transfer done: ESP counter = %i, SCSI residual bytes: %i",
+               esp_counter,write?scsi_buffer.size:scsi_buffer.limit-scsi_buffer.size);
     
     if (esp_counter == 0) { /* Transfer done */
         intstatus = INTR_FC;
         status |= STAT_TC;
         CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
+        return true;
     } else if ((write && SCSIbus.phase!=PHASE_DI) || (!write && SCSIbus.phase!=PHASE_DO)) { /* Phase change detected */
         esp_command_clear();
         intstatus = INTR_BS;
         CycInt_AddRelativeInterrupt(ESP_DELAY, INT_CPU_CYCLE, INTERRUPT_ESP);
-    } /* else continue transfering data using DMA, no interrupt */
+        return true;
+    } /* else continue transfering data, no interrupt */
+    return false;
 }
 
 
 /* Transfer information */
 void esp_transfer_info(void) {
     if(mode_dma) {
-        
-        switch (SCSIbus.phase) {
-            case PHASE_DI:
-                Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] start DMA transfer from device to memory: ESP counter = %i\n", esp_counter);
-                dma_esp_write_memory();
-                break;
-            case PHASE_DO:
-                Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] start DMA transfer from memory to device: ESP counter = %i\n", esp_counter);
-                dma_esp_read_memory();
-                break;
-            default:
-                Log_Printf(LOG_WARN, "[ESP] transfer info: illegal phase");
-                abort();
-                break;
-        }
-        /* Function continues after DMA transfer (esp_dma_done) */
-
+        esp_io_state=ESP_IO_STATE_TRANSFERING;
+        CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_ESP_IO);
     } else {
         Log_Printf(LOG_WARN, "[ESP] start PIO transfer (not implemented!)");
         abort();
     }
 }
+void ESP_IO_Handler(void) {
+    CycInt_AcknowledgeInterrupt();
+    
+    switch (esp_io_state) {
+        case ESP_IO_STATE_TRANSFERING:
+            switch (SCSIbus.phase) {
+                case PHASE_DI:
+                    dma_esp_write_memory();
+                    if (esp_transfer_done(true)) {
+                        esp_io_state=ESP_IO_STATE_FLUSHING;
+                    }
+                    break;
+                case PHASE_DO:
+                    dma_esp_read_memory();
+                    if (esp_transfer_done(false)) {
+                        return;
+                    }
+                    break;
+                    
+                default:
+                    break;
+            }
+            break;
+        case ESP_IO_STATE_FLUSHING:
+            Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Transfer done: Flushing DMA buffer.");
+            dma_esp_write_memory();
+            return;
+            
+        default:
+            Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Transfer: Unkown state (%i).",esp_io_state);
+            return;
+    }
+    
+    CycInt_AddRelativeInterrupt(10000, INT_CPU_CYCLE, INTERRUPT_ESP_IO);
+}
+
 
 /* Transfer padding */
 void esp_transfer_pad(void) {
     Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Transfer padding, ESP counter: %i bytes, SCSI resid: %i bytes\n",
-               esp_counter, SCSIdata.size-SCSIdata.rpos);
-    
+               esp_counter, SCSIbus.phase==PHASE_DI?scsi_buffer.size:scsi_buffer.limit-scsi_buffer.size);
+
     switch (SCSIbus.phase) {
         case PHASE_DI:
             while (SCSIbus.phase==PHASE_DI && esp_counter>0) {
                 SCSIdisk_Send_Data();
                 esp_counter--;
             }
-            esp_dma_done(true);
+            esp_transfer_done(true);
             break;
         case PHASE_DO:
             while (SCSIbus.phase==PHASE_DO && esp_counter>0) {
-                SCSIdisk_Receive_Data();
+                SCSIdisk_Receive_Data(0);
                 esp_counter--;
             }
-            esp_dma_done(false);
+            esp_transfer_done(false);
             break;
             
         default:
