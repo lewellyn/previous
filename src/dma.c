@@ -1,7 +1,9 @@
 /* NeXT DMA Emulation 
  * Contains informations from QEMU-NeXT
- * NeXT DMA consists of 12 channel processors with 128 bytes internal buffer for each channel
- * 12 channels: SCSI, Sound in, Sound out, Optical disk, Printer, SCC, DSP,
+ * NeXT Integrated Channel Processor (ISP) consists of 12 channel processors
+ * with 128 bytes internal buffer for each channel.
+ * 12 channels:
+ * SCSI, Sound in, Sound out, Optical disk, Printer, SCC, DSP, 
  * Ethernet transmit, Ethernet receive, Video, Memory to register, Register to memory
  */
 
@@ -23,6 +25,42 @@
 
 #define IO_SEG_MASK	0x1FFFF
 
+typedef enum {
+    CHANNEL_SCSI,       // 0x00000010
+    CHANNEL_SOUNDOUT,   // 0x00000040
+    CHANNEL_DISK,       // 0x00000050
+    CHANNEL_SOUNDIN,    // 0x00000080
+    CHANNEL_PRINTER,    // 0x00000090
+    CHANNEL_SCC,        // 0x000000c0
+    CHANNEL_DSP,        // 0x000000d0
+    CHANNEL_EN_TX,      // 0x00000110
+    CHANNEL_EN_RX,      // 0x00000150
+    CHANNEL_VIDEO,      // 0x00000180
+    CHANNEL_M2R,        // 0x000001d0
+    CHANNEL_R2M         // 0x000001c0
+}DMA_CHANNEL;
+
+int get_channel(Uint32 address);
+int get_interrupt_type(int channel);
+void dma_interrupt(int channel);
+void dma_initialize_buffer(int channel);
+
+
+struct {
+    Uint8 csr;
+    Uint32 saved_next;
+    Uint32 saved_limit;
+    Uint32 saved_start;
+    Uint32 saved_stop;
+    Uint32 next;
+    Uint32 limit;
+    Uint32 start;
+    Uint32 stop;
+    
+    Uint8 direction;
+} dma[12];
+
+
 /* DMA internal buffers */
 #define DMA_BURST_SIZE  16
 
@@ -30,6 +68,7 @@ int espdma_buf_size = 0;
 int espdma_buf_limit = 0;
 Uint8 espdma_buf[DMA_BURST_SIZE];
 int modma_buf_size = 0;
+int modma_buf_limit = 0;
 Uint8 modma_buf[DMA_BURST_SIZE];
 
 
@@ -180,13 +219,7 @@ void DMA_CSR_Write(void) {
         dma[channel].csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE);
     }
     if (writecsr&DMA_INITBUF) {
-        if (channel==CHANNEL_SCSI) {
-            esp_dma.status = 0x00; /* just a guess */
-            espdma_buf_size = 0;
-        }
-        if (channel==CHANNEL_DISK) {
-            modma_buf_size = 0;
-        }
+        dma_initialize_buffer(channel);
     }
     if (writecsr&DMA_SETSUPDATE) {
         dma[channel].csr |= DMA_SUPDATE;
@@ -210,18 +243,6 @@ void DMA_CSR_Write(void) {
     }
     if (writecsr&DMA_CLRCOMPLETE) {
         dma[channel].csr &= ~DMA_COMPLETE;
-#if 0
-        switch (channel) {
-            case CHANNEL_SCSI:
-                if (dma[channel].direction==DMA_DEV2M)
-                    dma_esp_write_memory();
-                else
-                    dma_esp_read_memory();
-                break;
-
-            default: break;
-        }
-#endif
     }
 
     set_interrupt(interrupt, RELEASE_INT); // experimental
@@ -325,39 +346,32 @@ void DMA_Stop_Write(void) {
 
 void DMA_Init_Read(void) { // 0x02004210
     int channel = get_channel(IoAccessCurrentAddress-0x4200);
-    IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].init);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA Init read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].init, m68k_getpc());
+    IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].next);
+ 	Log_Printf(LOG_DMA_LEVEL,"DMA Init read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].next, m68k_getpc());
 }
 
 void DMA_Init_Write(void) {
     int channel = get_channel(IoAccessCurrentAddress-0x4200);
-    dma[channel].next = dma[channel].init = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK); /* hack */
+    dma[channel].next = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
+    dma_initialize_buffer(channel);
+    Log_Printf(LOG_DMA_LEVEL,"DMA Init write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].next, m68k_getpc());
+}
+
+/* Initialize DMA internal buffer */
+
+void dma_initialize_buffer(int channel) {
     if (channel==CHANNEL_SCSI) {
         esp_dma.status = 0x00; /* just a guess */
-        espdma_buf_size = 0;
+        espdma_buf_size = espdma_buf_limit = 0;
     }
     if (channel==CHANNEL_DISK) {
-        modma_buf_size = 0;
+        modma_buf_size = modma_buf_limit = 0;
     }
-    Log_Printf(LOG_DMA_LEVEL,"DMA Init write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].init, m68k_getpc());
 }
-
-void DMA_Size_Read(void) { // 0x02004214
-    int channel = get_channel(IoAccessCurrentAddress-0x4204);
-    IoMem_WriteLong(IoAccessCurrentAddress & IO_SEG_MASK, dma[channel].size);
- 	Log_Printf(LOG_DMA_LEVEL,"DMA Size read at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].size, m68k_getpc());
-}
-
-void DMA_Size_Write(void) {
-    int channel = get_channel(IoAccessCurrentAddress-0x4204);
-    dma[channel].size = IoMem_ReadLong(IoAccessCurrentAddress & IO_SEG_MASK);
-    Log_Printf(LOG_DMA_LEVEL,"DMA Size write at $%08x val=$%08x PC=$%08x\n", IoAccessCurrentAddress, dma[channel].size, m68k_getpc());
-}
-
 
 /* DMA interrupt functions */
 
-void dma_interrupt(channel) {
+void dma_interrupt(int channel) {
     int interrupt = get_interrupt_type(channel);
     
     /* If we have reached limit, generate an interrupt and set the flags */
@@ -588,7 +602,7 @@ void dma_mo_write_memory(void) {
         if (modma_buf_size>0) {
             Log_Printf(LOG_WARN, "[DMA] Channel MO: %i residual bytes in DMA buffer.", modma_buf_size);
             while (modma_buf_size>=4) {
-                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(modma_buf, DMA_BURST_SIZE-modma_buf_size));
+                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(modma_buf, modma_buf_limit-modma_buf_size));
                 dma[CHANNEL_DISK].next+=4;
                 modma_buf_size-=4;
             }
@@ -603,8 +617,9 @@ void dma_mo_write_memory(void) {
                 ecc_buffer[eccout].size--;
                 modma_buf_size++;
             }
+            modma_buf_limit=modma_buf_size;
             while (modma_buf_size>=4) {
-                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(modma_buf, DMA_BURST_SIZE-modma_buf_size));
+                NEXTMemory_WriteLong(dma[CHANNEL_DISK].next, dma_getlong(modma_buf, modma_buf_limit-modma_buf_size));
                 dma[CHANNEL_DISK].next+=4;
                 modma_buf_size-=4;
             }
@@ -627,6 +642,7 @@ void dma_mo_write_memory(void) {
                 }
             } else { /* else do not write the bytes to memory but keep them inside the buffer */
                 Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel MO: Residual bytes in DMA buffer: %i bytes",modma_buf_size);
+                modma_buf_limit=modma_buf_size;
                 break;
             }
         }
@@ -660,7 +676,7 @@ void dma_mo_read_memory(void) {
         if (modma_buf_size>0) {
             Log_Printf(LOG_WARN, "[DMA] Channel MO: %i residual bytes in DMA buffer.", modma_buf_size);
             while (modma_buf_size>0) {
-                ecc_buffer[eccin].data[ecc_buffer[eccin].size]=modma_buf[DMA_BURST_SIZE-modma_buf_size];
+                ecc_buffer[eccin].data[ecc_buffer[eccin].size]=modma_buf[modma_buf_limit-modma_buf_size];
                 ecc_buffer[eccin].size++;
                 modma_buf_size--;
             }
@@ -675,8 +691,9 @@ void dma_mo_read_memory(void) {
                 dma[CHANNEL_DISK].next+=4;
                 modma_buf_size+=4;
             }
+            modma_buf_limit=modma_buf_size;
             while (modma_buf_size>0) {
-                ecc_buffer[eccin].data[ecc_buffer[eccin].size]=modma_buf[DMA_BURST_SIZE-modma_buf_size];
+                ecc_buffer[eccin].data[ecc_buffer[eccin].size]=modma_buf[modma_buf_limit-modma_buf_size];
                 ecc_buffer[eccin].size++;
                 modma_buf_size--;
             }
@@ -704,6 +721,7 @@ void dma_mo_read_memory(void) {
     
     if (modma_buf_size!=0) {
         Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel MO: Residual bytes in DMA buffer: %i bytes",modma_buf_size);
+        modma_buf_limit=modma_buf_size;
     }
 
     dma_interrupt(CHANNEL_DISK);

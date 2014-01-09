@@ -242,7 +242,6 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x020041c8, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
     { 0x020041cc, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
     { 0x020043c0, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
-    { 0x020043c4, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
     /* Channel M2R */
     { 0x020041d0, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
@@ -250,7 +249,6 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x020041d8, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
     { 0x020041dc, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
     { 0x020043d0, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
-    { 0x020043d4, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
     /* Channel SCSI */
     { 0x02004000, SIZE_LONG, DMA_Saved_Next_Read, DMA_Saved_Next_Write },
@@ -262,7 +260,6 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02004018, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
     { 0x0200401c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
     { 0x02004210, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
-    { 0x02004214, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
     /* Channel Sound out */
     { 0x02004040, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
@@ -276,7 +273,6 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02004058, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
     { 0x0200405c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
     { 0x02004250, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
-    { 0x02004254, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
     /* Channel SCC */
     { 0x020040c0, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },
@@ -301,7 +297,6 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02004118, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
     { 0x0200411c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
     { 0x02004310, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
-    { 0x02004314, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
     
     /* Channel Ethernet Receive */
     { 0x02004140, SIZE_LONG, DMA_Saved_Next_Read, DMA_Saved_Next_Write },
@@ -313,7 +308,7 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02004158, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
     { 0x0200415c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
     { 0x02004350, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
-    { 0x02004354, SIZE_LONG, DMA_Size_Read, DMA_Size_Write },
+
     /*-------------------- End of DMA -------------------*/
 
         
