@@ -25,7 +25,7 @@
 
 #define IO_SEG_MASK	0x1FFFF
 
-typedef enum {
+enum {
     CHANNEL_SCSI,       // 0x00000010
     CHANNEL_SOUNDOUT,   // 0x00000040
     CHANNEL_DISK,       // 0x00000050
@@ -38,7 +38,7 @@ typedef enum {
     CHANNEL_VIDEO,      // 0x00000180
     CHANNEL_M2R,        // 0x000001d0
     CHANNEL_R2M         // 0x000001c0
-}DMA_CHANNEL;
+} DMA_CHANNEL;
 
 int get_channel(Uint32 address);
 int get_interrupt_type(int channel);

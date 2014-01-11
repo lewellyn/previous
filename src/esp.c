@@ -744,7 +744,7 @@ enum {
 
 bool esp_transfer_done(bool write) {
     Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Transfer done: ESP counter = %i, SCSI residual bytes: %i",
-               esp_counter,write?scsi_buffer.size:scsi_buffer.limit-scsi_buffer.size);
+               esp_counter,scsi_buffer.size);
     
     if (esp_counter == 0) { /* Transfer done */
         intstatus = INTR_FC;
@@ -811,7 +811,7 @@ void ESP_IO_Handler(void) {
 /* Transfer padding */
 void esp_transfer_pad(void) {
     Log_Printf(LOG_ESPCMD_LEVEL, "[ESP] Transfer padding, ESP counter: %i bytes, SCSI resid: %i bytes\n",
-               esp_counter, SCSIbus.phase==PHASE_DI?scsi_buffer.size:scsi_buffer.limit-scsi_buffer.size);
+               esp_counter, scsi_buffer.size);
 
     switch (SCSIbus.phase) {
         case PHASE_DI:
