@@ -117,6 +117,9 @@ int SCSI_GetTransferLength(Uint8 opcode, Uint8 *cdb);
 unsigned long SCSI_GetOffset(Uint8 opcode, Uint8 *cdb);
 int SCSI_GetCount(Uint8 opcode, Uint8 *cdb);
 
+void scsi_read_sector(void);
+void scsi_write_sector(void);
+
 
 /* SCSI disk */
 struct {
@@ -163,11 +166,17 @@ void SCSI_Init(void) {
         if (File_Exists(ConfigureParams.SCSI.target[target].szImageName) && ConfigureParams.SCSI.target[target].bAttached) {
             SCSIdisk[target].size = File_Length(ConfigureParams.SCSI.target[target].szImageName);
             SCSIdisk[target].dsk = ConfigureParams.SCSI.target[target].bCDROM == true ? File_Open(ConfigureParams.SCSI.target[target].szImageName, "r") : File_Open(ConfigureParams.SCSI.target[target].szImageName, "r+");
-            SCSIdisk[target].cdrom = ConfigureParams.SCSI.target[target].bCDROM;
         } else {
             SCSIdisk[target].size = 0;
             SCSIdisk[target].dsk = NULL;
         }
+        SCSIdisk[target].cdrom = ConfigureParams.SCSI.target[target].bCDROM;
+        
+        SCSIdisk[target].lun = SCSIdisk[target].status = SCSIdisk[target].message = 0;
+        SCSIdisk[target].sense.code = SCSIdisk[target].sense.key = SCSIdisk[target].sense.info = 0;
+        SCSIdisk[target].sense.valid = false;
+        SCSIdisk[target].lba = SCSIdisk[target].blockcounter = 0;
+
         Log_Printf(LOG_WARN, "SCSI Disk%i: %s\n",target,ConfigureParams.SCSI.target[target].szImageName);
     }
 }
@@ -521,7 +530,7 @@ void SCSI_WriteSector(Uint8 *cdb) {
                SCSIdisk[target].blockcounter, SCSIdisk[target].lba, BLOCKSIZE);
 }
 
-bool scsi_write_sector(void) {
+void scsi_write_sector(void) {
     Uint8 target = SCSIbus.target;
     int n=0;
     
@@ -548,15 +557,14 @@ bool scsi_write_sector(void) {
         SCSIdisk[target].lba++;
         SCSIdisk[target].blockcounter--;
         if (SCSIdisk[target].blockcounter==0) {
-            return true;
+            SCSIbus.phase = PHASE_ST;
         }
-        return false;
     } else {
         SCSIdisk[target].status = STAT_CHECK_COND;
         SCSIdisk[target].sense.code = SC_INVALID_LBA;
         SCSIdisk[target].sense.valid = true;
         SCSIdisk[target].sense.info = SCSIdisk[target].lba;
-        return true;
+        SCSIbus.phase = PHASE_ST;
     }
 }
 
@@ -567,9 +575,7 @@ void SCSIdisk_Receive_Data(Uint8 val) {
     scsi_buffer.size++;
     if (scsi_buffer.size==scsi_buffer.limit) {
         if (scsi_buffer.disk==true) {
-            if (scsi_write_sector()==true) {
-                SCSIbus.phase = PHASE_ST;
-            }
+            scsi_write_sector();  /* sets status phase if done or error */
         } else {
             SCSIbus.phase = PHASE_ST;
         }
@@ -587,13 +593,15 @@ void SCSI_ReadSector(Uint8 *cdb) {
     SCSIbus.phase = PHASE_DI;
     Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Read sector: %i block(s) at offset %i (blocksize: %i byte)",
                SCSIdisk[target].blockcounter, SCSIdisk[target].lba, BLOCKSIZE);
+    scsi_read_sector();
 }
 
-bool scsi_read_sector(void) {
+void scsi_read_sector(void) {
     Uint8 target = SCSIbus.target;
     
     if (SCSIdisk[target].blockcounter==0) {
-        return true;
+        SCSIbus.phase = PHASE_ST;
+        return;
     }
 
     int n;
@@ -614,29 +622,23 @@ bool scsi_read_sector(void) {
         SCSIdisk[target].sense.code = SC_NO_ERROR;
         SCSIdisk[target].lba++;
         SCSIdisk[target].blockcounter--;
-        if (SCSIdisk[target].blockcounter==0) {
-            return true;
-        }
-        return false;
     } else {
         SCSIdisk[target].status = STAT_CHECK_COND;
         SCSIdisk[target].sense.code = SC_INVALID_LBA;
         SCSIdisk[target].sense.valid = true;
         SCSIdisk[target].sense.info = SCSIdisk[target].lba;
-        return true;
+        SCSIbus.phase = PHASE_ST;
     }
 }
 
 Uint8 SCSIdisk_Send_Data(void) {
-    if (scsi_buffer.size==0 && scsi_buffer.disk==true) {
-        scsi_read_sector();
-    }
     /* Send one byte. If the transfer is complete, set status phase */
     Uint8 val=scsi_buffer.data[scsi_buffer.limit-scsi_buffer.size];
     scsi_buffer.size--;
     if (scsi_buffer.size==0) {
-        if (scsi_buffer.disk==false || SCSIdisk[SCSIbus.target].blockcounter==0) {
-        //if (scsi_buffer.disk==false || scsi_read_sector()==true) {
+        if (scsi_buffer.disk==true) {
+            scsi_read_sector(); /* sets status phase if done or error */
+        } else {
             SCSIbus.phase = PHASE_ST;
         }
     }
