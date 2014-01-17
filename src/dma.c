@@ -13,6 +13,7 @@
 #include "scsi.h"
 #include "esp.h"
 #include "mo.h"
+#include "scc.h"
 #include "sysReg.h"
 #include "dma.h"
 #include "configuration.h"
@@ -799,4 +800,18 @@ void Video_InterruptHandler(void) {
     } else if (dma[CHANNEL_VIDEO].limit && dma[CHANNEL_VIDEO].limit!=0xEA) {
         abort();
     }
+}
+
+
+/* FIXME: This is just for passing power-on test. Add real SCC channel later. */
+
+void dma_scc_read_memory(void) {
+    Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCC: Read from memory at $%08x, %i bytes",
+               dma[CHANNEL_SCC].next,dma[CHANNEL_SCC].limit-dma[CHANNEL_SCC].next);
+    while (dma[CHANNEL_SCC].next<dma[CHANNEL_SCC].limit) {
+        scc_buf[0]=NEXTMemory_ReadByte(dma[CHANNEL_SCC].next);
+        dma[CHANNEL_SCC].next++;
+    }
+    
+    dma_interrupt(CHANNEL_SCC);
 }

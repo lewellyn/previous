@@ -2,16 +2,11 @@
 #include "main.h"
 #include "ioMem.h"
 #include "ioMemTables.h"
-#include "video.h"
 #include "configuration.h"
 #include "sysdeps.h"
 #include "m68000.h"
-#include "sysReg.h"
 #include "statusbar.h"
 #include "scsi.h"
-#include "dma.h"
-#include "esp.h"
-#include "dialog.h"
 #include "file.h"
 
 #define LOG_SCSI_LEVEL  LOG_WARN    /* Print debugging messages */
@@ -554,6 +549,7 @@ void scsi_write_sector(void) {
     if (n == 1) {
         SCSIdisk[target].status = STAT_GOOD;
         SCSIdisk[target].sense.code = SC_NO_ERROR;
+        SCSIdisk[target].sense.valid = false;
         SCSIdisk[target].lba++;
         SCSIdisk[target].blockcounter--;
         if (SCSIdisk[target].blockcounter==0) {
@@ -620,6 +616,7 @@ void scsi_read_sector(void) {
     if (n == 1) {
         SCSIdisk[target].status = STAT_GOOD;
         SCSIdisk[target].sense.code = SC_NO_ERROR;
+        SCSIdisk[target].sense.valid = false;
         SCSIdisk[target].lba++;
         SCSIdisk[target].blockcounter--;
     } else {
