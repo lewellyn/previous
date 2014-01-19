@@ -1017,6 +1017,7 @@ void ecc_write(void) {
         ecc_repeat=true;
     }
     ecc_buffer[eccin].size=0; /* FIXME: find a better place for this */
+    ecc_buffer[eccin].limit=MO_SECTORSIZE_DATA; /* and this */
     CycInt_AddRelativeInterrupt(ECC_DELAY, INT_CPU_CYCLE, INTERRUPT_ECC_IO);
 }
 void ecc_read(void) {
@@ -1792,6 +1793,9 @@ void MO_Init(void) {
 
         Log_Printf(LOG_WARN, "MO Disk%i: %s\n",i,ConfigureParams.MO.drive[i].szImageName);
     }
+    
+    /* Initialize formatter variables */
+    ecc_state=ECC_STATE_DONE;
 }
 
 void MO_Uninit(void) {
