@@ -1,11 +1,9 @@
-/*  Previous - iethernet.c
+/*  Previous - ethernet.c
 
   This file is distributed under the GNU Public License, version 2 or at
   your option any later version. Read the file gpl.txt for details.
 
-   Network adapter for the NEXT. 
-
-   constants and struct netBSD mb8795reg.h file
+   Network adapter for non-turbo NeXT machines.
 
 */
 
@@ -13,10 +11,8 @@
 #include "ioMemTables.h"
 #include "m68000.h"
 #include "configuration.h"
-#include "esp.h"
 #include "sysReg.h"
 #include "dma.h"
-#include "scsi.h"
 #include "ethernet.h"
 #include "cycInt.h"
 
@@ -342,14 +338,29 @@ void print_buf(Uint8 *buf, Uint32 size) {
     printf("\n");
 }
 
+
+#define ENET_FRAMESIZE_MIN  60      /* 46 byte data and 14 byte header, without CRC */
+#define ENET_FRAMESIZE_MAX  1514    /* 1500 byte data and 14 byte header, without CRC */
+
 /* Ethernet periodic check */
 #define ENET_IO_DELAY   50000
+
+enum {
+    RECV_STATE_WAITING,
+    RECV_STATE_RECEIVING
+} receiver_state;
+
+enum {
+    TMIT_STATE_WAITING,
+    TMIT_STATE_TRANSMITTING
+} transmitter_state;
+
+/* TODO: Add support for DMA chaining of packets */
 
 void ENET_IO_Handler(void) {
     CycInt_AcknowledgeInterrupt();
     
     /* Receive packet */
-    
     /* TODO: Receive from real network! */
     if (enet_rx_buffer.size>0) {
         if (enet_packet_for_me(enet_rx_buffer.data)) {
@@ -357,15 +368,16 @@ void ENET_IO_Handler(void) {
                        enet_rx_buffer.data[6], enet_rx_buffer.data[7], enet_rx_buffer.data[8],
                        enet_rx_buffer.data[9], enet_rx_buffer.data[10], enet_rx_buffer.data[11]);
             print_buf(enet_rx_buffer.data, enet_rx_buffer.size);
-            if (enet_rx_buffer.size<64 && !(enet.rx_mode&RXMODE_ENA_SHORT)) {
+            
+            if (enet_rx_buffer.size>=ENET_FRAMESIZE_MIN || enet.rx_mode&RXMODE_ENA_SHORT) {
+                dma_enet_write_memory();
+                if (enet_rx_buffer.size==0) {
+                    enet_rx_interrupt(RXSTAT_PKT_OK);
+                }
+            } else {
                 Log_Printf(LOG_EN_LEVEL, "[EN] Received packet is short (%i byte)",enet_rx_buffer.size);
                 enet_rx_interrupt(RXSTAT_SHORT_PKT);
-            } else {
-                enet_rx_interrupt(RXSTAT_PKT_OK);
             }
-
-            dma_enet_write_memory();
-            enet_rx_buffer.size=0;
         }
     }
     
@@ -376,7 +388,7 @@ void ENET_IO_Handler(void) {
             Log_Printf(LOG_EN_LEVEL, "[EN] Sending packet to %02X:%02X:%02X:%02X:%02X:%02X",
                        enet_tx_buffer.data[0], enet_tx_buffer.data[1], enet_tx_buffer.data[2],
                        enet_tx_buffer.data[3], enet_tx_buffer.data[4], enet_tx_buffer.data[5]);
-            //print_buf(enet_tx_buffer.data, enet_tx_buffer.size);
+            print_buf(enet_tx_buffer.data, enet_tx_buffer.size);
             if (enet.tx_mode&TXMODE_DIS_LOOP) {
                 /* TODO: Send to real network! */
                 enet_tx_buffer.size=0;
@@ -390,7 +402,7 @@ void ENET_IO_Handler(void) {
         }
     }
     
-    CycInt_AddRelativeInterrupt(ENET_IO_DELAY, INT_CPU_CYCLE, INTERRUPT_ENET_IO);
+    CycInt_AddRelativeInterrupt(receiver_state==RECV_STATE_WAITING?ENET_IO_DELAY:400, INT_CPU_CYCLE, INTERRUPT_ENET_IO);
 }
 
 void Init_Ethernet(void) {

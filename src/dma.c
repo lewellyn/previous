@@ -392,7 +392,7 @@ void dma_interrupt(int channel) {
         
         dma[channel].csr |= DMA_COMPLETE;
         
-        if(dma[channel].csr & DMA_SUPDATE) { /* if we are in chaining mode */
+        if (dma[channel].csr & DMA_SUPDATE) { /* if we are in chaining mode */
             dma[channel].next = dma[channel].start;
             dma[channel].limit = dma[channel].stop;
             /* Set bits in CSR */
@@ -412,12 +412,12 @@ void dma_enet_interrupt(int channel) {
     /* If we have reached limit, generate an interrupt and set the flags */
     dma[channel].csr |= DMA_COMPLETE;
     
-    if(dma[channel].csr & DMA_SUPDATE) { /* if we are in chaining mode */
+    if (dma[channel].csr & DMA_SUPDATE) { /* if we are in chaining mode */
         /* Save pointers */
-        dma[channel].saved_next = dma[channel].next;
-        dma[channel].saved_limit = dma[channel].limit;
-        dma[channel].saved_start = dma[channel].start;
-        dma[channel].saved_stop = dma[channel].stop;
+        dma[channel].saved_limit = dma[channel].next;
+        dma[channel].saved_next = dma[channel].start;   /* ? */
+        dma[channel].saved_start = dma[channel].start;  /* ? */
+        dma[channel].saved_stop = dma[channel].stop;    /* ? */
         /* Update pointers */
         dma[channel].next = dma[channel].start;
         dma[channel].limit = dma[channel].stop;
@@ -765,8 +765,9 @@ void dma_mo_read_memory(void) {
 
 
 /* Channel Ethernet */
-#define ENADDR(x) ((x)&0x7FFFFFFF)
-
+#define EN_EOP      0x80000000 /* end of packet */
+#define EN_BOP      0x40000000 /* beginning of packet */
+#define ENADDR(x)   ((x)&~(EN_EOP|EN_BOP))
 
 void dma_enet_write_memory(void) {
     Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel Ethernet Receive: Write to memory at $%08x, %i bytes",
@@ -776,7 +777,7 @@ void dma_enet_write_memory(void) {
         Log_Printf(LOG_WARN, "[DMA] Channel Ethernet Receive: Error! DMA not enabled!");
         return;
     }
-    if ((dma[CHANNEL_EN_RX].limit%DMA_BURST_SIZE) || (dma[CHANNEL_EN_RX].next%4)) {
+    if ((dma[CHANNEL_EN_RX].limit%DMA_BURST_SIZE) || (dma[CHANNEL_EN_RX].next%DMA_BURST_SIZE)) {
         Log_Printf(LOG_WARN, "[DMA] Channel Ethernet Receive: Error! Bad alignment! (Next: $%08X, Limit: $%08X)",
                    dma[CHANNEL_EN_RX].next, dma[CHANNEL_EN_RX].limit);
         abort();
@@ -787,34 +788,18 @@ void dma_enet_write_memory(void) {
     TRY(prb) {
         if (enrxdma_buf_size>0) {
             Log_Printf(LOG_WARN, "[DMA] Channel Ethernet Receive: %i residual bytes in DMA buffer.", enrxdma_buf_size);
-#if 0 /* FIXME: How to process residual bytes for ethernet channel? */
-            while (enrxdma_buf_size>=4) {
-                NEXTMemory_WriteLong(dma[CHANNEL_EN_RX].next, dma_getlong(enrxdma_buf, enrxdma_buf_limit-enrxdma_buf_size));
-                dma[CHANNEL_EN_RX].next+=4;
-                enrxdma_buf_size-=4;
+#if 1 /* FIXME: How to process residual bytes for ethernet channel? */
+            while (enrxdma_buf_size>0) {
+                NEXTMemory_WriteByte(dma[CHANNEL_EN_RX].next, enrxdma_buf[enrxdma_buf_limit-enrxdma_buf_size]);
+                dma[CHANNEL_EN_RX].next++;
+                enrxdma_buf_size--;
             }
 #else
             Log_Printf(LOG_WARN, "[DMA] Channel Ethernet Receive: Discarding in DMA buffer!");
             enrxdma_buf_size=enrxdma_buf_limit=0;
 #endif
         }
-        /* This is a hack to handle non-burstsize-aligned DMA start */
-        if (dma[CHANNEL_EN_RX].next%DMA_BURST_SIZE) {
-            Log_Printf(LOG_WARN, "[DMA] Channel Ethernet Receive: Start memory address is not 16 byte aligned ($%08X).",
-                       dma[CHANNEL_EN_RX].next);
-            while ((dma[CHANNEL_EN_RX].next+enrxdma_buf_size)%DMA_BURST_SIZE && enet_rx_buffer.size>0) {
-                enrxdma_buf[enrxdma_buf_size]=enet_rx_buffer.data[enet_rx_buffer.limit-enet_rx_buffer.size];
-                enet_rx_buffer.size--;
-                enrxdma_buf_size++;
-            }
-            enrxdma_buf_limit=enrxdma_buf_size;
-            while (enrxdma_buf_size>=4) {
-                NEXTMemory_WriteLong(dma[CHANNEL_EN_RX].next, dma_getlong(enrxdma_buf, enrxdma_buf_limit-enrxdma_buf_size));
-                dma[CHANNEL_EN_RX].next+=4;
-                enrxdma_buf_size-=4;
-            }
-        }
-        
+
         while (dma[CHANNEL_EN_RX].next<=dma[CHANNEL_EN_RX].limit && !(enrxdma_buf_size%DMA_BURST_SIZE)) {
             /* Fill DMA internal buffer */
             while (enrxdma_buf_size<DMA_BURST_SIZE && enet_rx_buffer.size>0) {
@@ -831,14 +816,15 @@ void dma_enet_write_memory(void) {
                     enrxdma_buf_size-=4;
                 }
             } else { /* else do not write the bytes to memory but keep them inside the buffer */
-#if 0
+#if 1
                 Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel Ethernet Receive: Auto-flushing residual bytes in DMA buffer: %i bytes",enrxdma_buf_size);
                 enrxdma_buf_limit=enrxdma_buf_size;
-                while (enrxdma_buf_size>=4 && dma[CHANNEL_EN_RX].next<dma[CHANNEL_EN_RX].limit) {
-                    NEXTMemory_WriteLong(dma[CHANNEL_EN_RX].next, dma_getlong(enrxdma_buf, enrxdma_buf_limit-enrxdma_buf_size));
-                    dma[CHANNEL_EN_RX].next+=4;
-                    enrxdma_buf_size-=4;
+                while (enrxdma_buf_size>0 && dma[CHANNEL_EN_RX].next<dma[CHANNEL_EN_RX].limit) {
+                    NEXTMemory_WriteByte(dma[CHANNEL_EN_RX].next, enrxdma_buf[enrxdma_buf_limit-enrxdma_buf_size]);
+                    dma[CHANNEL_EN_RX].next++;
+                    enrxdma_buf_size--;
                 }
+                enrxdma_buf_limit=enrxdma_buf_size;
 #endif
                 break;
             }
@@ -849,6 +835,9 @@ void dma_enet_write_memory(void) {
         dma[CHANNEL_EN_RX].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
+    if (enet_rx_buffer.size==0) {
+        dma[CHANNEL_EN_RX].next+=4;
+    }
     dma_enet_interrupt(CHANNEL_EN_RX);
 }
 
@@ -859,9 +848,11 @@ void dma_enet_read_memory(void) { /* This channel does not use DMA buffering */
         
         TRY(prb) {
             while (dma[CHANNEL_EN_TX].next<ENADDR(dma[CHANNEL_EN_TX].limit) && enet_tx_buffer.size<enet_tx_buffer.limit) {
-                enet_tx_buffer.data[enet_tx_buffer.size]=NEXTMemory_ReadByte(dma[CHANNEL_EN_TX].next);
+                if ((ENADDR(dma[CHANNEL_EN_TX].limit)-dma[CHANNEL_EN_TX].next)>15 || !(dma[CHANNEL_EN_TX].limit&EN_EOP)) {
+                    enet_tx_buffer.data[enet_tx_buffer.size]=NEXTMemory_ReadByte(dma[CHANNEL_EN_TX].next);
+                    enet_tx_buffer.size++;
+                }
                 dma[CHANNEL_EN_TX].next++;
-                enet_tx_buffer.size++;
             }
         } CATCH(prb) {
             Log_Printf(LOG_WARN, "[DMA] Channel Ethernet Transmit: Bus error while writing to %08x",dma[CHANNEL_EN_TX].next);
