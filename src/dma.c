@@ -784,7 +784,7 @@ void dma_enet_write_memory(void) {
     }
     /* TODO: Find out how we should handle non burst-size aligned start address.
      * End address is always burst-size aligned. For now we use a hack. */
-    
+
     TRY(prb) {
         if (enrxdma_buf_size>0) {
             Log_Printf(LOG_WARN, "[DMA] Channel Ethernet Receive: %i residual bytes in DMA buffer.", enrxdma_buf_size);
@@ -800,7 +800,7 @@ void dma_enet_write_memory(void) {
 #endif
         }
 
-        while (dma[CHANNEL_EN_RX].next<=dma[CHANNEL_EN_RX].limit && !(enrxdma_buf_size%DMA_BURST_SIZE)) {
+        while (dma[CHANNEL_EN_RX].next</*=*/dma[CHANNEL_EN_RX].limit && !(enrxdma_buf_size%DMA_BURST_SIZE)) {
             /* Fill DMA internal buffer */
             while (enrxdma_buf_size<DMA_BURST_SIZE && enet_rx_buffer.size>0) {
                 enrxdma_buf[enrxdma_buf_size]=enet_rx_buffer.data[enet_rx_buffer.limit-enet_rx_buffer.size];
@@ -835,9 +835,9 @@ void dma_enet_write_memory(void) {
         dma[CHANNEL_EN_RX].csr |= (DMA_COMPLETE|DMA_BUSEXC);
     } ENDTRY
     
-    if (enet_rx_buffer.size==0) {
-        dma[CHANNEL_EN_RX].next+=4;
-    }
+    /* FIXME: DMA controller sets EN_BOP flag in next register on last byte 
+     * of packet under certain conditions when chaining */
+
     dma_enet_interrupt(CHANNEL_EN_RX);
 }
 
@@ -848,10 +848,8 @@ void dma_enet_read_memory(void) { /* This channel does not use DMA buffering */
         
         TRY(prb) {
             while (dma[CHANNEL_EN_TX].next<ENADDR(dma[CHANNEL_EN_TX].limit) && enet_tx_buffer.size<enet_tx_buffer.limit) {
-                if ((ENADDR(dma[CHANNEL_EN_TX].limit)-dma[CHANNEL_EN_TX].next)>15 || !(dma[CHANNEL_EN_TX].limit&EN_EOP)) {
-                    enet_tx_buffer.data[enet_tx_buffer.size]=NEXTMemory_ReadByte(dma[CHANNEL_EN_TX].next);
-                    enet_tx_buffer.size++;
-                }
+                enet_tx_buffer.data[enet_tx_buffer.size]=NEXTMemory_ReadByte(dma[CHANNEL_EN_TX].next);
+                enet_tx_buffer.size++;
                 dma[CHANNEL_EN_TX].next++;
             }
         } CATCH(prb) {
