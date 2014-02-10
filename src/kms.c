@@ -401,4 +401,10 @@ void kms_keyup(Uint8 modkeys, Uint8 keycode) {
     kms.km_data = (km_address<<25)&DEVICE_ADDR_MSK;
     kms.km_data |= USER_POLL; /* TODO: check this */
     kms.km_data |= (modkeys<<8)|keycode|KBD_KEY_VALID|KBD_KEY_UP;
+
+    if (kms.status.km &KBD_RECEIVED) {
+        kms.status.km |= KBD_OVERRUN;
+    }
+    kms.status.km |= (KBD_RECEIVED|KBD_INT);
+    set_interrupt(INT_KEYMOUSE, SET_INT);
 }

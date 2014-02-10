@@ -641,7 +641,9 @@ int mmu030_do_match_lrmw_ttr(uae_u32 tt, TT_info comp, uaecptr addr, uae_u32 fc)
             /* Compare actual address with address base using mask */
             if ((comp.addr_base&comp.addr_mask)==(addr&comp.addr_mask)) {
                 
-				return TT_NO_READ; /* TODO: check this! */
+                if (tt&TT_RWM) {  /* r/w field disabled */
+                    return TT_OK_MATCH;
+                }
             }
 		}
 	}
