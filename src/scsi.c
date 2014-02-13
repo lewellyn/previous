@@ -537,7 +537,7 @@ void scsi_write_sector(void) {
         n = 0;
 	} else {
 #if 0
-        n = fwrite(scsi_buffer.data, BLOCKSIZE, 1, SCSIdisk.dsk);
+        n = fwrite(scsi_buffer.data, BLOCKSIZE, 1, SCSIdisk[target].dsk);
 #else
         n=1;
         Log_Printf(LOG_SCSI_LEVEL, "[SCSI] WARNING: File write disabled!");

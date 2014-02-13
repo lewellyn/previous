@@ -1764,7 +1764,7 @@ int mmu030_logical_is_in_atc(uaecptr addr, uae_u32 fc, bool write) {
             mmu030.atc[index].logical.valid) {
             /* If M bit is set or access is read, return true
              * else invalidate entry */
-				if (mmu030.atc[index].physical.modified || !write) {
+				if (mmu030.atc[index].physical.bus_error || mmu030.atc[index].physical.modified || !write) {
 					/* Maintain history bit */
 					mmu030_atc_handle_history_bit(index);
 					atcindextable[offset] = index;
