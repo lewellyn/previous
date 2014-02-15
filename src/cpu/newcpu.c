@@ -1406,6 +1406,11 @@ static void Exception_mmu030 (int nr, uaecptr oldpc)
     newpc = x_get_long (regs.vbr + 4 * nr);
 
 	if (regs.m && nr >= 24 && nr < 32) { /* M + Interrupt */
+        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x0);
+        MakeSR(); /* this sets supervisor bit in status reg */
+        regs.m = 0; /* clear the M bit (but frame 0x1 uses sr with M bit set) */
+        regs.msp = m68k_areg (regs, 7);
+        m68k_areg (regs, 7) = regs.isp;
         Exception_build_stack_frame (oldpc, currpc, regs.mmu_ssw, nr, 0x1);
     } else if (nr ==5 || nr == 6 || nr == 7 || nr == 9 || nr == 56) {
         Exception_build_stack_frame (oldpc, currpc, regs.mmu_ssw, nr, 0x2);
@@ -1473,7 +1478,12 @@ static void Exception_mmu (int nr, uaecptr oldpc)
 	} else if (nr == 5 || nr == 6 || nr == 7 || nr == 9) {
         Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x2);
 	} else if (regs.m && nr >= 24 && nr < 32) { /* M + Interrupt */
-        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x1);
+        Exception_build_stack_frame(oldpc, currpc, regs.mmu_ssw, nr, 0x0);
+        MakeSR(); /* this sets supervisor bit in status reg */
+        regs.m = 0; /* clear the M bit (but frame 0x1 uses sr with M bit set) */
+        regs.msp = m68k_areg (regs, 7);
+        m68k_areg (regs, 7) = regs.isp;
+        Exception_build_stack_frame (oldpc, currpc, regs.mmu_ssw, nr, 0x1);
 	} else if (nr == 61) {
         Exception_build_stack_frame(oldpc, regs.instruction_pc, regs.mmu_ssw, nr, 0x0);
 	} else {
