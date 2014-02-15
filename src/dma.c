@@ -560,7 +560,7 @@ void dma_esp_read_memory(void) {
         if (espdma_buf_size>0) {
             Log_Printf(LOG_WARN, "[DMA] Channel SCSI: %i residual bytes in DMA buffer.", espdma_buf_size);
             while (espdma_buf_size>0) {
-                SCSIdisk_Receive_Data(modma_buf[espdma_buf_limit-espdma_buf_size]);
+                SCSIdisk_Receive_Data(espdma_buf[espdma_buf_limit-espdma_buf_size]);
                 esp_counter--;
                 espdma_buf_size--;
             }
@@ -577,7 +577,7 @@ void dma_esp_read_memory(void) {
             }
             espdma_buf_limit=espdma_buf_size;
             while (espdma_buf_size>0 && esp_counter>0 && SCSIbus.phase==PHASE_DO) {
-                SCSIdisk_Receive_Data(modma_buf[espdma_buf_limit-espdma_buf_size]);
+                SCSIdisk_Receive_Data(espdma_buf[espdma_buf_limit-espdma_buf_size]);
                 esp_counter--;
                 espdma_buf_size--;
             }
@@ -592,7 +592,7 @@ void dma_esp_read_memory(void) {
             }
             /* Empty DMA internal buffer */
             while (espdma_buf_size>0 && esp_counter>0 && SCSIbus.phase==PHASE_DO) {
-                SCSIdisk_Receive_Data(modma_buf[DMA_BURST_SIZE-espdma_buf_size]);
+                SCSIdisk_Receive_Data(espdma_buf[DMA_BURST_SIZE-espdma_buf_size]);
                 esp_counter--;
                 espdma_buf_size--;
             }

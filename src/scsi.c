@@ -520,6 +520,8 @@ void SCSI_WriteSector(Uint8 *cdb) {
     SCSIdisk[target].lba = SCSI_GetOffset(cdb[0], cdb);
     SCSIdisk[target].blockcounter = SCSI_GetCount(cdb[0], cdb);
     scsi_buffer.disk=true;
+    scsi_buffer.size=0;
+    scsi_buffer.limit=BLOCKSIZE;
     SCSIbus.phase = PHASE_DO;
     Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Write sector: %i block(s) at offset %i (blocksize: %i byte)",
                SCSIdisk[target].blockcounter, SCSIdisk[target].lba, BLOCKSIZE);
