@@ -651,6 +651,20 @@ STATIC_INLINE int put_fp_value (fptype value, uae_u32 opcode, uae_u16 extra)
 		case 6:
 			x_put_byte (ad, (uae_s8)toint (value, -128.0, 127.0));
 			break;
+        case 7:
+        {
+            uae_u32 wrd1, wrd2, wrd3;
+            uae_u8 k_factor=m68k_dreg (regs,(extra >> 4) & 7);
+            write_log("FPU: [FIXME] from_pack with variable k-factor (%i)",k_factor);
+            from_pack (value, &wrd1, &wrd2, &wrd3);
+            x_put_long (ad, wrd1);
+            ad += 4;
+            x_put_long (ad, wrd2);
+            ad += 4;
+            x_put_long (ad, wrd3);
+        }
+            break;
+            
 		default:
 			return 0;
 	}

@@ -609,8 +609,10 @@ void dma_esp_read_memory(void) {
         Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Residual bytes in DMA buffer: %i bytes",espdma_buf_size);
     }
     if (SCSIbus.phase==PHASE_DO) {
-        Log_Printf(LOG_WARN, "[DMA] Channel SCSI: Warning! Data not yet written to disk.");
-        abort(); /* This should not happen */
+        Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCSI: Warning! Data not yet written to disk.");
+        if (espdma_buf_size!=0) {
+            Log_Printf(LOG_WARN, "[DMA] Channel SCSI: WARNING: Loss of data in DMA buffer possible!");
+        }
     }
     
     dma_interrupt(CHANNEL_SCSI);
