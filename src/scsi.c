@@ -387,7 +387,7 @@ int SCSI_GetCount(Uint8 opcode, Uint8 *cdb)
 {
 	return opcode < 0x20?
     // class 0
-    cdb[4] :
+    ((cdb[4]==0)?0x100:cdb[4]) :
     // class 1
     COMMAND_ReadInt16(cdb, 7);
 }
@@ -519,6 +519,15 @@ void SCSI_WriteSector(Uint8 *cdb) {
     
     SCSIdisk[target].lba = SCSI_GetOffset(cdb[0], cdb);
     SCSIdisk[target].blockcounter = SCSI_GetCount(cdb[0], cdb);
+    
+    if (SCSIdisk[target].cdrom) {
+        Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Write sector: Disk is write protected! Check condition.");
+        SCSIdisk[target].status = STAT_CHECK_COND;
+        SCSIdisk[target].sense.code = SC_WRITE_PROTECT;
+        SCSIdisk[target].sense.valid = false;
+        SCSIbus.phase = PHASE_ST;
+        return;
+    }
     scsi_buffer.disk=true;
     scsi_buffer.size=0;
     scsi_buffer.limit=BLOCKSIZE;

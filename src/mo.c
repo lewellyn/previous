@@ -1446,6 +1446,19 @@ bool mo_drive_empty(void) {
     }
 }
 
+bool mo_protected(void) {
+    if (modrv[dnum].protected) {
+        if (modrv[dnum].head==ERASE_HEAD || modrv[dnum].head==WRITE_HEAD) {
+            Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Drive %i: Disk is write protected!\n", dnum);
+            modrv[dnum].dstat|=DS_WP;
+            modrv[dnum].head=NO_HEAD;
+            mo_set_signals(true, true, CMD_DELAY);
+            return true;
+        }
+    }
+    return false;
+}
+
 void mo_seek(Uint16 command) {
     if (mo_drive_empty()) {
         return;
@@ -1508,6 +1521,10 @@ void mo_jump_head(Uint16 command) {
                (command&0xF0)==RJ_WRITE?"write":
                (command&0xF0)==RJ_ERASE?"erase":"unknown");
     
+    if (mo_protected()) {
+        return;
+    }
+
     mo_set_signals(true, false, CMD_DELAY);
 }
 
@@ -1552,6 +1569,9 @@ void mo_select_head(int head) {
         return;
     }
     modrv[dnum].head = head;
+    if (mo_protected()) {
+        return;
+    }
     mo_set_signals(true, false, CMD_DELAY);
 }
 
