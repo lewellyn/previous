@@ -392,15 +392,48 @@ int SCSI_GetCount(Uint8 opcode, Uint8 *cdb)
     COMMAND_ReadInt16(cdb, 7);
 }
 
+void SCSI_GuessGeometry(Uint32 size, Uint32 *cylinders, Uint32 *heads, Uint32 *sectors)
+{
+    Uint32 c,h,s;
+    
+    for (h=16; h>0; h--) {
+        for (s=63; s>15; s--) {
+            if ((size%(s*h))==0) {
+                c=size/(s*h);
+                *cylinders=c;
+                *heads=h;
+                *sectors=s;
+                return;
+            }
+        }
+    }
+    Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Disk geometry: No valid geometry found! Using default.");
+    
+    h=16;
+    s=63;
+    c=size/(s*h);
+    if ((size%(s*h))!=0) {
+        c+=1;
+    }
+    *cylinders=c;
+    *heads=h;
+    *sectors=s;
+}
+
 MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
     Uint8 target = SCSIbus.target;
     
     MODEPAGE page;
-    Uint32 sectors;
-    Uint32 cylinders;
-    Uint8 heads;
     
     switch (pagecode) {
+        case 0x00: // operating page
+            page.pagesize = 4;
+            page.modepage[0] = 0x00; // &0x80: page savable? (not supported!), &0x7F: page code = 0x00
+            page.modepage[1] = 0x02; // page length = 2
+            page.modepage[2] = 0x80; // &0x80: usage bit = 1, &0x10: disable unit attention = 0
+            page.modepage[3] = 0x00; // &0x7F: device type qualifier = 0x00, see inquiry!
+            break;
+
         case 0x01: // error recovery page
             page.pagesize = 8;
             page.modepage[0] = 0x01; // &0x80: page savable? (not supported!), &0x7F: page code = 0x01
@@ -413,23 +446,23 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
             page.modepage[7] = 0xFF; // recovery time limit
             break;
             
-        case 0x02: // disconnect/reconnect page
         case 0x03: // format device page
             page.pagesize = 0;
             Log_Printf(LOG_WARN, "[SCSI] Mode Sense: Page %02x not yet emulated!\n", pagecode);
+            //abort();
             break;
 
         case 0x04: // rigid disc geometry page
-            sectors = SCSIdisk[target].size/BLOCKSIZE;
-            heads = 16; // max heads per cylinder: 16
-            cylinders = sectors / (63 * heads); // max sectors per track: 63
-            if ((sectors % (63 * heads)) != 0) {
-                cylinders += 1;
-            }
+        {
+            Uint32 num_sectors = SCSIdisk[target].size/BLOCKSIZE;
+            
+            Uint32 cylinders, heads, sectors;
+
+            SCSI_GuessGeometry(num_sectors, &cylinders, &heads, &sectors);
+            
             Log_Printf(LOG_SCSI_LEVEL, "[SCSI] Disk geometry: %i sectors, %i cylinders, %i heads\n", sectors, cylinders, heads);
             
-            page.pagesize = 0; //20;
-            Log_Printf(LOG_WARN, "[SCSI] Disk geometry page disabled!\n"); abort();
+            page.pagesize = 20;
             page.modepage[0] = 0x04; // &0x80: page savable? (not supported!), &0x7F: page code = 0x04
             page.modepage[1] = 0x12;
             page.modepage[2] = (cylinders >> 16) & 0xFF;
@@ -450,8 +483,10 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
             page.modepage[17] = 0x00; // &0x03: rotational position locking
             page.modepage[18] = 0x00; // rotational position lock offset
             page.modepage[19] = 0x00; // reserved
+        }
             break;
             
+        case 0x02: // disconnect/reconnect page
         case 0x08: // caching page
         case 0x0C: // notch page
         case 0x0D: // power condition page
@@ -459,14 +494,7 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
         case 0x3C: // soft ID page (EEPROM)
             page.pagesize = 0;
             Log_Printf(LOG_WARN, "[SCSI] Mode Sense: Page %02x not yet emulated!\n", pagecode);
-            break;
-            
-        case 0x00: // operating page
-            page.pagesize = 4;
-            page.modepage[0] = 0x00; // &0x80: page savable? (not supported!), &0x7F: page code = 0x00
-            page.modepage[1] = 0x02; // page length = 2
-            page.modepage[2] = 0x80; // &0x80: usage bit = 1, &0x10: disable unit attention = 0
-            page.modepage[3] = 0x00; // &0x7F: device type qualifier = 0x00, see inquiry!
+            abort();
             break;
             
         default:
