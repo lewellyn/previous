@@ -274,6 +274,7 @@ const INTERCEPT_ACCESS_FUNC IoMemTable_NEXT[] =
     { 0x02004044, SIZE_LONG, DMA_Limit_Read, DMA_Limit_Write },
     { 0x02004048, SIZE_LONG, DMA_Start_Read, DMA_Start_Write },
     { 0x0200404c, SIZE_LONG, DMA_Stop_Read, DMA_Stop_Write },
+    { 0x02004240, SIZE_LONG, DMA_Init_Read, DMA_Init_Write },
 
     /* Channel MO Drive */
     { 0x02004050, SIZE_LONG, DMA_Next_Read, DMA_Next_Write },

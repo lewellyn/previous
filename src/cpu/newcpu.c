@@ -1315,9 +1315,17 @@ static void Exception_build_stack_frame (uae_u32 oldpc, uae_u32 currpc, uae_u32 
 				x_put_long (m68k_areg (regs, 7), mmu030_ad[i].val);
 			}
 			while (i < 9) {
+                uae_u32 v = 0;
 				m68k_areg (regs, 7) -= 4;
-				x_put_long (m68k_areg (regs, 7), 0);
-				i++;
+                // mmu030_idx is always small enough instruction is FMOVEM.
+                if (mmu030_state[1] & MMU030_STATEFLAG1_FMOVEM) {
+                    if (i == 7)
+                        v = mmu030_fmovem_store[0];
+                    else if (i == 8)
+                        v = mmu030_fmovem_store[1];
+                }
+                x_put_long (m68k_areg (regs, 7), v);
+                i++;
 			}
 			 // version & internal information (We store index here)
 			m68k_areg (regs, 7) -= 2;
@@ -1650,6 +1658,7 @@ static void Exception_normal (int nr, uaecptr oldpc, int ExceptionSource)
 			x_put_word (m68k_areg (regs, 7), regs.sr);
 			regs.sr |= (1 << 13);
 			regs.msp = m68k_areg (regs, 7);
+            regs.m = 0;
 			m68k_areg (regs, 7) = regs.isp;
 			m68k_areg (regs, 7) -= 2;
 			x_put_word (m68k_areg (regs, 7), 0x1000 + nr * 4);
