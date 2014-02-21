@@ -151,7 +151,6 @@ void dump_counts (void)
 
 
 uae_u32 (*x_prefetch)(int);
-uae_u32 (*x_prefetch_long)(int);
 uae_u32 (*x_next_iword)(void);
 uae_u32 (*x_next_ilong)(void);
 uae_u32 (*x_get_ilong)(int);
@@ -180,7 +179,6 @@ static void set_x_funcs (void)
 	if (currprefs.mmu_model) {
 		if (currprefs.cpu_model == 68060) {
 			x_prefetch = get_iword_mmu060;
-			x_prefetch_long = get_ilong_mmu060;
 			x_get_ilong = get_ilong_mmu060;
 			x_get_iword = get_iword_mmu060;
 			x_get_ibyte = get_ibyte_mmu060;
@@ -194,7 +192,6 @@ static void set_x_funcs (void)
 			x_get_byte = get_byte_mmu060;
 		} else if (currprefs.cpu_model == 68040) {
 			x_prefetch = get_iword_mmu040;
-			x_prefetch_long = get_ilong_mmu040;
 			x_get_ilong = get_ilong_mmu040;
 			x_get_iword = get_iword_mmu040;
 			x_get_ibyte = get_ibyte_mmu040;
@@ -208,7 +205,6 @@ static void set_x_funcs (void)
 			x_get_byte = get_byte_mmu040;
 		} else {
 			x_prefetch = get_iword_mmu030;
-			x_prefetch_long = get_ilong_mmu030;
 			x_get_ilong = get_ilong_mmu030;
 			x_get_iword = get_iword_mmu030;
 			x_get_ibyte = get_ibyte_mmu030;
@@ -3239,6 +3235,10 @@ void m68k_dumpstate (FILE *f, uaecptr *nextpc)
 			(fpsr & 0x1000000) != 0);
 	}
 #endif
+    if (currprefs.mmu_model == 68030) {
+        f_out (f, "SRP: %llX CRP: %llX\n", srp_030, crp_030);
+        f_out (f, "TT0: %08X TT1: %08X TC: %08X\n", tt0_030, tt1_030, tc_030);
+    }
 	if (currprefs.cpu_compatible && currprefs.cpu_model == 68000) {
 		struct instr *dp;
 		struct mnemolookup *lookup1, *lookup2;
