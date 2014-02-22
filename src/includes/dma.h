@@ -38,6 +38,8 @@ void dma_m2m_write_memory(void);
 
 void dma_scc_read_memory(void);
 
+void dma_sndout_read_memory(void);
+
 /* DMA interrupt handlers */
 void M2RDMA_InterruptHandler(void);
 void R2MDMA_InterruptHandler(void);

@@ -212,6 +212,7 @@ void KMS_command(Uint8 command, Uint32 data) {
 
                 if (command&SIO_ENABLE) {
                     Log_Printf(LOG_KMS_LEVEL, "[KMS] Sound out enable.");
+                    dma_sndout_read_memory(); /* TODO: Add real periodic IO loop here */
                 } else {
                     Log_Printf(LOG_KMS_LEVEL, "[KMS] Sound out disable.");
                 }

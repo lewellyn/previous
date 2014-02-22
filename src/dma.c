@@ -938,7 +938,7 @@ void Video_InterruptHandler(void) {
 }
 
 
-/* FIXME: This is just for passing power-on test. Add real SCC channel later. */
+/* FIXME: This is just for passing power-on test. Add real SCC and Sound channels later. */
 
 void dma_scc_read_memory(void) {
     Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel SCC: Read from memory at $%08x, %i bytes",
@@ -949,4 +949,15 @@ void dma_scc_read_memory(void) {
     }
     
     dma_interrupt(CHANNEL_SCC);
+}
+
+void dma_sndout_read_memory(void) {
+    Log_Printf(LOG_DMA_LEVEL, "[DMA] Channel Sound out: Read from memory at $%08x, %i bytes",
+               dma[CHANNEL_SOUNDOUT].next,dma[CHANNEL_SOUNDOUT].limit-dma[CHANNEL_SOUNDOUT].next);
+    while (dma[CHANNEL_SOUNDOUT].next<dma[CHANNEL_SOUNDOUT].limit) {
+        NEXTMemory_ReadByte(dma[CHANNEL_SOUNDOUT].next); /* for now just discard data */
+        dma[CHANNEL_SOUNDOUT].next++;
+    }
+    
+    dma_interrupt(CHANNEL_SOUNDOUT);
 }
