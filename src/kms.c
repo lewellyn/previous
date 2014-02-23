@@ -412,3 +412,54 @@ void kms_keyup(Uint8 modkeys, Uint8 keycode) {
     kms.status.km |= (KBD_RECEIVED|KBD_INT);
     set_interrupt(INT_KEYMOUSE, SET_INT);
 }
+
+bool m_right = false;
+bool m_left = false;
+
+void kms_mouse_button(bool left, bool down) {
+    if (left) {
+        m_left = down;
+    } else {
+        m_right = down;
+    }
+    
+    kms.km_data = (km_address<<25)&DEVICE_ADDR_MSK;
+    kms.km_data |= DEVICE_MOUSE;
+    
+    kms.km_data |= m_left?0:MOUSE_LEFT_UP;
+    kms.km_data |= m_right?0:MOUSE_RIGHT_UP;
+    
+    if (kms.status.km &KBD_RECEIVED) {
+        kms.status.km |= KBD_OVERRUN;
+    }
+    kms.status.km |= (KBD_RECEIVED|KBD_INT);
+    set_interrupt(INT_KEYMOUSE, SET_INT);
+}
+
+void kms_mouse_move(int x, bool left, int y, bool up) {
+    
+    if (left) { /* left */
+        x=x&0x3F;
+    } else {    /* right */
+        x=(0x3F-(x&0x3F))|0x40;
+    }
+    if (up) {   /* up */
+        y=y&0x3F;
+    } else {    /* down */
+        y=(0x3F-(y&0x3F))|0x40;
+    }
+        
+    kms.km_data = (km_address<<25)&DEVICE_ADDR_MSK;
+    kms.km_data |= DEVICE_MOUSE;
+    kms.km_data |= (x<<1)&MOUSE_X;
+    kms.km_data |= (y<<9)&MOUSE_Y;
+    
+    kms.km_data |= m_left?0:MOUSE_LEFT_UP;
+    kms.km_data |= m_right?0:MOUSE_RIGHT_UP;
+    
+    if (kms.status.km &KBD_RECEIVED) {
+        kms.status.km |= KBD_OVERRUN;
+    }
+    kms.status.km |= (KBD_RECEIVED|KBD_INT);
+    set_interrupt(INT_KEYMOUSE, SET_INT);
+}
