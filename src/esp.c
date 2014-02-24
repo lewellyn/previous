@@ -175,11 +175,17 @@ void ESP_DMA_CTRL_Write(void) {
     }
     if (esp_dma.control&ESPCTRL_MODE_DMA) {
         Log_Printf(LOG_ESPDMA_LEVEL, "mode DMA\n");
-    }else{
+    } else {
         Log_Printf(LOG_ESPDMA_LEVEL, "mode PIO\n");
     }
     if (esp_dma.control&ESPCTRL_ENABLE_INT) {
-        Log_Printf(LOG_ESPDMA_LEVEL, "enable ESP interrupt");
+        Log_Printf(LOG_ESPDMA_LEVEL, "Enable ESP interrupt");
+        if (status&STAT_INT) {
+            set_interrupt(INT_SCSI, SET_INT);
+        }
+    } else {
+        Log_Printf(LOG_ESPDMA_LEVEL, "Block ESP interrupt");
+        set_interrupt(INT_SCSI, RELEASE_INT);
     }
     switch (esp_dma.control&ESPCTRL_CLKMASK) {
         case ESPCTRL_CLK10MHz:

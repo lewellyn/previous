@@ -438,17 +438,20 @@ void kms_mouse_button(bool left, bool down) {
 
 void kms_mouse_move(int x, bool left, int y, bool up) {
     
-    if (left) { /* left */
-        x=x&0x3F;
-    } else {    /* right */
-        x=(0x3F-(x&0x3F))|0x40;
+    if (x<0 || y<0) {
+        abort();
     }
-    if (up) {   /* up */
-        y=y&0x3F;
-    } else {    /* down */
-        y=(0x3F-(y&0x3F))|0x40;
-    }
-        
+    
+    if (x>0x3F)
+        x=0x3F;
+    if (y>0x3F)
+        y=0x3F;
+
+    if (!left)  /* right */
+        x=(0x3F-x)|0x40;
+    if (!up)    /* down */
+        y=(0x3F-y)|0x40;
+
     kms.km_data = (km_address<<25)&DEVICE_ADDR_MSK;
     kms.km_data |= DEVICE_MOUSE;
     kms.km_data |= (x<<1)&MOUSE_X;
