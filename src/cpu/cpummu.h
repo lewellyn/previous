@@ -189,6 +189,9 @@ extern uae_u32 mmu_is_super;
 extern uae_u32 mmu_tagmask, mmu_pagemask;
 extern struct mmu_atc_line mmu_atc_array[ATC_TYPE][ATC_WAYS][ATC_SLOTS];
 
+/* Last matched ATC index, next lookup starts from this index as an optimization */
+extern int mmu_atc_ways;
+
 /*
  * mmu access is a 4 step process:
  * if mmu is not enabled just read physical
@@ -199,7 +202,7 @@ extern struct mmu_atc_line mmu_atc_array[ATC_TYPE][ATC_WAYS][ATC_SLOTS];
 static ALWAYS_INLINE bool mmu_lookup(uaecptr addr, bool data, bool write,
 									  struct mmu_atc_line **cl)
 {
-	int way,index;
+	int way, i, index;
 	static int way_miss=0;
 
 	uae_u32 tag = (mmu_is_super | (addr >> 1)) & mmu_tagmask;
@@ -207,7 +210,8 @@ static ALWAYS_INLINE bool mmu_lookup(uaecptr addr, bool data, bool write,
 		index=(addr & 0x0001E000)>>13;
 	else
 		index=(addr & 0x0000F000)>>12;
-	for (way=0;way<ATC_WAYS;way++) {
+	for (i = 0; i < ATC_WAYS; i++) {
+		way = mmu_atc_ways;
 		// if we have this 
 		if ((tag == mmu_atc_array[data][way][index].tag) && (mmu_atc_array[data][way][index].valid)) {
 			*cl=&mmu_atc_array[data][way][index];
@@ -216,6 +220,8 @@ static ALWAYS_INLINE bool mmu_lookup(uaecptr addr, bool data, bool write,
 				return false; 
 			return true;
 		}
+		mmu_atc_ways++;
+		mmu_atc_ways %= ATC_WAYS;
 	}
 	// we select a random way to void
 	*cl=&mmu_atc_array[data][way_miss%ATC_WAYS][index];
@@ -229,7 +235,7 @@ static ALWAYS_INLINE bool mmu_lookup(uaecptr addr, bool data, bool write,
 static ALWAYS_INLINE bool mmu_user_lookup(uaecptr addr, bool super, bool data,
 										   bool write, struct mmu_atc_line **cl)
 {
-	int way,index;
+	int way, i, index;
 	static int way_miss=0;
 
 	uae_u32 tag = ((super ? 0x80000000 : 0x00000000) | (addr >> 1)) & mmu_tagmask;
@@ -237,7 +243,8 @@ static ALWAYS_INLINE bool mmu_user_lookup(uaecptr addr, bool super, bool data,
 		index=(addr & 0x0001E000)>>13;
 	else
 		index=(addr & 0x0000F000)>>12;
-	for (way=0;way<ATC_WAYS;way++) {
+	for (i = 0; i < ATC_WAYS; i++) {
+		way = mmu_atc_ways;
 		// if we have this 
 		if ((tag == mmu_atc_array[data][way][index].tag) && (mmu_atc_array[data][way][index].valid)) {
 			*cl=&mmu_atc_array[data][way][index];
@@ -246,6 +253,8 @@ static ALWAYS_INLINE bool mmu_user_lookup(uaecptr addr, bool super, bool data,
 				return false; 
 			return true;
 		}
+		mmu_atc_ways++;
+		mmu_atc_ways %= ATC_WAYS;
 	}
 	// we select a random way to void
 	*cl=&mmu_atc_array[data][way_miss%ATC_WAYS][index];
@@ -336,6 +345,7 @@ extern void mmu_make_transparent_region(uaecptr baseaddr, uae_u32 size, int data
 #define FC_INST		(regs.s ? 6 : 2)
 
 extern uaecptr REGPARAM3 mmu_translate(uaecptr addr, bool super, bool data, bool write) REGPARAM;
+extern void mmu_bus_error(uaecptr addr, int fc, bool write, int size, bool rmw, uae_u32 status);
 
 extern uae_u32 REGPARAM3 sfc_get_long(uaecptr addr) REGPARAM;
 extern uae_u16 REGPARAM3 sfc_get_word(uaecptr addr) REGPARAM;
@@ -760,11 +770,11 @@ STATIC_INLINE uae_u32 get_long_mmu060 (uaecptr addr)
 
 STATIC_INLINE void get_move16_mmu (uaecptr addr, uae_u32 *v)
 {
-    return uae_mmu_get_move16 (addr, v);
+    uae_mmu_get_move16 (addr, v);
 }
 STATIC_INLINE void put_move16_mmu (uaecptr addr, uae_u32 *v)
 {
-    return uae_mmu_put_move16 (addr, v);
+    uae_mmu_put_move16 (addr, v);
 }
 
 // locked rmw 060
@@ -908,5 +918,5 @@ extern void flush_mmu060 (uaecptr, int);
 extern void m68k_do_rts_mmu060 (void);
 extern void m68k_do_rte_mmu060 (uaecptr a7);
 extern void m68k_do_bsr_mmu060 (uaecptr oldpc, uae_s32 offset);
-extern void mmu_bus_error(uaecptr addr, int fc, bool write, int size, bool rmw, uae_u32 status);
+
 #endif /* CPUMMU_H */
