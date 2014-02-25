@@ -55,7 +55,7 @@ bool mmu_restart;
 static bool locked_rmw_cycle;
 static bool ismoves;
 bool mmu_ttr_enabled;
-int mmu_atc_ways;
+int mmu_atc_ways=0;
 
 int mmu040_movem;
 uaecptr mmu040_movem_ea;
@@ -241,10 +241,10 @@ void mmu_dump_atc(void)
 void mmu_dump_tables(void)
 {
 	write_log(_T("URP: %08x   SRP: %08x  MMUSR: %x  TC: %x\n"), regs.urp, regs.srp, regs.mmusr, regs.tcr);
-	mmu_dump_ttr(L"DTT0", regs.dtt0);
-	mmu_dump_ttr(L"DTT1", regs.dtt1);
-	mmu_dump_ttr(L"ITT0", regs.itt0);
-	mmu_dump_ttr(L"ITT1", regs.itt1);
+	mmu_dump_ttr(_T("DTT0"), regs.dtt0);
+	mmu_dump_ttr(_T("DTT1"), regs.dtt1);
+	mmu_dump_ttr(_T("ITT0"), regs.itt0);
+	mmu_dump_ttr(_T("ITT1"), regs.itt1);
 	mmu_dump_atc();
 #if MMUDEBUG
 	// mmu_dump_table("SRP", regs.srp);

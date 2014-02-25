@@ -346,7 +346,7 @@ void SCSI_Emulate_Command(Uint8 *cdb) {
     SCSIdisk[target].message = MSG_COMPLETE;
     
     /* Update the led each time a command is processed */
-	Statusbar_EnableHDLed();
+	Statusbar_BlinkLed(DEVICE_LED_SCSI);
 }
 
 

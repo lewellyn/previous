@@ -28,6 +28,7 @@
 #include "dma.h"
 #include "file.h"
 #include "rs.h"
+#include "statusbar.h"
 
 #define REAL_ECC    1
 
@@ -1432,6 +1433,7 @@ void mo_drive_cmd(void) {
                 break;
         }
     }
+    Statusbar_BlinkLed(DEVICE_LED_ODFD);
 }
 
 

@@ -331,7 +331,7 @@ void SCR2_Write3(void)
 	if ((old_scr2_3&SCR2_LED)!=(scr2_3&SCR2_LED)) {
 		Log_Printf(LOG_WARN,"SCR2 LED change at $%08x val=%x PC=$%08x\n",
                    IoAccessCurrentAddress,scr2_3&SCR2_LED,m68k_getpc());
-        Statusbar_SetSCR2Led(scr2_3&SCR2_LED);
+        Statusbar_SetSystemLed(scr2_3&SCR2_LED);
     }
 }
 
