@@ -40,7 +40,9 @@ void dma_scc_read_memory(void);
 
 void dma_sndout_read_memory(void);
 
-/* DMA interrupt handlers */
+/* Delayed DMA interrupt handlers */
 void M2RDMA_InterruptHandler(void);
 void R2MDMA_InterruptHandler(void);
-void Video_InterruptHandler(void);
+
+/* Function for video interrupt */
+void dma_video_interrupt(void);

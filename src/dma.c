@@ -928,8 +928,8 @@ void dma_m2m_write_memory(void) {
  */
 
 
-/* Interrupt Handler (called from Video_InterruptHandler_VBL in video.c) */
-void Video_InterruptHandler(void) {
+/* Interrupt Handler (called from Video_InterruptHandler in video.c) */
+void dma_video_interrupt(void) {
     if (dma[CHANNEL_VIDEO].limit==0xEA) {
         set_interrupt(INT_VIDEO, SET_INT); /* interrupt is released by writing to CSR */
     } else if (dma[CHANNEL_VIDEO].limit && dma[CHANNEL_VIDEO].limit!=0xEA) {
