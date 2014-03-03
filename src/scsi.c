@@ -9,7 +9,7 @@
 #include "scsi.h"
 #include "file.h"
 
-#define LOG_SCSI_LEVEL  LOG_WARN    /* Print debugging messages */
+#define LOG_SCSI_LEVEL  LOG_DEBUG    /* Print debugging messages */
 
 
 #define COMMAND_ReadInt16(a, i) (((unsigned) a[i] << 8) | a[i + 1])
@@ -160,7 +160,7 @@ void SCSI_Init(void) {
     for (target = 0; target < ESP_MAX_DEVS; target++) {
         if (File_Exists(ConfigureParams.SCSI.target[target].szImageName) && ConfigureParams.SCSI.target[target].bAttached) {
             SCSIdisk[target].size = File_Length(ConfigureParams.SCSI.target[target].szImageName);
-            SCSIdisk[target].dsk = ConfigureParams.SCSI.target[target].bCDROM == true ? File_Open(ConfigureParams.SCSI.target[target].szImageName, "r") : File_Open(ConfigureParams.SCSI.target[target].szImageName, "r+");
+            SCSIdisk[target].dsk = ConfigureParams.SCSI.target[target].bCDROM == true ? File_Open(ConfigureParams.SCSI.target[target].szImageName, "rb") : File_Open(ConfigureParams.SCSI.target[target].szImageName, "rb+");
         } else {
             SCSIdisk[target].size = 0;
             SCSIdisk[target].dsk = NULL;

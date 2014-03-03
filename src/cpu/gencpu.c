@@ -1851,10 +1851,11 @@ static void movem_mmu060 (const char *code, int size, bool put, bool aipi, bool 
 	}
 
 	if (!put) {
+		int i;
 		printf("\tuae_u32 tmp[16];\n");
 		printf("\tint tmpreg[16];\n");
 		printf("\tint idx = 0;\n");
-		for (int i = 0; i < 2; i++) {
+		for (i = 0; i < 2; i++) {
 			char reg;
 			if (i == dphase)
 				reg = 'd';
@@ -1876,7 +1877,8 @@ static void movem_mmu060 (const char *code, int size, bool put, bool aipi, bool 
 		printf ("\t\tregs.regs[tmpreg[idx]] = tmp[idx];\n");
 		printf ("\t}\n");
 	} else {
-		for (int i = 0; i < 2; i++) {
+		int i;
+		for (i = 0; i < 2; i++) {
 			char reg;
 			if (i == dphase)
 				reg = 'd';
@@ -1912,6 +1914,7 @@ static void movem_mmu040 (const char *code, int size, bool put, bool aipi, bool 
 {
 	char *index;
 	int dphase, aphase;
+	int i;
 	bool mvm = false;
 
 	if (apdi) {
@@ -1926,7 +1929,7 @@ static void movem_mmu040 (const char *code, int size, bool put, bool aipi, bool 
 	printf ("\tmmu040_movem_ea = srca;\n");
 	mvm = true;
 
-	for (int i = 0; i < 2; i++) {
+	for (i = 0; i < 2; i++) {
 		char reg;
 		if (i == dphase)
 			reg = 'd';
@@ -1956,6 +1959,7 @@ static void movem_mmu040 (const char *code, int size, bool put, bool aipi, bool 
 static void movem_mmu030 (const char *code, int size, bool put, bool aipi, bool apdi)
 {
 	char *index;
+	int i;
 	int dphase, aphase;
 	if (apdi) {
 		dphase = 1; aphase = 0;
@@ -1973,7 +1977,7 @@ static void movem_mmu030 (const char *code, int size, bool put, bool aipi, bool 
 		printf ("\telse\n");
 		printf ("\t\tmmu030_ad[mmu030_idx].val = srca;\n");
 	}
-	for (int i = 0; i < 2; i++) {
+	for (i = 0; i < 2; i++) {
 		char reg;
 		if (i == dphase)
 			reg = 'd';
@@ -2444,6 +2448,7 @@ static const char *cmask (wordsizes size)
 	case sz_long: return "0x80000000";
 	default: term ();
 	}
+	return "";
 }
 
 static int source_is_imm1_8 (struct instr *i)

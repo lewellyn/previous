@@ -12,7 +12,7 @@
 #include "scsi.h"
 
 #define LOG_ESPDMA_LEVEL    LOG_DEBUG   /* Print debugging messages for ESP DMA registers */
-#define LOG_ESPCMD_LEVEL    LOG_WARN    /* Print debugging messages for ESP commands */
+#define LOG_ESPCMD_LEVEL    LOG_DEBUG   /* Print debugging messages for ESP commands */
 #define LOG_ESPREG_LEVEL    LOG_DEBUG   /* Print debugging messages for ESP registers */
 #define LOG_ESPFIFO_LEVEL   LOG_DEBUG   /* Print debugging messages for ESP FIFO */
 

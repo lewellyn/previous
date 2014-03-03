@@ -128,11 +128,11 @@ static void fpset (fptype *fpd, fptype f)
 
 static __inline__ void native_set_fpucw (uae_u32 m68k_cw)
 {
-#ifdef _WIN32
+#ifdef _MSC_VER
 	static int ex = 0;
-	// RN, RZ, RM, RP
+	/* RN, RZ, RM, RP */
 	static unsigned int fp87_round[4] = { _RC_NEAR, _RC_CHOP, _RC_DOWN, _RC_UP };
-	// Extend X, Single S, Double D, Undefined
+	/* Extend X, Single S, Double D, Undefined */
 	static unsigned int fp87_prec[4] = { _PC_64 , _PC_24 , _PC_53, 0 };
 	
 #if 0
