@@ -961,22 +961,18 @@ const char* memory_init(int *nNewNEXTMemSize)
         write_log("Mapping Bank%i at $%08x: %iMB\n", i, bankstart, MemBank_Size[i]/(1024*1024));
     }
     
-//    map_banks(&NEXTmem_bank, NEXT_RAM_START>>16, NEXT_RAM_SIZE >> 16);
-
-//    map_banks(&NEXTmem_bank, 0x04000000>>16, MemBank_Size[0] >> 16);
-//    map_banks(&NEXTmem_bank, 0x04800000>>16, MemBank_Size[1] >> 16);
-//    map_banks(&NEXTmem_bank, 0x05000000>>16, MemBank_Size[2] >> 16);
-//    map_banks(&NEXTmem_bank, 0x05800000>>16, MemBank_Size[3] >> 16);
+    /* Dummy: Memory Write Functions for all monochrome non-turbo systems */
+    if (!ConfigureParams.System.bColor && !ConfigureParams.System.bTurbo) {
+        map_banks(&NEXTmem_bank, 0x10000000>>16, NEXT_RAM_SIZE >> 16);
+        map_banks(&NEXTmem_bank, 0x14000000>>16, NEXT_RAM_SIZE >> 16);
+        map_banks(&NEXTmem_bank, 0x18000000>>16, NEXT_RAM_SIZE >> 16);
+        map_banks(&NEXTmem_bank, 0x1C000000>>16, NEXT_RAM_SIZE >> 16);
         
-    // also map here... need to check address for function (weird?)
-    /*
-    map_banks(&NEXTmem_bank, 0x10000000>>16, NEXT_RAM_SIZE >> 16);
-    map_banks(&NEXTmem_bank, 0x14000000>>16, NEXT_RAM_SIZE >> 16);
-    map_banks(&NEXTmem_bank, 0x18000000>>16, NEXT_RAM_SIZE >> 16);
-    map_banks(&NEXTmem_bank, 0x1C000000>>16, NEXT_RAM_SIZE >> 16);
-    */
-
-    // map_banks(&NEXTmem_bank2, NEXT_RAM_START2>>16, NEXT_RAM_SIZE2 >> 16);
+        map_banks(&Video_bank, 0x0c000000>>16, NEXT_SCREEN_SIZE >> 16);
+        map_banks(&Video_bank, 0x0d000000>>16, NEXT_SCREEN_SIZE >> 16);
+        map_banks(&Video_bank, 0x0e000000>>16, NEXT_SCREEN_SIZE >> 16);
+        map_banks(&Video_bank, 0x0f000000>>16, NEXT_SCREEN_SIZE >> 16);
+    }
     
     if (ConfigureParams.System.bTurbo && ConfigureParams.System.bColor) {
         map_banks(&ColorVideo_bank, NEXT_TURBOSCREEN>>16, NEXT_COLORSCREEN_SIZE >> 16);
