@@ -190,7 +190,7 @@ struct regstruct
 	fptype fp[8];
 	fptype fp_result;
 	uae_u32 fpcr, fpsr, fpiar;
-	uae_u32 fpsr_highbyte;
+      uae_u32 fpsr_highbyte;
 	uae_u32 fpu_state;
 	bool fp_exception;
 #endif
@@ -201,8 +201,9 @@ struct regstruct
 	uae_u32 mmu_fslw;
 	uae_u32 mmu_fault_addr, mmu_effective_addr;
 	uae_u16 mmu_ssw;
+    uae_u32 wb2_address;
 	uae_u32 wb3_data;
-	uae_u16 wb3_status;
+	uae_u16 wb3_status, wb2_status;
 	int mmu_enabled;
 	int mmu_page_size;
 #endif
