@@ -159,6 +159,89 @@ Uint8 translate_modifiers(SDLMod modifiers) {
     return mod;
 }
 
+Uint8 modifiers = 0;
+bool capslock = false;
+
+Uint8 modifier_keydown(SDLKey sdl_modifier) {
+    Uint8 mod = 0x00;
+    
+    switch (sdl_modifier) {
+        case SDLK_RMETA:
+        case SDLK_LMETA:
+            modifiers|=0x01;
+            break;
+        case SDLK_LSHIFT:
+            modifiers|=0x02;
+            break;
+        case SDLK_RSHIFT:
+            modifiers|=0x04;
+            break;
+        case SDLK_LCTRL:
+            modifiers|=0x08;
+            break;
+        case SDLK_RCTRL:
+            modifiers|=0x10;
+            break;
+        case SDLK_LALT:
+            modifiers|=0x20;
+            break;
+        case SDLK_RALT:
+            modifiers|=0x40;
+            break;
+        case SDLK_CAPSLOCK:
+            capslock=true;
+            break;
+        default:
+            break;
+    }
+    
+    mod = modifiers;
+    if (capslock)
+        mod|=0x02;
+    
+    return mod;
+}
+
+Uint8 modifier_keyup(SDLKey sdl_modifier) {
+    Uint8 mod = 0x00;
+    
+    switch (sdl_modifier) {
+        case SDLK_RMETA:
+        case SDLK_LMETA:
+            modifiers&=~0x01;
+            break;
+        case SDLK_LSHIFT:
+            modifiers&=~0x02;
+            break;
+        case SDLK_RSHIFT:
+            modifiers&=~0x04;
+            break;
+        case SDLK_LCTRL:
+            modifiers&=~0x08;
+            break;
+        case SDLK_RCTRL:
+            modifiers&=~0x10;
+            break;
+        case SDLK_LALT:
+            modifiers&=~0x20;
+            break;
+        case SDLK_RALT:
+            modifiers&=~0x40;
+            break;
+        case SDLK_CAPSLOCK:
+            capslock=false;
+            break;
+        default:
+            break;
+    }
+    
+    mod = modifiers;
+    if (capslock)
+        mod|=0x02;
+    
+    return mod;
+}
+
 
 /*-----------------------------------------------------------------------*/
 /**
@@ -174,7 +257,11 @@ void Keymap_KeyDown(SDL_keysym *sdlkey)
         ShortCut_ActKey();
     
     Uint8 keycode = translate_key(symkey);
+#if 0
     Uint8 modifiers = translate_modifiers(modkey);
+#else
+    Uint8 modifiers = modifier_keydown(symkey);
+#endif
     
     Log_Printf(LOG_WARN, "Keycode: $%02x, Modifiers: $%02x\n", keycode, modifiers);
     
@@ -196,7 +283,11 @@ void Keymap_KeyUp(SDL_keysym *sdlkey)
 		return;
     
     Uint8 keycode = translate_key(symkey);
+#if 0
     Uint8 modifiers = translate_modifiers(modkey);
+#else
+    Uint8 modifiers = modifier_keyup(symkey);
+#endif
     
     Log_Printf(LOG_WARN, "Keycode: $%02x, Modkeys: $%02x\n", keycode, modifiers);
     
