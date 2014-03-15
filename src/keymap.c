@@ -166,8 +166,8 @@ Uint8 modifier_keydown(SDLKey sdl_modifier) {
     Uint8 mod = 0x00;
     
     switch (sdl_modifier) {
-        case SDLK_RMETA:
-        case SDLK_LMETA:
+        case SDLK_LCTRL:
+        case SDLK_RCTRL:
             modifiers|=0x01;
             break;
         case SDLK_LSHIFT:
@@ -176,10 +176,10 @@ Uint8 modifier_keydown(SDLKey sdl_modifier) {
         case SDLK_RSHIFT:
             modifiers|=0x04;
             break;
-        case SDLK_LCTRL:
+        case SDLK_LMETA:
             modifiers|=0x08;
             break;
-        case SDLK_RCTRL:
+        case SDLK_RMETA:
             modifiers|=0x10;
             break;
         case SDLK_LALT:
@@ -206,8 +206,8 @@ Uint8 modifier_keyup(SDLKey sdl_modifier) {
     Uint8 mod = 0x00;
     
     switch (sdl_modifier) {
-        case SDLK_RMETA:
-        case SDLK_LMETA:
+        case SDLK_LCTRL:
+        case SDLK_RCTRL:
             modifiers&=~0x01;
             break;
         case SDLK_LSHIFT:
@@ -216,10 +216,10 @@ Uint8 modifier_keyup(SDLKey sdl_modifier) {
         case SDLK_RSHIFT:
             modifiers&=~0x04;
             break;
-        case SDLK_LCTRL:
+        case SDLK_LMETA:
             modifiers&=~0x08;
             break;
-        case SDLK_RCTRL:
+        case SDLK_RMETA:
             modifiers&=~0x10;
             break;
         case SDLK_LALT:

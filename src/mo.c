@@ -1542,6 +1542,12 @@ void mo_recalibrate(void) {
 }
 
 void mo_return_drive_status(void) {
+    if (!modrv[dnum].spinning) {
+        modrv[dnum].dstat|=DS_STOPPED;
+    }
+    if (!modrv[dnum].inserted) {
+        modrv[dnum].dstat|=DS_EMPTY;
+    }
     modrv[dnum].status = modrv[dnum].dstat;
     mo_set_signals(true, false, CMD_DELAY);
 }
@@ -1580,13 +1586,6 @@ void mo_select_head(int head) {
 void mo_reset_attn_status(void) {
     modrv[dnum].dstat=modrv[dnum].estat=modrv[dnum].hstat=0;
     modrv[dnum].attn=false;
-
-    if (!modrv[dnum].inserted) {
-        modrv[dnum].dstat|=DS_EMPTY;
-    } else if (!modrv[dnum].spinning) {
-        modrv[dnum].dstat|=DS_STOPPED;
-    } /* more status messages? */
-
     mo_set_signals(true, false, CMD_DELAY);
 }
 
@@ -1629,6 +1628,8 @@ void mo_insert_disk(int drv) {
     Log_Printf(LOG_WARN, "MO disk %i: Insert",dnum);
     
     modrv[drv].dstat|=DS_INSERT;
+    modrv[drv].spinning=false;
+    modrv[drv].spiraling=false;
     mo_set_signals(false, true, 0);
 }
 
@@ -1781,6 +1782,8 @@ void MO_Init(void) {
     int i;
     
     for (i=0; i<2; i++) {
+        modrv[i].spinning=false;
+        modrv[i].spiraling=false;
         /* Check if files exist. */
         if (ConfigureParams.MO.drive[i].bDriveConnected) {
             modrv[i].connected=true;
