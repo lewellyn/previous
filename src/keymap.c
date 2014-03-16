@@ -124,14 +124,14 @@ Uint8 translate_key(SDLKey sdlkey) {
     }
 }
 
+#define NEW_MOD_HANDLING   1
+
+#if NEW_MOD_HANDLING
 Uint8 translate_modifiers(SDLMod modifiers) {
 
     Uint8 mod = 0x00;
     
-    if (modifiers&KMOD_RMETA) {
-        mod |= 0x01;
-    }
-    if (modifiers&KMOD_LMETA) {
+    if (modifiers&(KMOD_LCTRL|KMOD_RCTRL)) {
         mod |= 0x01;
     }
     if (modifiers&KMOD_LSHIFT) {
@@ -140,10 +140,10 @@ Uint8 translate_modifiers(SDLMod modifiers) {
     if (modifiers&KMOD_RSHIFT) {
         mod |= 0x04;
     }
-    if (modifiers&KMOD_LCTRL) {
+    if (modifiers&KMOD_LMETA) {
         mod |= 0x08;
     }
-    if (modifiers&KMOD_RCTRL) {
+    if (modifiers&KMOD_RMETA) {
         mod |= 0x10;
     }
     if (modifiers&KMOD_LALT) {
@@ -153,12 +153,12 @@ Uint8 translate_modifiers(SDLMod modifiers) {
         mod |= 0x40;
     }
     if (modifiers&KMOD_CAPS) {
-        mod |= (0x02|0x04);
+        mod |= 0x02;
     }
 
     return mod;
 }
-
+#else
 Uint8 modifiers = 0;
 bool capslock = false;
 
@@ -241,7 +241,7 @@ Uint8 modifier_keyup(SDLKey sdl_modifier) {
     
     return mod;
 }
-
+#endif
 
 /*-----------------------------------------------------------------------*/
 /**
@@ -257,7 +257,7 @@ void Keymap_KeyDown(SDL_keysym *sdlkey)
         ShortCut_ActKey();
     
     Uint8 keycode = translate_key(symkey);
-#if 0
+#if NEW_MOD_HANDLING
     Uint8 modifiers = translate_modifiers(modkey);
 #else
     Uint8 modifiers = modifier_keydown(symkey);
@@ -283,7 +283,7 @@ void Keymap_KeyUp(SDL_keysym *sdlkey)
 		return;
     
     Uint8 keycode = translate_key(symkey);
-#if 0
+#if NEW_MOD_HANDLING
     Uint8 modifiers = translate_modifiers(modkey);
 #else
     Uint8 modifiers = modifier_keyup(symkey);

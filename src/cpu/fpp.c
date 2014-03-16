@@ -538,7 +538,7 @@ static int get_fpu_version (void)
 		v = 0x1f;
 		break;
 	case 68882:
-		v = 0x20; /* ??? */
+		v = 0x20;
 		break;
 	case 68040:
 		v = 0x41;
@@ -624,7 +624,7 @@ static bool fpu_isinfinity (fptype fp)
 
 uae_u32 get_fpsr (void)
 {
-	uae_u32 answer = regs.fpsr & 0x00ffffff;
+	uae_u32 answer = regs.fpsr & 0x00ff00f8;
 
 	// exception status byte
 	if (regs.fp_result_status & FE_INEXACT)
@@ -639,7 +639,18 @@ uae_u32 get_fpsr (void)
 		answer |= 1 << 13;
 
 	// accrued exception byte
-	answer |= (answer >> 6) & (0x80 | 0x40 | 0x20 | 0x10 | 0x08);
+	if (answer & ((1 << 14)  | (1 << 13)))
+		answer |= 0x80; // IOP = SNAN | OPERR
+	if (answer & (1 << 12))
+		answer |= 0x40; // OVFL = OVFL
+	if (answer & (1 << 11) | (1 << 9))
+		answer |= 0x20; // UNFL = UNFL | INEX2
+	if (answer & (1 << 10))
+		answer |= 0x10; // DZ = DZ
+	if (answer & ((1 << 12) | (1 << 9) | (1 << 8)))
+		answer |= 0x08; // INEX = INEX1 | INEX2 | OVFL 
+
+	regs.fpsr = answer;
 
 	// condition code byte
 	if (fpu_isnan (regs.fp_result.fp))
@@ -654,6 +665,12 @@ uae_u32 get_fpsr (void)
 			answer |= 1 << 25;
 	}
 	return answer;
+}
+
+static void update_fpsr (uae_u32 v)
+{
+	regs.fp_result_status = FE_INVALID;
+	get_fpsr ();
 }
 
 STATIC_INLINE void set_fpsr (uae_u32 x)
@@ -740,8 +757,7 @@ void from_pack (fptype src, uae_u32 *wrd, int kfactor)
 	int i, j, t;
 	int exp;
 	int ndigits;
-	fptype mant;
-	char *cp;
+	char *cp, *strp;
 	char str[100];
 
 	wrd[0] = wrd[1] = wrd[2] = 0;
@@ -782,20 +798,17 @@ void from_pack (fptype src, uae_u32 *wrd, int kfactor)
 	if (*cp == '-') {
 		cp++;
 		wrd[0] = 0x80000000;
-	}
-	if (*cp == '+')
+	} else if (*cp == '+') {
 		cp++;
-
-	// get mantissa part
-	mant = atof (cp);
+	}
+	strp = cp;
 
 	if (kfactor <= 0) {
 		ndigits = abs (exp) + (-kfactor) + 1;
 	} else {
 		if (kfactor > 17) {
 			kfactor = 17;
-			regs.fp_result_status = FE_INVALID;
-			get_fpsr ();
+			update_fpsr (FE_INVALID);
 		}
 		ndigits = kfactor;
 	}
@@ -804,46 +817,43 @@ void from_pack (fptype src, uae_u32 *wrd, int kfactor)
 		ndigits = 0;
 	if (ndigits > 16)
 		ndigits = 16;
-#if USE_LONG_DOUBLE
-    sprintf (str, "%.17Lf", mant);
-#else
-	sprintf (str, "%.17f", mant);
-#endif
+
 	// remove decimal point
-	memmove (str + 1, str + 2, strlen (str + 2) + 1);
+	strp[1] = strp[0];
+	strp++;
 	// add trailing zeros
-	i = strlen (str);
-	cp = str + i;
+	i = strlen (strp);
+	cp = strp + i;
 	while (i < ndigits) {
 		*cp++ = '0';
 		i++;
 	}
 	i = ndigits + 1;
 	while (i < 17) {
-		str[i] = 0;
+		strp[i] = 0;
 		i++;
 	}
 	*cp = 0;
 	i = ndigits - 1;
 	// need to round?
-	if (i >= 0 && str[i + 1] >= '5') {
+	if (i >= 0 && strp[i + 1] >= '5') {
 		while (i >= 0) {
-			str[i]++;
-			if (str[i] <= '9')
+			strp[i]++;
+			if (strp[i] <= '9')
 				break;
 			if (i == 0) {
-				str[i] = '1';
+				strp[i] = '1';
 				exp++;
 			} else {
-				str[i] = '0';
+				strp[i] = '0';
 			}
 			i--;
 		}
 	}
-	str[ndigits] = 0;
+	strp[ndigits] = 0;
 
 	// store first digit of mantissa
-	cp = str;
+	cp = strp;
 	wrd[0] |= *cp++ - '0';
 
 	// store rest of mantissa
@@ -860,8 +870,14 @@ void from_pack (fptype src, uae_u32 *wrd, int kfactor)
 		wrd[0] |= 0x40000000;
 		exp = -exp;
 	}
-	if (exp > 999) // probably not right
-		exp = 999;
+	if (exp > 9999) // ??
+		exp = 9999;
+	if (exp > 999) {
+		int d = exp / 1000;
+		wrd[0] |= d << 12;
+		exp -= d * 1000;
+		update_fpsr (FE_INVALID);
+	}
 	i = 100;
 	t = 0;
 	while (i >= 1) {
