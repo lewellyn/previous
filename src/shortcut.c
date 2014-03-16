@@ -60,10 +60,12 @@ static void ShortCut_MouseGrab(void)
 		if (bGrabMouse)
 		{
 			SDL_WM_GrabInput(SDL_GRAB_ON);
+			SDL_WM_SetCaption("Previous Mouse is grabbed press AltGr-m to ungrab","Previous");
 		}
 		else
 		{
 			SDL_WM_GrabInput(SDL_GRAB_OFF);
+			SDL_WM_SetCaption("Previous","Previous");
 		}
 	}
 }

@@ -330,7 +330,6 @@ void Keymap_SimulateCharacter(char asckey, bool press)
 /**
  * User moved mouse
  */
-#define MOUSE_MOVE_SCALE    1
 void Keymap_MouseMove(int dx, int dy)
 {
     bool left=false;
@@ -344,14 +343,8 @@ void Keymap_MouseMove(int dx, int dy)
         dy=-dy;
         up=true;
     }
-    
-    if (dx>1) {
-        dx/=MOUSE_MOVE_SCALE;
-    }
-    if (dy>1) {
-        dy/=MOUSE_MOVE_SCALE;
-    }
-    
+        
+    if ((dx>0) || (dy>0))
     kms_mouse_move(dx, left, dy, up);
 }
 
