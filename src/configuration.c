@@ -90,6 +90,15 @@ static const struct Config_Tag configs_Keyboard[] =
 	{ NULL , Error_Tag, NULL }
 };
 
+/* Used to load/save mouse options */
+static const struct Config_Tag configs_Mouse[] =
+{
+	{ "bEnableAutoGrab", Bool_Tag, &ConfigureParams.Mouse.bEnableAutoGrab },
+    { "fAccelerationNormal", Float_Tag, &ConfigureParams.Mouse.fAccelerationNormal },
+	{ "fAccelerationLocked", Float_Tag, &ConfigureParams.Mouse.fAccelerationLocked },
+	{ NULL , Error_Tag, NULL }
+};
+
 /* Used to load/save shortcut key bindings with modifiers options */
 static const struct Config_Tag configs_ShortCutWithMod[] =
 {
@@ -396,7 +405,12 @@ void Configuration_SetDefault(void)
 	ConfigureParams.Keyboard.bDisableKeyRepeat = false;
 	ConfigureParams.Keyboard.nKeymapType = KEYMAP_SYMBOLIC;
 	strcpy(ConfigureParams.Keyboard.szMappingFileName, "");
-  
+
+    /* Set defaults for Mouse */
+    ConfigureParams.Mouse.fAccelerationNormal = 1.0;
+    ConfigureParams.Mouse.fAccelerationLocked = 1.0;
+    ConfigureParams.Mouse.bEnableAutoGrab = true;
+
 	/* Set defaults for Shortcuts */
 	ConfigureParams.Shortcut.withoutModifier[SHORTCUT_OPTIONS] = SDLK_F12;
 	ConfigureParams.Shortcut.withoutModifier[SHORTCUT_FULLSCREEN] = SDLK_F11;
@@ -768,6 +782,7 @@ void Configuration_Load(const char *psFileName)
 	Configuration_LoadSection(psFileName, configs_Keyboard, "[Keyboard]");
 	Configuration_LoadSection(psFileName, configs_ShortCutWithMod, "[ShortcutsWithModifiers]");
 	Configuration_LoadSection(psFileName, configs_ShortCutWithoutMod, "[ShortcutsWithoutModifiers]");
+    Configuration_LoadSection(psFileName, configs_Mouse, "[Mouse]");
 	Configuration_LoadSection(psFileName, configs_Sound, "[Sound]");
 	Configuration_LoadSection(psFileName, configs_Memory, "[Memory]");
 	Configuration_LoadSection(psFileName, configs_Floppy, "[Floppy]");
@@ -817,6 +832,7 @@ void Configuration_Save(void)
 	Configuration_SaveSection(sConfigFileName, configs_Keyboard, "[Keyboard]");
 	Configuration_SaveSection(sConfigFileName, configs_ShortCutWithMod, "[ShortcutsWithModifiers]");
 	Configuration_SaveSection(sConfigFileName, configs_ShortCutWithoutMod, "[ShortcutsWithoutModifiers]");
+    Configuration_SaveSection(sConfigFileName, configs_Mouse, "[Mouse]");
 	Configuration_SaveSection(sConfigFileName, configs_Sound, "[Sound]");
 	Configuration_SaveSection(sConfigFileName, configs_Memory, "[Memory]");
 	Configuration_SaveSection(sConfigFileName, configs_Floppy, "[Floppy]");

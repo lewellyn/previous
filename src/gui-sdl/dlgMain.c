@@ -25,7 +25,7 @@ const char DlgMain_fileid[] = "Hatari dlgMain.c : " __DATE__ " " __TIME__;
 #define MAINDLG_WINDOW   9
 #define MAINDLG_FLOPPYS  10
 #define MAINDLG_KEYBD    11
-#define MAINDLG_DEVICES  12
+#define MAINDLG_MOUSE    12
 #define MAINDLG_SOUND    13
 #define MAINDLG_LOADCFG  14
 #define MAINDLG_SAVECFG  15
@@ -52,7 +52,7 @@ static SGOBJ maindlg[] =
 	{ SGBUTTON, 0, 0, 17,10, 16,1, "(not yet)" },
 	{ SGBUTTON, 0, 0, 35,4, 13,1, "(not yet)" },
 	{ SGBUTTON, 0, 0, 35,6, 13,1, "Keyboard" },
-	{ SGBUTTON, 0, 0, 35,8, 13,1, "(not yet)" },
+	{ SGBUTTON, 0, 0, 35,8, 13,1, "Mouse" },
 	{ SGBUTTON, 0, 0, 35,10, 13,1, "(not yet)" },
 	{ SGBUTTON, 0, 0, 7,13, 16,1, "Load config." },
 	{ SGBUTTON, 0, 0, 27,13, 16,1, "Save config." },
@@ -136,8 +136,8 @@ int Dialog_MainDlg(bool *bReset, bool *bLoadedSnapshot)
 		 case MAINDLG_KEYBD:
 			Dialog_KeyboardDlg();
 			break;
-		 case MAINDLG_DEVICES:
-			Dialog_DeviceDlg();
+		 case MAINDLG_MOUSE:
+			Dialog_MouseDlg();
 			break;
 		 case MAINDLG_SOUND:
 //			Dialog_SoundDlg();

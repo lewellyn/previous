@@ -10,8 +10,11 @@
 
 
 /* Name and version for window title: */
-//#define PROG_NAME "Hatari devel (" __DATE__ ")"
 #define PROG_NAME "Previous 0.4"
+
+/* Messages for window title: */
+#define MOUSE_LOCK_MSG "Mouse is locked. Press AltGr-m to release."
+
 
 #include "config.h"
 

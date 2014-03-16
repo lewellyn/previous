@@ -111,6 +111,16 @@ typedef struct
   int withoutModifier[SHORTCUT_KEYS];
 } CNF_SHORTCUT;
 
+
+/* Dialog Mouse */
+typedef struct
+{
+    bool bEnableAutoGrab;
+    float fAccelerationNormal;
+    float fAccelerationLocked;
+} CNF_MOUSE;
+
+
 /* Memory configuration */
 
 typedef enum
@@ -178,23 +188,13 @@ typedef struct
 
 
 /* Hard drives configuration */
-#define MAX_HARDDRIVES  23
-
-typedef enum
-{
-  DRIVE_C,
-  DRIVE_D,
-  DRIVE_E,
-  DRIVE_F
-} DRIVELETTER;
-
+#define ESP_MAX_DEVS 7
 typedef struct {
   char szImageName[FILENAME_MAX];
   bool bAttached;
   bool bCDROM;
 } SCSIDISK;
 
-#define ESP_MAX_DEVS 7
 typedef struct
 {
   SCSIDISK target[ESP_MAX_DEVS];    
@@ -362,6 +362,7 @@ typedef struct
   CNF_SCREEN Screen;
   CNF_KEYBOARD Keyboard;
   CNF_SHORTCUT Shortcut;
+  CNF_MOUSE Mouse;
   CNF_SOUND Sound;
   CNF_MEMORY Memory;
   CNF_DISKIMAGE DiskImage;

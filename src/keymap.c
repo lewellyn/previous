@@ -253,9 +253,10 @@ void Keymap_KeyDown(SDL_keysym *sdlkey)
     
     int symkey = sdlkey->sym;
 	int modkey = sdlkey->mod;
-    if (ShortCut_CheckKeys(modkey, symkey, 1)) // Check if we pressed a shortcut
+    if (ShortCut_CheckKeys(modkey, symkey, 1)) {// Check if we pressed a shortcut
         ShortCut_ActKey();
-    
+        return;
+    }
     Uint8 keycode = translate_key(symkey);
 #if NEW_MOD_HANDLING
     Uint8 modifiers = translate_modifiers(modkey);
