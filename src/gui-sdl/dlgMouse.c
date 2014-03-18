@@ -14,35 +14,43 @@ const char DlgMouse_fileid[] = "Previous dlgMouse.c : " __DATE__ " " __TIME__;
 #include "paths.h"
 
 
-#define DLGMOUSE_AUTOGRAB       10
-#define DLGMOUSE_EXIT           11
+#define DLGMOUSE_AUTOLOCK       15
+#define DLGMOUSE_EXIT           16
 
-char accel_normal[8];
-char accel_locked[8];
+char lin_normal[8];
+char lin_locked[8];
+char exp_normal[8];
+char exp_locked[8];
 
 /* The Boot options dialog: */
 static SGOBJ mousedlg[] =
 {
-	{ SGBOX, 0, 0, 0,0, 46,22, NULL },
+	{ SGBOX, 0, 0, 0,0, 45,24, NULL },
     { SGTEXT, 0, 0, 16,1, 13,1, "Mouse options" },
+    
+    { SGTEXT, 0, 0, 2,4, 30,1, "Mouse motion speed adjustment:" },
 
-	{ SGBOX, 0, 0, 1,4, 43,5, NULL },
-	{ SGTEXT, 0, 0, 2,5, 34,1, "Mouse acceleration in normal mode:" },
-    { SGTEXT, 0, 0, 2,7, 35,1, "Enter a value between 0.1 and 10.0:" },
-	{ SGEDITFIELD, 0, 0, 38,7, 4,1, accel_normal },
+	{ SGBOX, 0, 0, 1,6, 43,5, NULL },
+    { SGTEXT, 0, 0, 2,7, 32,1, "Linear adjustment (0.1 to 10.0):" },
+	{ SGTEXT, 0, 0, 2,9, 12,1, "Normal mode:" },
+    { SGEDITFIELD, 0, 0, 15,9, 5,1, lin_normal },
+    { SGTEXT, 0, 0, 25,9, 12,1, "Locked mode:" },
+    { SGEDITFIELD, 0, 0, 38,9, 5,1, lin_locked },
     
-    { SGBOX, 0, 0, 1,10, 43,5, NULL },
-    { SGTEXT, 0, 0, 2,11, 34,1, "Mouse acceleration in locked mode:" },
-    { SGTEXT, 0, 0, 2,13, 35,1, "Enter a value between 0.1 and 10.0:" },
-	{ SGEDITFIELD, 0, 0, 38,13, 4,1, accel_locked },
+    { SGBOX, 0, 0, 1,12, 43,5, NULL },
+    { SGTEXT, 0, 0, 2,13, 38,1, "Exponential adjustment (0.50 to 1.00):" },
+    { SGTEXT, 0, 0, 2,15, 12,1, "Normal mode:" },
+    { SGEDITFIELD, 0, 0, 15,15, 5,1, exp_normal },
+    { SGTEXT, 0, 0, 25,15, 12,1, "Locked mode:" },
+    { SGEDITFIELD, 0, 0, 38,15, 5,1, exp_locked },
     
-	{ SGCHECKBOX, 0, 0, 2,16, 21,1, "Enable auto-locking" },
+	{ SGCHECKBOX, 0, 0, 2,18, 21,1, "Enable auto-locking" },
     
-	{ SGBUTTON, SG_DEFAULT, 0, 14,19, 20,1, "Back to main menu" },
+	{ SGBUTTON, SG_DEFAULT, 0, 14,21, 20,1, "Back to main menu" },
 	{ -1, 0, 0, 0,0, 0,0, NULL }
 };
 
-float read_float_string(char *s)
+float read_float_string(char *s, float min, float max, bool prec)
 {
     int i;
     float result=0.0;
@@ -61,9 +69,16 @@ float read_float_string(char *s)
 
     if (*s == '.' || *s == ',') {
         s++;
-        if (*s>=(0+'0') && *s<=(9+'0')) {
-            result += (float)(*s-'0')/10.0;
-            s++;
+        for (i=1; i<=prec; i++) {
+            if (*s>=(0+'0') && *s<=(9+'0')) {
+                result += (float)(*s-'0')/pow(10.0, i);
+                s++;
+            } else {
+                if (result==0.0) { /* bad input, default to 1.0 */
+                    result=1.0;
+                }
+                break;
+            }
         }
         if (*s>=(0+'0') && *s<=(9+'0')) {
             if ((*s-'0')>=5) {
@@ -71,14 +86,11 @@ float read_float_string(char *s)
             }
         }
     }
-    
-    if (result<0.1)
-        result=0.1;
-    if (result>10.0) {
-        result=10.0;
-    }
-    
-    printf("%f\n",result);
+
+    if (result<min)
+        result=min;
+    if (result>max)
+        result=max;
     
     return result;
 }
@@ -96,13 +108,15 @@ void Dialog_MouseDlg(void)
 
     /* Set up the dialog from actual values */
     
-    mousedlg[DLGMOUSE_AUTOGRAB].state &= ~SG_SELECTED;
+    mousedlg[DLGMOUSE_AUTOLOCK].state &= ~SG_SELECTED;
     if (ConfigureParams.Mouse.bEnableAutoGrab)
-        mousedlg[DLGMOUSE_AUTOGRAB].state |= SG_SELECTED;
+        mousedlg[DLGMOUSE_AUTOLOCK].state |= SG_SELECTED;
     
-    sprintf(accel_normal, "%#.1f", ConfigureParams.Mouse.fAccelerationNormal);
-    sprintf(accel_locked, "%#.1f", ConfigureParams.Mouse.fAccelerationLocked);
+    sprintf(lin_normal, "%#.1f", ConfigureParams.Mouse.fLinSpeedNormal);
+    sprintf(lin_locked, "%#.1f", ConfigureParams.Mouse.fLinSpeedLocked);
     
+    sprintf(exp_normal, "%#.2f", ConfigureParams.Mouse.fExpSpeedNormal);
+    sprintf(exp_locked, "%#.2f", ConfigureParams.Mouse.fExpSpeedLocked);
     
     /* Draw and process the dialog */
     
@@ -115,7 +129,9 @@ void Dialog_MouseDlg(void)
     
 
     /* Read values from dialog */
-    ConfigureParams.Mouse.bEnableAutoGrab = mousedlg[DLGMOUSE_AUTOGRAB].state&SG_SELECTED ? true : false;
-    ConfigureParams.Mouse.fAccelerationNormal = read_float_string(accel_normal);
-    ConfigureParams.Mouse.fAccelerationLocked = read_float_string(accel_locked);
+    ConfigureParams.Mouse.bEnableAutoGrab = mousedlg[DLGMOUSE_AUTOLOCK].state&SG_SELECTED ? true : false;
+    ConfigureParams.Mouse.fLinSpeedNormal = read_float_string(lin_normal, 0.1, 10.0, 1);
+    ConfigureParams.Mouse.fLinSpeedLocked = read_float_string(lin_locked, 0.1, 10.0, 1);
+    ConfigureParams.Mouse.fExpSpeedNormal = read_float_string(exp_normal, 0.5, 1.0, 2);
+    ConfigureParams.Mouse.fExpSpeedLocked = read_float_string(exp_locked, 0.5, 1.0, 2);
 }

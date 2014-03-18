@@ -13,7 +13,7 @@
 #define PROG_NAME "Previous 0.4"
 
 /* Messages for window title: */
-#define MOUSE_LOCK_MSG "Mouse is locked. Press AltGr-m to release."
+#define MOUSE_LOCK_MSG "Mouse is locked. Press shortcut-m to release."
 
 
 #include "config.h"

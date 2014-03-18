@@ -116,8 +116,10 @@ typedef struct
 typedef struct
 {
     bool bEnableAutoGrab;
-    float fAccelerationNormal;
-    float fAccelerationLocked;
+    float fLinSpeedNormal;
+    float fLinSpeedLocked;
+    float fExpSpeedNormal;
+    float fExpSpeedLocked;
 } CNF_MOUSE;
 
 

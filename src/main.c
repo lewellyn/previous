@@ -386,8 +386,6 @@ void Main_WarpMouse(int x, int y)
 SDL_Event mymouse[100];
 static void Main_HandleMouseMotion(SDL_Event *pEvent)
 {
-	static float fdx=0.0;
-	static float fdy=0.0;
 	int dx, dy;
 	int i,nb;
 
@@ -402,26 +400,11 @@ static void Main_HandleMouseMotion(SDL_Event *pEvent)
 	dy += mymouse[i].motion.yrel;
 	}
 
-	fdx+=dx;
-	fdy+=dy;
-
 	if (bGrabMouse) {
-		fdx=fdx*ConfigureParams.Mouse.fAccelerationLocked;
-		fdy=fdy*ConfigureParams.Mouse.fAccelerationLocked;
+    	Keymap_MouseMove(dx,dy,ConfigureParams.Mouse.fLinSpeedLocked,ConfigureParams.Mouse.fExpSpeedLocked);
 	} else {
-		fdx=fdx*ConfigureParams.Mouse.fAccelerationNormal;
-		fdy=fdy*ConfigureParams.Mouse.fAccelerationNormal;
+    	Keymap_MouseMove(dx,dy,ConfigureParams.Mouse.fLinSpeedNormal,ConfigureParams.Mouse.fLinSpeedNormal);
 	}
-
-	dx=fdx;
-	fdx-=dx;
-	dy=fdy;
-	fdy-=dy;
-
-	printf("dx=%d dy=%d nb=%d\n",dx,dy,nb);
-
-    	Keymap_MouseMove(dx,dy);
-
 }
 
 

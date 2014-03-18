@@ -331,22 +331,59 @@ void Keymap_SimulateCharacter(char asckey, bool press)
 /**
  * User moved mouse
  */
-void Keymap_MouseMove(int dx, int dy)
+void Keymap_MouseMove(int dx, int dy, float lin, float exp)
 {
+    static bool s_left=false;
+    static bool s_up=false;
+    static float s_fdx=0.0;
+    static float s_fdy=0.0;
+    
     bool left=false;
     bool up=false;
+    float fdx;
+    float fdy;
     
-    if (dx<0) {
-        dx=-dx;
-        left=true;
-    }
-    if (dy<0) {
-        dy=-dy;
-        up=true;
-    }
+    if ((dx!=0) || (dy!=0)) {
+        /* Remove the sign */
+        if (dx<0) {
+            dx=-dx;
+            left=true;
+        }
+        if (dy<0) {
+            dy=-dy;
+            up=true;
+        }
         
-    if ((dx>0) || (dy>0))
-    kms_mouse_move(dx, left, dy, up);
+        /* Exponential adjustmend */
+        fdx = pow(dx, exp);
+        fdy = pow(dy, exp);
+        
+        /* Linear adjustment */
+        fdx *= lin;
+        fdy *= lin;
+        
+        /* Add residuals */
+        if (left==s_left) {
+            s_fdx+=fdx;
+        } else {
+            s_fdx=fdx;
+            s_left=left;
+        }
+        if (up==s_up) {
+            s_fdy+=fdy;
+        } else {
+            s_fdy=fdy;
+            s_up=up;
+        }
+        
+        /* Convert to integer and save residuals */
+        dx=s_fdx;
+        s_fdx-=dx;
+        dy=s_fdy;
+        s_fdy-=dy;
+        printf("adjusted: dx=%i, dy=%i\n",dx,dy);
+        kms_mouse_move(dx, left, dy, up);
+    }
 }
 
 /*-----------------------------------------------------------------------*/

@@ -94,8 +94,10 @@ static const struct Config_Tag configs_Keyboard[] =
 static const struct Config_Tag configs_Mouse[] =
 {
 	{ "bEnableAutoGrab", Bool_Tag, &ConfigureParams.Mouse.bEnableAutoGrab },
-    { "fAccelerationNormal", Float_Tag, &ConfigureParams.Mouse.fAccelerationNormal },
-	{ "fAccelerationLocked", Float_Tag, &ConfigureParams.Mouse.fAccelerationLocked },
+    { "fLinSpeedNormal", Float_Tag, &ConfigureParams.Mouse.fLinSpeedNormal },
+	{ "fLinSpeedLocked", Float_Tag, &ConfigureParams.Mouse.fLinSpeedLocked },
+    { "fExpSpeedNormal", Float_Tag, &ConfigureParams.Mouse.fExpSpeedNormal },
+	{ "fExpSpeedLocked", Float_Tag, &ConfigureParams.Mouse.fExpSpeedLocked },
 	{ NULL , Error_Tag, NULL }
 };
 
@@ -407,8 +409,10 @@ void Configuration_SetDefault(void)
 	strcpy(ConfigureParams.Keyboard.szMappingFileName, "");
 
     /* Set defaults for Mouse */
-    ConfigureParams.Mouse.fAccelerationNormal = 1.0;
-    ConfigureParams.Mouse.fAccelerationLocked = 1.0;
+    ConfigureParams.Mouse.fLinSpeedNormal = 1.0;
+    ConfigureParams.Mouse.fLinSpeedLocked = 1.0;
+    ConfigureParams.Mouse.fExpSpeedNormal = 1.0;
+    ConfigureParams.Mouse.fExpSpeedLocked = 1.0;
     ConfigureParams.Mouse.bEnableAutoGrab = true;
 
 	/* Set defaults for Shortcuts */
