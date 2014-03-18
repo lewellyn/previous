@@ -113,6 +113,10 @@ typedef struct
 
 
 /* Dialog Mouse */
+#define MOUSE_LIN_MIN   0.1
+#define MOUSE_LIN_MAX   10.0
+#define MOUSE_EXP_MIN   0.5
+#define MOUSE_EXP_MAX   1.0
 typedef struct
 {
     bool bEnableAutoGrab;

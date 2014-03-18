@@ -552,6 +552,20 @@ void Configuration_SetDefault(void)
 
 /*-----------------------------------------------------------------------*/
 /**
+ * Helper function for Configuration_Apply, check mouse speed settings
+ * to be in the valid range between minimum and maximum value.
+ */
+void Configuration_CheckFloatMinMax(float *val, float min, float max)
+{
+    if (*val<min)
+        *val=min;
+    if (*val>max)
+        *val=max;
+}
+
+
+/*-----------------------------------------------------------------------*/
+/**
  * Copy details from configuration structure into global variables for system,
  * clean file names, etc...  Called from main.c and dialog.c files.
  */
@@ -569,6 +583,11 @@ void Configuration_Apply(bool bReset)
     /* Init clocks for this machine */
     ClocksTimings_InitMachine ( ConfigureParams.System.nMachineType );
     
+    /* Mouse settings */
+    Configuration_CheckFloatMinMax(&ConfigureParams.Mouse.fLinSpeedNormal,MOUSE_LIN_MIN,MOUSE_LIN_MAX);
+    Configuration_CheckFloatMinMax(&ConfigureParams.Mouse.fLinSpeedLocked,MOUSE_LIN_MIN,MOUSE_LIN_MAX);
+    Configuration_CheckFloatMinMax(&ConfigureParams.Mouse.fExpSpeedNormal,MOUSE_EXP_MIN,MOUSE_EXP_MAX);
+    Configuration_CheckFloatMinMax(&ConfigureParams.Mouse.fExpSpeedLocked,MOUSE_EXP_MIN,MOUSE_EXP_MAX);
     
 	/* Sound settings */
 	/* SDL sound buffer in ms */

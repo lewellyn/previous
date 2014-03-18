@@ -46,11 +46,11 @@ static SGOBJ mousedlg[] =
     
 	{ SGCHECKBOX, 0, 0, 2,18, 21,1, "Enable auto-locking" },
     
-	{ SGBUTTON, SG_DEFAULT, 0, 14,21, 20,1, "Back to main menu" },
+	{ SGBUTTON, SG_DEFAULT, 0, 12,21, 21,1, "Back to main menu" },
 	{ -1, 0, 0, 0,0, 0,0, NULL }
 };
 
-float read_float_string(char *s, float min, float max, bool prec)
+float read_float_string(char *s, float min, float max, int prec)
 {
     int i;
     float result=0.0;
@@ -82,7 +82,7 @@ float read_float_string(char *s, float min, float max, bool prec)
         }
         if (*s>=(0+'0') && *s<=(9+'0')) {
             if ((*s-'0')>=5) {
-                result+=0.1;
+                result += 1.0/pow(10.0, i-1);
             }
         }
     }
@@ -130,8 +130,8 @@ void Dialog_MouseDlg(void)
 
     /* Read values from dialog */
     ConfigureParams.Mouse.bEnableAutoGrab = mousedlg[DLGMOUSE_AUTOLOCK].state&SG_SELECTED ? true : false;
-    ConfigureParams.Mouse.fLinSpeedNormal = read_float_string(lin_normal, 0.1, 10.0, 1);
-    ConfigureParams.Mouse.fLinSpeedLocked = read_float_string(lin_locked, 0.1, 10.0, 1);
-    ConfigureParams.Mouse.fExpSpeedNormal = read_float_string(exp_normal, 0.5, 1.0, 2);
-    ConfigureParams.Mouse.fExpSpeedLocked = read_float_string(exp_locked, 0.5, 1.0, 2);
+    ConfigureParams.Mouse.fLinSpeedNormal = read_float_string(lin_normal, MOUSE_LIN_MIN, MOUSE_LIN_MAX, 1);
+    ConfigureParams.Mouse.fLinSpeedLocked = read_float_string(lin_locked, MOUSE_LIN_MIN, MOUSE_LIN_MAX, 1);
+    ConfigureParams.Mouse.fExpSpeedNormal = read_float_string(exp_normal, MOUSE_EXP_MIN, MOUSE_EXP_MAX, 2);
+    ConfigureParams.Mouse.fExpSpeedLocked = read_float_string(exp_locked, MOUSE_EXP_MIN, MOUSE_EXP_MAX, 2);
 }
