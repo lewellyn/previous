@@ -13,7 +13,6 @@
 #include "ioMem.h"
 #include "ioMemTables.h"
 #include "m68000.h"
-//#include "configuration.h"
 #include "kms.h"
 #include "sysReg.h"
 #include "dma.h"
@@ -143,13 +142,13 @@ void access_km_reg(Uint32 data) {
     
     if (reg_addr==KM_RESET) {
         Log_Printf(LOG_KMS_LEVEL, "Keyboard/Mouse: Reset");
-        CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_KMS);
+        kms_response();
         return;
     }
     if (reg_addr==KM_SET_ADDR) {
         Log_Printf(LOG_KMS_LEVEL, "Keyboard/Mouse: Set address to %i",(reg_data&KM_ADDR_MASK)>>1);
         km_address = reg_data&KM_ADDR_MASK;
-        CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_KMS);
+        kms_response();
         return;
     }
     
@@ -186,7 +185,7 @@ void access_km_reg(Uint32 data) {
                 break;
         }
     }
-    CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_KMS);
+    kms_response();
 }
 
 void KMS_command(Uint8 command, Uint32 data) {
@@ -507,10 +506,4 @@ void kms_response(void) {
     }
     kms.status.km |= (KBD_RECEIVED|KBD_INT);
     set_interrupt(INT_KEYMOUSE, SET_INT);
-}
-
-void KMS_InterruptHandler(void) {
-    CycInt_AcknowledgeInterrupt();
-    
-    kms_response();
 }

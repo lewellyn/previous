@@ -22,7 +22,6 @@ typedef enum
   INTERRUPT_MO_IO,
   INTERRUPT_ECC_IO,
   INTERRUPT_ENET_IO,
-  INTERRUPT_KMS,
   MAX_INTERRUPTS
 } interrupt_id;
 

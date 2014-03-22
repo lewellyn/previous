@@ -17,4 +17,4 @@ void kms_keyup(Uint8 modkeys, Uint8 keycode);
 void kms_mouse_move(int x, bool left, int y, bool up);
 void kms_mouse_button(bool left, bool down);
 
-void KMS_InterruptHandler(void);
+void kms_response(void);
