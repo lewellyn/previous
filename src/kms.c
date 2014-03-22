@@ -13,7 +13,7 @@
 #include "ioMem.h"
 #include "ioMemTables.h"
 #include "m68000.h"
-#include "configuration.h"
+//#include "configuration.h"
 #include "kms.h"
 #include "sysReg.h"
 #include "dma.h"
@@ -143,11 +143,13 @@ void access_km_reg(Uint32 data) {
     
     if (reg_addr==KM_RESET) {
         Log_Printf(LOG_KMS_LEVEL, "Keyboard/Mouse: Reset");
+        CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_KMS);
         return;
     }
     if (reg_addr==KM_SET_ADDR) {
         Log_Printf(LOG_KMS_LEVEL, "Keyboard/Mouse: Set address to %i",(reg_data&KM_ADDR_MASK)>>1);
         km_address = reg_data&KM_ADDR_MASK;
+        CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_KMS);
         return;
     }
     
@@ -184,6 +186,7 @@ void access_km_reg(Uint32 data) {
                 break;
         }
     }
+    CycInt_AddRelativeInterrupt(100, INT_CPU_CYCLE, INTERRUPT_KMS);
 }
 
 void KMS_command(Uint8 command, Uint32 data) {
@@ -353,8 +356,8 @@ void KMS_Data_Read(void) {
 
 #define NO_RESPONSE_ERR 0x40000000
 #define USER_POLL       0x20000000
-#define INVALID         0x10000000
-#define MASTER          0x10000000
+#define DEVICE_INVALID  0x10000000
+#define DEVICE_MASTER   0x10000000
 
 #define DEVICE_ADDR_MSK 0x0E000000
 #define DEVICE_MOUSE    0x01000000
@@ -407,8 +410,8 @@ void kms_keydown(Uint8 modkeys, Uint8 keycode) {
     }
     
     if (kms_device_enabled(km_address)) {
-        kms.km_data = km_address<<24; /* keyboard */
-        kms.km_data |= USER_POLL;
+        kms.km_data = (km_address<<24)|DEVICE_MASTER; /* keyboard */
+
         kms.km_data |= (modkeys<<8)|keycode|KBD_KEY_VALID;
         
         if (kms.status.km &KBD_RECEIVED) {
@@ -426,8 +429,8 @@ void kms_keyup(Uint8 modkeys, Uint8 keycode) {
     }
     
     if (kms_device_enabled(km_address)) {
-        kms.km_data = km_address<<24; /* keyboard */
-        kms.km_data |= USER_POLL;
+        kms.km_data = (km_address<<24)|DEVICE_MASTER; /* keyboard */
+
         kms.km_data |= (modkeys<<8)|keycode|KBD_KEY_VALID|KBD_KEY_UP;
         
         if (kms.status.km &KBD_RECEIVED) {
@@ -450,7 +453,6 @@ void kms_mouse_button(bool left, bool down) {
     
     if (kms_device_enabled(km_address|KM_ADDR_MOUSE)) {
         kms.km_data = (km_address|KM_ADDR_MOUSE)<<24; /* mouse */
-        kms.km_data |= USER_POLL;
         
         kms.km_data |= m_left?0:MOUSE_LEFT_UP;
         kms.km_data |= m_right?0:MOUSE_RIGHT_UP;
@@ -481,7 +483,6 @@ void kms_mouse_move(int x, bool left, int y, bool up) {
     
     if (kms_device_enabled(km_address|KM_ADDR_MOUSE)) {
         kms.km_data = (km_address|KM_ADDR_MOUSE)<<24; /* mouse */
-        kms.km_data |= USER_POLL;
 
         kms.km_data |= (x<<1)&MOUSE_X;
         kms.km_data |= (y<<9)&MOUSE_Y;
@@ -495,4 +496,21 @@ void kms_mouse_move(int x, bool left, int y, bool up) {
         kms.status.km |= (KBD_RECEIVED|KBD_INT);
         set_interrupt(INT_KEYMOUSE, SET_INT);
     }
+}
+
+void kms_response(void) {
+    kms.km_data = km_address<<24; /* keyboard */
+    kms.km_data |= USER_POLL;
+    
+    if (kms.status.km &KBD_RECEIVED) {
+        kms.status.km |= KBD_OVERRUN;
+    }
+    kms.status.km |= (KBD_RECEIVED|KBD_INT);
+    set_interrupt(INT_KEYMOUSE, SET_INT);
+}
+
+void KMS_InterruptHandler(void) {
+    CycInt_AcknowledgeInterrupt();
+    
+    kms_response();
 }

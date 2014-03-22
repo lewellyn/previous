@@ -381,7 +381,7 @@ void Keymap_MouseMove(int dx, int dy, float lin, float exp)
         s_fdx-=dx;
         dy=s_fdy;
         s_fdy-=dy;
-        printf("adjusted: dx=%i, dy=%i\n",dx,dy);
+        //printf("adjusted: dx=%i, dy=%i\n",dx,dy);
         kms_mouse_move(dx, left, dy, up);
     }
 }

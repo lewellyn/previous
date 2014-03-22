@@ -494,7 +494,7 @@ MODEPAGE SCSI_GetModePage(Uint8 pagecode) {
         case 0x3C: // soft ID page (EEPROM)
             page.pagesize = 0;
             Log_Printf(LOG_WARN, "[SCSI] Mode Sense: Page %02x not yet emulated!\n", pagecode);
-            abort();
+            //abort();
             break;
             
         default:
