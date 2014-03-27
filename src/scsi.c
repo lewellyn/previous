@@ -338,6 +338,7 @@ void SCSI_Emulate_Command(Uint8 *cdb) {
                     SCSIdisk[target].status = STAT_CHECK_COND;
                     SCSIdisk[target].sense.code = SC_INVALID_CMD;
                     SCSIdisk[target].sense.valid = false;
+                    SCSIbus.phase = PHASE_ST;
                     break;
             }
             break;

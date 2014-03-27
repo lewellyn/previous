@@ -276,7 +276,7 @@ void KMS_Ctrl_KM_Write(void) {
     Uint8 val = IoMem[IoAccessCurrentAddress&IO_SEG_MASK];
     
     if (val&KBD_OVERRUN) {
-        kms.status.km &= ~(KBD_RECEIVED|KBD_OVERRUN);
+        kms.status.km &= ~(KBD_RECEIVED|KBD_OVERRUN|KBD_INT);
         set_interrupt(INT_KEYMOUSE, RELEASE_INT);
     }
     if (val&NMI_RECEIVED) {
@@ -284,7 +284,7 @@ void KMS_Ctrl_KM_Write(void) {
         set_interrupt(INT_NMI, RELEASE_INT);
     }
     if (val&KMS_OVERRUN) {
-        kms.status.km &= ~(KMS_RECEIVED|KMS_OVERRUN);
+        kms.status.km &= ~(KMS_RECEIVED|KMS_OVERRUN|KMS_INT);
         set_interrupt(INT_MONITOR, RELEASE_INT);
     }
 }
@@ -378,6 +378,16 @@ void KMS_KM_Data_Read(void) {
     set_interrupt(INT_KEYMOUSE, RELEASE_INT);
 }
 
+void kms_interrupt(void) {
+    kms.status.cmd = KMSCMD_KBD_RECV;
+    
+    if (kms.status.km&KBD_RECEIVED) {
+        kms.status.km |= KBD_OVERRUN;
+    }
+    kms.status.km |= (KBD_RECEIVED|KBD_INT);
+    set_interrupt(INT_KEYMOUSE, SET_INT);
+}
+
 bool kms_device_enabled(int dev_addr) {
     int i,mask;
 
@@ -413,11 +423,7 @@ void kms_keydown(Uint8 modkeys, Uint8 keycode) {
 
         kms.km_data |= (modkeys<<8)|keycode|KBD_KEY_VALID;
         
-        if (kms.status.km &KBD_RECEIVED) {
-            kms.status.km |= KBD_OVERRUN;
-        }
-        kms.status.km |= (KBD_RECEIVED|KBD_INT);
-        set_interrupt(INT_KEYMOUSE, SET_INT);
+        kms_interrupt();
     }
 }
 
@@ -432,11 +438,7 @@ void kms_keyup(Uint8 modkeys, Uint8 keycode) {
 
         kms.km_data |= (modkeys<<8)|keycode|KBD_KEY_VALID|KBD_KEY_UP;
         
-        if (kms.status.km &KBD_RECEIVED) {
-            kms.status.km |= KBD_OVERRUN;
-        }
-        kms.status.km |= (KBD_RECEIVED|KBD_INT);
-        set_interrupt(INT_KEYMOUSE, SET_INT);
+        kms_interrupt();
     }
 }
 
@@ -456,11 +458,7 @@ void kms_mouse_button(bool left, bool down) {
         kms.km_data |= m_left?0:MOUSE_LEFT_UP;
         kms.km_data |= m_right?0:MOUSE_RIGHT_UP;
         
-        if (kms.status.km &KBD_RECEIVED) {
-            kms.status.km |= KBD_OVERRUN;
-        }
-        kms.status.km |= (KBD_RECEIVED|KBD_INT);
-        set_interrupt(INT_KEYMOUSE, SET_INT);
+        kms_interrupt();
     }
 }
 
@@ -489,21 +487,14 @@ void kms_mouse_move(int x, bool left, int y, bool up) {
         kms.km_data |= m_left?0:MOUSE_LEFT_UP;
         kms.km_data |= m_right?0:MOUSE_RIGHT_UP;
         
-        if (kms.status.km &KBD_RECEIVED) {
-            kms.status.km |= KBD_OVERRUN;
-        }
-        kms.status.km |= (KBD_RECEIVED|KBD_INT);
-        set_interrupt(INT_KEYMOUSE, SET_INT);
+        kms_interrupt();
     }
 }
 
 void kms_response(void) {
     kms.km_data = km_address<<24; /* keyboard */
     kms.km_data |= USER_POLL;
+    kms.km_data |= (NO_RESPONSE_ERR|DEVICE_INVALID); /* checked on real hardware */
     
-    if (kms.status.km &KBD_RECEIVED) {
-        kms.status.km |= KBD_OVERRUN;
-    }
-    kms.status.km |= (KBD_RECEIVED|KBD_INT);
-    set_interrupt(INT_KEYMOUSE, SET_INT);
+    kms_interrupt();
 }
