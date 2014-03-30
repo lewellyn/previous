@@ -12,6 +12,7 @@ const char DlgOpticalDisk_fileid[] = "Previous dlgOpticalDisk.c : " __DATE__ " "
 #include "dialog.h"
 #include "sdlgui.h"
 #include "file.h"
+#include "mo.h"
 
 
 #define MODLG_CONNECTED0        3
@@ -160,6 +161,7 @@ void DlgOptical_Main(void)
                             ConfigureParams.MO.drive[0].bDriveConnected = true;
                             modlg[MODLG_CONNECTED0].state |= SG_SELECTED;
                         }
+                        MO_Insert(0);
                     }
                 } else {
                     ConfigureParams.MO.drive[0].bDiskInserted = false;
@@ -191,6 +193,7 @@ void DlgOptical_Main(void)
                             ConfigureParams.MO.drive[1].bDriveConnected = true;
                             modlg[MODLG_CONNECTED1].state |= SG_SELECTED;
                         }
+                        MO_Insert(1);
                     }
                 } else {
                     ConfigureParams.MO.drive[1].bDiskInserted = false;

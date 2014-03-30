@@ -28,7 +28,6 @@
 #include "reset.h"
 #include "cycInt.h"
 #include "mfp.h"
-#include "cart.h"
 #include "dialog.h"
 #include "screen.h"
 #include "video.h"

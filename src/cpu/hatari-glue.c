@@ -80,7 +80,8 @@ int Init680x0(void)
 	currprefs.cpu_cycle_exact = changed_prefs.cpu_cycle_exact = ConfigureParams.System.bCycleExactCpu;
 	currprefs.fpu_model = changed_prefs.fpu_model = ConfigureParams.System.n_FPUType;
 	currprefs.fpu_strict = changed_prefs.fpu_strict = ConfigureParams.System.bCompatibleFPU;
-	currprefs.mmu_model = changed_prefs.mmu_model = ConfigureParams.System.bMMU;
+    currprefs.mmu_model = changed_prefs.mmu_model = ConfigureParams.System.bMMU?changed_prefs.cpu_model:0;
+
    	write_log("Init680x0() called\n");
 
 	init_m68k();

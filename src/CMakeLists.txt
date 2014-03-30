@@ -1,6 +1,5 @@
 set(SOURCES
-	cart.c cfgopts.c
-	clocks_timings.c configuration.c options.c  change.c
+	cfgopts.c clocks_timings.c configuration.c options.c  change.c
 	control.c cycInt.c cycles.c dialog.c dma.c esp.c ethernet.c file.c
 	ioMem.c ioMemTabNEXT.c memorySnapShot.c keymap.c kms.c
 	m68000.c main.c mo.c nextMemory.c paths.c 
@@ -28,11 +27,7 @@ if(WIN32)
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mwindows")
 endif(WIN32)
 
-if(ENABLE_WINUAE_CPU)
 	set(CPUDIR cpu)
-else()
-	set(CPUDIR uae-cpu)
-endif(ENABLE_WINUAE_CPU)
 
 include_directories(${CMAKE_BINARY_DIR} includes debug ${CPUDIR}
 		    ${SDL_INCLUDE_DIR})

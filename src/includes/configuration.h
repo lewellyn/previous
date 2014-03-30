@@ -311,7 +311,6 @@ typedef enum
   DSP_TYPE_EMU
 } DSPTYPE;
 
-#if ENABLE_WINUAE_CPU
 typedef enum
 {
   FPU_NONE = 0,
@@ -319,7 +318,6 @@ typedef enum
   FPU_68882 = 68882,
   FPU_CPU = 68040
 } FPUTYPE;
-#endif
 
 typedef struct
 {
@@ -337,15 +335,11 @@ typedef struct
   bool bRealTimeClock;
   bool bPatchTimerD;
   bool bFastForward;
-    
-#if ENABLE_WINUAE_CPU
   bool bAddressSpace24;
   bool bCycleExactCpu;
   FPUTYPE n_FPUType;
   bool bCompatibleFPU;            /* More compatible FPU */
   bool bMMU;                      /* TRUE if MMU is enabled */
-#endif
-    
 } CNF_SYSTEM;
 
 typedef struct
