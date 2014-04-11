@@ -427,9 +427,9 @@ void build_cpufunctbl (void)
 	write_log ("Building CPU, %d opcodes (%d %d %d)\n",
 		opcnt, lvl,
 		currprefs.cpu_cycle_exact ? -1 : currprefs.cpu_compatible ? 1 : 0, currprefs.address_space_24);
-	write_log ("CPU=%d, FPU=%d, MMU=%d, JIT%s=%d.\n",
-		currprefs.cpu_model, currprefs.fpu_model,
-		currprefs.mmu_model,
+	write_log ("CPU=%d, MMU=%d, FPU=%d ($%02x), JIT%s=%d.\n",
+               currprefs.cpu_model, currprefs.mmu_model,
+               currprefs.fpu_model, currprefs.fpu_revision,
 		currprefs.cachesize ? (currprefs.compfpu ? "=CPU/FPU" : "=CPU") : "",
 		currprefs.cachesize);
 #ifdef JIT
@@ -491,6 +491,7 @@ static void prefs_changed_cpu (void)
 	fixup_cpu (&changed_prefs);
 	currprefs.cpu_model = changed_prefs.cpu_model;
 	currprefs.fpu_model = changed_prefs.fpu_model;
+    currprefs.fpu_revision = changed_prefs.fpu_revision;
 	currprefs.mmu_model = changed_prefs.mmu_model;
 	currprefs.cpu_compatible = changed_prefs.cpu_compatible;
 	currprefs.cpu_cycle_exact = changed_prefs.cpu_cycle_exact;
@@ -509,6 +510,7 @@ void check_prefs_changed_cpu (void)
 	if (changed
 		|| currprefs.cpu_model != changed_prefs.cpu_model
 		|| currprefs.fpu_model != changed_prefs.fpu_model
+        || currprefs.fpu_revision != changed_prefs.fpu_revision
 		|| currprefs.mmu_model != changed_prefs.mmu_model
 		|| currprefs.cpu_compatible != changed_prefs.cpu_compatible
 		|| currprefs.cpu_cycle_exact != changed_prefs.cpu_cycle_exact) {

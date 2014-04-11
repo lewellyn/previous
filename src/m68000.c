@@ -229,9 +229,21 @@ void M68000_CheckCpuSettings(void)
 		default: fprintf (stderr, "Init680x0() : Error, cpu_level unknown\n");
 	}
 
+    changed_prefs.fpu_model = ConfigureParams.System.n_FPUType;
+    switch (changed_prefs.fpu_model) {
+        case 68881: changed_prefs.fpu_revision = 0x1f; break;
+        case 68882: changed_prefs.fpu_revision = 0x20; break;
+        case 68040:
+            if (ConfigureParams.System.bTurbo)
+                changed_prefs.fpu_revision = 0x41;
+            else
+                changed_prefs.fpu_revision = 0x40;
+            break;
+		default: fprintf (stderr, "Init680x0() : Error, fpu_model unknown\n");
+    }
+
 	changed_prefs.address_space_24 = ConfigureParams.System.bAddressSpace24;
 	changed_prefs.cpu_cycle_exact = ConfigureParams.System.bCycleExactCpu;
-	changed_prefs.fpu_model = ConfigureParams.System.n_FPUType;
 	changed_prefs.fpu_strict = ConfigureParams.System.bCompatibleFPU;
 	changed_prefs.mmu_model = ConfigureParams.System.bMMU?changed_prefs.cpu_model:0;
 

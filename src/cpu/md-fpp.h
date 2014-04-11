@@ -21,12 +21,60 @@
 #define FPCR_PRECISION_EXTENDED	0x00000000
 
 #if USE_LONG_DOUBLE
-STATIC_INLINE void to_exten(fpdata *fp, uae_u32 wrd1, uae_u32 wrd2, uae_u32 wrd3)
+#if 0
+STATIC_INLINE void exten_normalize(uae_u32 *pwrd1, uae_u32 *pwrd2, uae_u32 *pwrd3)
 {
-	uae_u32 longarray[] = { wrd3, wrd2, ((wrd1 >> 16) & 0xffff) }; // little endian
-	long double *longdoublewords = (long double*)longarray;
-
-	fp->fp = *longdoublewords;
+	uae_u32 wrd1 = *pwrd1;
+	uae_u32 wrd2 = *pwrd2;
+	uae_u32 wrd3 = *pwrd3;
+	int exp = (wrd1 >> 16) & 0x7fff;
+	// Normalize if unnormal.
+	if (exp != 0 && exp != 0x7fff && !(wrd2 & 0x80000000)) {
+		while (!(wrd2 & 0x80000000) && (wrd2 || wrd3)) {
+			wrd2 <<= 1;
+			if (wrd3 & 0x80000000)
+				wrd2 |= 1;
+			wrd3 <<= 1;
+			exp--;
+		}
+		if (exp < 0)
+			exp = 0;
+		if (!wrd2 && !wrd3)
+			exp = 0;
+		*pwrd1 = (wrd1 & 0x80000000) | (exp << 16);
+		*pwrd2 = wrd2;
+		*pwrd3 = wrd3;
+	}
+}
+#else
+STATIC_INLINE void exten_normalize(uae_u32 *pwrd1, uae_u32 *pwrd2,
+                                   uae_u32 *pwrd3)
+{
+	uae_u32 wrd1 = *pwrd1;
+	uae_u32 wrd2 = *pwrd2;
+	uae_u32 wrd3 = *pwrd3;
+	int exp = (wrd1 >> 16) & 0x7fff;
+    
+	if (exp != 0 && exp != 0x7fff && !wrd2 && !wrd3) {
+		*pwrd1 = (wrd1 & 0x80000000);
+	}
+}
+#endif
+STATIC_INLINE void to_exten(fpdata *dst, uae_u32 wrd1, uae_u32 wrd2, uae_u32 wrd3)
+{
+	// force correct long double alignment
+	union
+	{
+		long double lf;
+		uae_u32 longarray[3];
+	} uld;
+	exten_normalize(&wrd1, &wrd2, &wrd3);
+	// little endian order
+	uld.longarray[0] = wrd3;
+	uld.longarray[1] = wrd2;
+	uld.longarray[2] = wrd1 >> 16;
+	long double *longdoublewords = (long double *)uld.longarray;
+	dst->fp = *longdoublewords;
 }
 #define HAVE_to_exten
 
@@ -186,7 +234,7 @@ STATIC_INLINE void to_exten(fpdata *fpd, uae_u32 wrd1, uae_u32 wrd2, uae_u32 wrd
 	fpd->fpx = true;
 #endif
 	if ((wrd1 & 0x7fff0000) == 0 && wrd2 == 0 && wrd3 == 0) {
-		fpd->fp = 0.0;
+        fpd->fp = (wrd1 & 0x80000000) ? 0.0e-0 : 0.0e0;
 		return;
 	}
 	frac = ((double)wrd2 + ((double)wrd3 / twoto32)) / 2147483648.0;
