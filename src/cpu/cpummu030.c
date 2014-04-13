@@ -1212,12 +1212,16 @@ uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int level) {
                 limit = (descr[0]&DESCR_LIMIT_MASK)>>16;
                 if ((descr[0]&DESCR_LOWER_MASK) && (table_index<limit)) {
                     mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
+#if MMU030_REG_DBG_MSG
                     write_log(_T("limit violation (lower limit %i)\n"),limit);
+#endif
                     goto stop_search;
                 }
                 if (!(descr[0]&DESCR_LOWER_MASK) && (table_index>limit)) {
                     mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
+#if MMU030_REG_DBG_MSG
                     write_log(_T("limit violation (upper limit %i)\n"),limit);
+#endif
                     goto stop_search;
                 }
             }
@@ -1356,12 +1360,16 @@ uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int level) {
                     limit = (descr[0]&DESCR_LIMIT_MASK)>>16;
                     if ((descr[0]&DESCR_LOWER_MASK) && (table_index<limit)) {
                         mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
+#if MMU030_REG_DBG_MSG
                         write_log(_T("Limit violation (lower limit %i)\n"),limit);
+#endif
                         goto stop_search;
                     }
                     if (!(descr[0]&DESCR_LOWER_MASK) && (table_index>limit)) {
                         mmu030.status |= (MMUSR_LIMIT_VIOLATION|MMUSR_INVALID);
+#if MMU030_REG_DBG_MSG
                         write_log(_T("Limit violation (upper limit %i)\n"),limit);
+#endif
                         goto stop_search;
                     }
                 }

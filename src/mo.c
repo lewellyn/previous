@@ -36,6 +36,9 @@
 #define LOG_MO_CMD_LEVEL    LOG_WARN
 #define LOG_MO_ECC_LEVEL    LOG_WARN
 
+#define LOG_ECC_DATA        0
+#define LOG_ECC_ERASURES    0
+
 #define IO_SEG_MASK	0x1FFFF
 
 
@@ -814,7 +817,7 @@ void rs_encode(Uint8 *sector_buf) {
             sector_buf[c+36*r]=rs_buf[c];
         }
     }
-#if 0
+#if LOG_ECC_DATA
     /* print the result */
     for (r=0; r<36; r++) {
         for (c=0; c<36; c++) {
@@ -841,7 +844,7 @@ void rs_decode(Uint8 *sector_buf)
     
     memcpy(ecc_buf, sector_buf, 1296);
     
-#if 0
+#if LOG_ECC_DATA
     /* print the result */
     for (r=0; r<36; r++) {
         for (c=0; c<36; c++) {
@@ -884,12 +887,14 @@ void rs_decode(Uint8 *sector_buf)
         }
     }
     
+#if LOG_ECC_ERASURES
     /* print erasures */
     printf("Erased rows:");
     for (i=0; i<num_erasures; i++) {
         printf(" %i",erasures[i]);
     }
     printf("\n");
+#endif
     
     num_erasures=0;
 
@@ -919,16 +924,20 @@ void rs_decode(Uint8 *sector_buf)
         }
     }
     
+#if LOG_ECC_ERASURES
     /* print erasures */
     printf("Uncorrectable columns:");
     for (i=0; i<num_erasures; i++) {
         printf(" %i",erasures[i]);
     }
     printf("\n");
+#endif
     
     /* print error count */
-    printf("Number of corrected errors: %i\n",num_errors);
-#if 0
+    Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC: Number of corrected errors: %i\n",num_errors);
+    
+#if LOG_ECC_DATA
+    /* print the result */
     for (r=0; r<32; r++) {
         for (c=0; c<32; c++) {
             printf("%02X ",sector_buf[c+r*32]);
