@@ -123,12 +123,8 @@ static void ConvertHighRes_640x8Bit(void)
 		first=0;
 		for (x=0;x<4;x++)
 			colors[x] = SDL_MapRGB(sdlscrn->format, sdlColors[x].r, sdlColors[x].g, sdlColors[x].b);
-		for (x=0;x<4096;x++) {
-            Uint8 r = ((x&0x0F00)>>4) | ((x&0x0F00)>>8);
-            Uint8 g = (x&0x00F0) | ((x&0x00F0)>>4);
-            Uint8 b = ((x&0x000F)<<4) | (x&0x000F);
-			hicolors[x]=SDL_MapRGB(sdlscrn->format, r, g, b);
-        }
+		for (x=0;x<4096;x++)
+			hicolors[x]=SDL_MapRGB(sdlscrn->format,((x&0x0F00)>>4)|((x&0x0F00)>>8),(x&0x00F0)|((x&0x00F0)>>4),((x&0x000F)<<4)|(x&0x000F));
 	}
 
 	/* non turbo color */
