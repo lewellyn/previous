@@ -117,8 +117,19 @@ void SCR_Reset(void) {
         }
     }
     
-    Uint8 cpu_speed = ((ConfigureParams.System.nCpuFreq/8)-1)%4;
+    Uint8 cpu_speed;
     Uint8 memory_speed;
+    
+    if (ConfigureParams.System.nCpuFreq<25) {
+        cpu_speed = 1;
+    } else if (ConfigureParams.System.nCpuFreq<33) {
+        cpu_speed = 2;
+    } else if (ConfigureParams.System.nCpuFreq<40) {
+        cpu_speed = 3;
+    } else {
+        cpu_speed = 0;
+    }
+    
     switch (ConfigureParams.Memory.nMemorySpeed) {
         case MEMORY_120NS: memory_speed = 0x00; break;
         case MEMORY_100NS: memory_speed = 0x50; break;
