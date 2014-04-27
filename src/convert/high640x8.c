@@ -173,6 +173,7 @@ static void ConvertHighRes_640x8Bit(void)
 			adr=y*280;            
 			for (x = 0; x < 832; x+=4)
 			{
+                if (buffer[adr]!=NEXTVideo[adr]) {
                         col=(NEXTVideo[adr]&0xC0)>>6;
 			putpixelbw(sdlscrn,x,y,col);
                         col=(NEXTVideo[adr]&0x30)>>4;
@@ -181,6 +182,8 @@ static void ConvertHighRes_640x8Bit(void)
 			putpixelbw(sdlscrn,x+2,y,col);
                         col=(NEXTVideo[adr]&0x03);
 			putpixelbw(sdlscrn,x+3,y,col);
+                    buffer[adr]=NEXTVideo[adr];
+                }
 			adr+=1;
 			}
 		}
@@ -192,6 +195,7 @@ static void ConvertHighRes_640x8Bit(void)
 			adr=y*288;            
 			for (x = 0; x < 1120; x+=4)
 			{
+                if (buffer[adr]!=NEXTVideo[adr]) {
                         col=(NEXTVideo[adr]&0xC0)>>6;
 			putpixelbw(sdlscrn,x,y,col);
                         col=(NEXTVideo[adr]&0x30)>>4;
@@ -200,6 +204,8 @@ static void ConvertHighRes_640x8Bit(void)
 			putpixelbw(sdlscrn,x+2,y,col);
                         col=(NEXTVideo[adr]&0x03);
 			putpixelbw(sdlscrn,x+3,y,col);
+                    buffer[adr]=NEXTVideo[adr];
+                }
 			adr+=1;
 			}
 		}
