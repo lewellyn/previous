@@ -535,7 +535,7 @@ void check_prefs_changed_cpu (void)
 		currprefs.cpu_idle = changed_prefs.cpu_idle;
 	}
 	if (changed)
-		set_special (SPCFLAG_BRK);
+		set_special (SPCFLAG_MODE_CHANGE);
 
 }
 
@@ -1806,7 +1806,7 @@ void NMI (void)
 
 void m68k_reset (int hardreset)
 {
-	regs.spcflags = 0;
+    regs.spcflags &= (SPCFLAG_MODE_CHANGE | SPCFLAG_BRK);
 	regs.ipl = regs.ipl_pin = 0;
 #ifdef SAVESTATE
 	if (savestate_state == STATE_RESTORE || savestate_state == STATE_REWIND) {

@@ -18,6 +18,8 @@
 
 #define IO_SEG_MASK	0x1FFFF
 
+int SCR_ROM_overlay=0;
+
 static Uint32 scr1=0x00000000;
 static Uint32 turboscr1=0x00000000;
 
@@ -86,6 +88,8 @@ void SID_Read(void) {
 #define SCR1_CONST_MASK     0xFFFFFF00
 
 void SCR_Reset(void) {
+    SCR_ROM_overlay = 0;
+    
     scr2_0=0x00;
     scr2_1=0x00;
     scr2_2=0x00;
@@ -326,8 +330,6 @@ void SCR2_Read2(void)
     //	IoMem[IoAccessCurrentAddress & 0x1FFFF]=scr2_2 & (SCR2_RTDATA|SCR2_RTCLK|SCR2_RTCE)); // + data
 	IoMem[IoAccessCurrentAddress & 0x1FFFF]=scr2_2;
 }
-
-int SCR_ROM_overlay=0;
 
 void SCR2_Write3(void)
 {	

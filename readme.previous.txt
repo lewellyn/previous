@@ -59,7 +59,7 @@ Actually it does not emulate Turbo machines.
 For using Previous, you need to have installed the following libraries:
 
 Required:
-- The SDL library v1.2.15 (v2.x won’t work) (http://www.libsdl.org)
+- The SDL library v1.2.15 (v2.x won't work) (http://www.libsdl.org)
 - The zlib compression library (http://www.gzip.org/zlib/)
 
 
@@ -136,9 +136,10 @@ Known issues (version 0.4):
 - Shortcuts do not work properly or overlap with host commands on some platforms.
 - The clock does not tick accurately. Real time clock power-on test may fail
   sporadically on fast host systems.
+- FPU only works on x86 hosts.
 - Mac OS X: When minimizing and maximizing the application window there might
-  occur a blue layer above the window’s contents. This is an SDL bug.
-- Mac OS X: The native GUI is still showing Hatari´s preferences.
+  occur a blue layer above the window's contents. This is an SDL bug.
+- Mac OS X: The native GUI is still showing Hatari's preferences.
 
 
  5) Running Previous
