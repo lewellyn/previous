@@ -316,8 +316,11 @@ int ShortCut_CheckKeys(int modkey, int symkey, bool press)
 {
 	SHORTCUTKEYIDX key;
 
-	//if (modkey & (KMOD_RALT|KMOD_LMETA|KMOD_RMETA|KMOD_MODE))
+#if defined(__APPLE__)
     if ((modkey&(KMOD_RALT|KMOD_LALT)) && (modkey&(KMOD_RMETA|KMOD_LMETA)))
+#else
+	if (modkey & (KMOD_RALT|KMOD_LMETA|KMOD_RMETA|KMOD_MODE))
+#endif
 		key = ShortCut_CheckKey(symkey, ConfigureParams.Shortcut.withModifier);
 	else
 		key = ShortCut_CheckKey(symkey, ConfigureParams.Shortcut.withoutModifier);
