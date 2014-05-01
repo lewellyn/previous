@@ -326,6 +326,12 @@ void MO_IntMask_Read(void) { // 0x02012005
 void MO_IntMask_Write(void) {
     mo.intmask=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Interrupt mask write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
+    /* TODO: check if correct */
+    if ((mo.intstatus&mo.intmask)==0) {
+        set_interrupt(INT_DISK, RELEASE_INT);
+    } else if ((mo.intstatus&MOINT_OSP_MASK)&mo.intmask) {
+        set_interrupt(INT_DISK, SET_INT);
+    }
 }
 
 void MOctrl_CSR2_Read(void) { // 0x02012006
@@ -1145,6 +1151,7 @@ void ECC_IO_Handler(void) {
                 return;
             }
             if (ecc_buffer[eccout].size==0) {
+                dma_mo_write_memory(); /* Flush buffer, FIXME: find better way */
                 ecc_sequence_done();
                 return;
             }
@@ -1626,6 +1633,8 @@ void mo_eject_disk(void) {
     File_Close(modrv[dnum].dsk);
     modrv[dnum].dsk=NULL;
     modrv[dnum].inserted=false;
+    modrv[dnum].spinning=false;
+    modrv[dnum].spiraling=false;
     
     ConfigureParams.MO.drive[dnum].bDiskInserted=false;
     ConfigureParams.MO.drive[dnum].szImageName[0]='\0';
@@ -1636,6 +1645,15 @@ void mo_eject_disk(void) {
 void mo_insert_disk(int drv) {
     Log_Printf(LOG_WARN, "MO disk %i: Insert",dnum);
     
+    if (ConfigureParams.MO.drive[drv].bWriteProtected) {
+        modrv[drv].dsk = File_Open(ConfigureParams.MO.drive[drv].szImageName, "rb");
+        modrv[drv].protected=true;
+    } else {
+        modrv[drv].dsk = File_Open(ConfigureParams.MO.drive[drv].szImageName, "rb+");
+        modrv[drv].protected=false;
+    }
+    
+    modrv[drv].inserted=true;
     modrv[drv].dstat|=DS_INSERT;
     modrv[drv].spinning=false;
     modrv[drv].spiraling=false;
@@ -1835,16 +1853,7 @@ void MO_Uninit(void) {
 }
 
 void MO_Insert(int drive) {
-    Log_Printf(LOG_WARN, "Loading magneto-optical disks:");
-    
-    modrv[drive].inserted=true;
-    if (ConfigureParams.MO.drive[drive].bWriteProtected) {
-        modrv[drive].dsk = File_Open(ConfigureParams.MO.drive[drive].szImageName, "rb");
-        modrv[drive].protected=true;
-    } else {
-        modrv[drive].dsk = File_Open(ConfigureParams.MO.drive[drive].szImageName, "rb+");
-        modrv[drive].protected=false;
-    }
+    Log_Printf(LOG_WARN, "Loading magneto-optical disk:");
     Log_Printf(LOG_WARN, "MO Disk%i: %s\n",drive,ConfigureParams.MO.drive[drive].szImageName);
 
     mo_insert_disk(drive);
