@@ -33,8 +33,9 @@
 #define REAL_ECC    1
 
 #define LOG_MO_REG_LEVEL    LOG_DEBUG
-#define LOG_MO_CMD_LEVEL    LOG_WARN
-#define LOG_MO_ECC_LEVEL    LOG_WARN
+#define LOG_MO_CMD_LEVEL    LOG_DEBUG
+#define LOG_MO_ECC_LEVEL    LOG_DEBUG
+#define LOG_MO_IO_LEVEL     LOG_DEBUG
 
 #define LOG_ECC_DATA        0
 #define LOG_ECC_ERASURES    0
@@ -231,7 +232,7 @@ void mo_select_head(int head);
 void mo_reset_attn_status(void);
 void mo_stop_spinning(void);
 void mo_start_spinning(void);
-void mo_eject_disk(void);
+void mo_eject_disk(int drv);
 void mo_start_spiraling(void);
 void mo_stop_spiraling(void);
 void mo_self_diagnostic(void);
@@ -1096,7 +1097,7 @@ void ECC_IO_Handler(void) {
                         ecc_sequence_done();
                     } else {
                         Log_Printf(LOG_WARN,"[OSP] No more data! ECC starve!");
-                        abort();
+                        //abort();
                     }
                 }
             }
@@ -1183,7 +1184,7 @@ void ECC_IO_Handler(void) {
 void mo_read_sector(Uint32 sector_id) {
     Uint32 sector_num = get_logical_sector(sector_id);
     
-    Log_Printf(LOG_WARN, "MO disk %i: Read sector at offset %i (%i sectors remaining)",
+    Log_Printf(LOG_MO_IO_LEVEL, "MO disk %i: Read sector at offset %i (%i sectors remaining)",
                dnum, sector_num, sector_counter-1);
     
     /* seek to the position */
@@ -1196,7 +1197,7 @@ void mo_read_sector(Uint32 sector_id) {
 void mo_write_sector(Uint32 sector_id) {
     Uint32 sector_num = get_logical_sector(sector_id);
     
-    Log_Printf(LOG_WARN, "MO disk %i: Write sector at offset %i (%i sectors remaining)",
+    Log_Printf(LOG_MO_IO_LEVEL, "MO disk %i: Write sector at offset %i (%i sectors remaining)",
                dnum, sector_num, sector_counter-1);
     
     if (ecc_buffer[eccout].limit==MO_SECTORSIZE_DISK) {
@@ -1205,7 +1206,7 @@ void mo_write_sector(Uint32 sector_id) {
         fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
         fwrite(ecc_buffer[eccout].data, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
 #else
-        Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
+        Log_Printf(LOG_MO_IO_LEVEL, "MO Warning: File write disabled!");
 #endif
         ecc_buffer[eccout].size = 0;
         ecc_buffer[eccout].limit = MO_SECTORSIZE_DATA;
@@ -1215,7 +1216,7 @@ void mo_write_sector(Uint32 sector_id) {
 void mo_erase_sector(Uint32 sector_id) {
     Uint32 sector_num = get_logical_sector(sector_id);
     
-    Log_Printf(LOG_WARN, "MO disk %i: Erase sector at offset %i (%i sectors remaining)",
+    Log_Printf(LOG_MO_IO_LEVEL, "MO disk %i: Erase sector at offset %i (%i sectors remaining)",
                dnum, sector_num, sector_counter-1);
     
     Uint8 erase_buf[MO_SECTORSIZE_DISK];
@@ -1226,14 +1227,14 @@ void mo_erase_sector(Uint32 sector_id) {
     fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
     fwrite(erase_buf, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
 #else
-    Log_Printf(LOG_WARN, "MO Warning: File write disabled!");
+    Log_Printf(LOG_MO_IO_LEVEL, "MO Warning: File write disabled!");
 #endif
 }
 
 void mo_verify_sector(Uint32 sector_id) {
     Uint32 sector_num = get_logical_sector(sector_id);
     
-    Log_Printf(LOG_WARN, "MO disk %i: Verify sector at offset %i (%i sectors remaining)",
+    Log_Printf(LOG_MO_IO_LEVEL, "MO disk %i: Verify sector at offset %i (%i sectors remaining)",
                dnum, sector_num, sector_counter-1);
     
     /* seek to the position */
@@ -1428,7 +1429,7 @@ void mo_drive_cmd(void) {
                 break;
             case DRV_EC:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Eject (%04X)\n", command);
-                mo_eject_disk();
+                mo_eject_disk(-1);
                 break;
             case DRV_SOO:
                 Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Drive command: Start Spiraling (%04X)\n", command);
@@ -1623,23 +1624,25 @@ void mo_start_spinning(void) {
     mo_set_signals(true, false, CMD_DELAY);
 }
 
-void mo_eject_disk(void) {
-    if (mo_drive_empty()) {
-        return;
+void mo_eject_disk(int drv) {
+    if (drv<0) { /* Called from emulator, else called from GUI */
+        drv=dnum;
+        if (mo_drive_empty())
+            return;
+        
+        mo_set_signals(true, false, CMD_DELAY);
     }
 
-    Log_Printf(LOG_WARN, "MO disk %i: Eject",dnum);
+    Log_Printf(LOG_WARN, "MO disk %i: Eject",drv);
     
-    File_Close(modrv[dnum].dsk);
-    modrv[dnum].dsk=NULL;
-    modrv[dnum].inserted=false;
-    modrv[dnum].spinning=false;
-    modrv[dnum].spiraling=false;
+    File_Close(modrv[drv].dsk);
+    modrv[drv].dsk=NULL;
+    modrv[drv].inserted=false;
+    modrv[drv].spinning=false;
+    modrv[drv].spiraling=false;
     
-    ConfigureParams.MO.drive[dnum].bDiskInserted=false;
-    ConfigureParams.MO.drive[dnum].szImageName[0]='\0';
-    
-    mo_set_signals(true, false, CMD_DELAY);
+    ConfigureParams.MO.drive[drv].bDiskInserted=false;
+    ConfigureParams.MO.drive[drv].szImageName[0]='\0';
 }
 
 void mo_insert_disk(int drv) {
@@ -1780,8 +1783,12 @@ int delayed_drive=-1;
 void mo_set_signals(bool complete, bool attn, int delay) {
     if (delay>0) {
         if (delayed_drive>=0) {
-            Log_Printf(LOG_WARN, "[MO] Error: Delayed interrupt already in progress!");
-            abort();
+            if (delayed_drive!=dnum) {
+                Log_Printf(LOG_WARN, "[MO] Fatal error: Delayed interrupt from other drive (%i) in progress!",delayed_drive);
+                abort();
+            } else {
+                Log_Printf(LOG_WARN, "[MO] Error: Delayed interrupt already in progress!");
+            }
         }
         delayed_drive=dnum;
         delayed_compl=complete;
@@ -1857,6 +1864,12 @@ void MO_Insert(int drive) {
     Log_Printf(LOG_WARN, "MO Disk%i: %s\n",drive,ConfigureParams.MO.drive[drive].szImageName);
 
     mo_insert_disk(drive);
+}
+
+void MO_Eject(int drive) {
+    Log_Printf(LOG_WARN, "Unloading magneto-optical disk %i",drive);
+
+    mo_eject_disk(drive);
 }
 
 void MO_Reset(void) {

@@ -27,6 +27,9 @@ const char DlgOpticalDisk_fileid[] = "Previous dlgOpticalDisk.c : " __DATE__ " "
 
 #define DISKDLG_EXIT            17
 
+/* Constant strings */
+#define MODLG_EJECT_WARNING     "WARNING: Don't eject manually if a guest system is running. Risk of data loss. Eject now?"
+
 /* Variable strings */
 char inserteject0[16] = "Insert";
 char inserteject1[16] = "Insert";
@@ -164,10 +167,13 @@ void DlgOptical_Main(void)
                         MO_Insert(0);
                     }
                 } else {
-                    ConfigureParams.MO.drive[0].bDiskInserted = false;
-                    sprintf(inserteject0, "Insert");
-                    ConfigureParams.MO.drive[0].szImageName[0] = '\0';
-                    dlgname_mo[0][0] = '\0';
+                    if (DlgAlert_Query(MODLG_EJECT_WARNING)) {
+                        ConfigureParams.MO.drive[0].bDiskInserted = false;
+                        sprintf(inserteject0, "Insert");
+                        ConfigureParams.MO.drive[0].szImageName[0] = '\0';
+                        dlgname_mo[0][0] = '\0';
+                        MO_Eject(0);
+                    }
                 }
                 break;
             case MODLG_CONNECTED0:
@@ -196,10 +202,13 @@ void DlgOptical_Main(void)
                         MO_Insert(1);
                     }
                 } else {
-                    ConfigureParams.MO.drive[1].bDiskInserted = false;
-                    sprintf(inserteject1, "Insert");
-                    ConfigureParams.MO.drive[1].szImageName[0] = '\0';
-                    dlgname_mo[1][0] = '\0';
+                    if (DlgAlert_Query(MODLG_EJECT_WARNING)) {
+                        ConfigureParams.MO.drive[1].bDiskInserted = false;
+                        sprintf(inserteject1, "Insert");
+                        ConfigureParams.MO.drive[1].szImageName[0] = '\0';
+                        dlgname_mo[1][0] = '\0';
+                        MO_Eject(1);
+                    }
                 }
                 break;
             case MODLG_CONNECTED1:

@@ -105,6 +105,7 @@ MMU		good
 FPU		good
 DSP		missing
 DMA		partial
+NeXTbus		missing
 Memory		good
 2-bit graphics	good
 Color graphics	good
