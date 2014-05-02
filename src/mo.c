@@ -303,10 +303,11 @@ void MO_IntStatus_Read(void) { // 0x02012004
 
 void MO_IntStatus_Write(void) {
     Uint8 val = IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
+    osp_poll_mo_signals();
     mo.intstatus &= ~(val&MOINT_OSP_MASK);
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Interrupt status write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-    /* TODO: check if correct */
-    if (((mo.intstatus&MOINT_OSP_MASK)&mo.intmask)==0) {
+
+    if ((mo.intstatus&mo.intmask)==0) {
         set_interrupt(INT_DISK, RELEASE_INT);
     }
     if (val&MOINT_GPO) {
@@ -327,10 +328,11 @@ void MO_IntMask_Read(void) { // 0x02012005
 void MO_IntMask_Write(void) {
     mo.intmask=IoMem[IoAccessCurrentAddress & IO_SEG_MASK];
  	Log_Printf(LOG_MO_REG_LEVEL,"[MO] Interrupt mask write at $%08x val=$%02x PC=$%08x\n", IoAccessCurrentAddress, IoMem[IoAccessCurrentAddress & IO_SEG_MASK], m68k_getpc());
-    /* TODO: check if correct */
+
+    osp_poll_mo_signals();
     if ((mo.intstatus&mo.intmask)==0) {
         set_interrupt(INT_DISK, RELEASE_INT);
-    } else if ((mo.intstatus&MOINT_OSP_MASK)&mo.intmask) {
+    } else {
         set_interrupt(INT_DISK, SET_INT);
     }
 }
