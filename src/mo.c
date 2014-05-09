@@ -312,7 +312,6 @@ void MO_IntStatus_Write(void) {
     }
     if (val&MOINT_GPO) {
         Log_Printf(LOG_WARN,"[OSP] General purpose output (unimplemented)\n");
-        //abort();
     }
     if (val&MOINT_RESET) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[MO] Hard reset\n");
@@ -1154,7 +1153,7 @@ void ECC_IO_Handler(void) {
                 return;
             }
             if (ecc_buffer[eccout].size==0) {
-                dma_mo_write_memory(); /* Flush buffer, FIXME: find better way */
+                dma_mo_flush_buffer(); /* Flush buffer, FIXME: find better way */
                 ecc_sequence_done();
                 return;
             }
@@ -1659,6 +1658,7 @@ void mo_insert_disk(int drv) {
     }
     
     modrv[drv].inserted=true;
+    modrv[drv].dstat&=~DS_EMPTY;
     modrv[drv].dstat|=DS_INSERT;
     modrv[drv].spinning=false;
     modrv[drv].spiraling=false;
@@ -1731,11 +1731,14 @@ void mo_unimplemented_cmd(void) {
 
 void mo_reset(void) {
     if (modrv[dnum].connected) {
-        /* TODO: reset more things */
-        mo.intstatus=0;
+        modrv[dnum].head=NO_HEAD;
+        modrv[dnum].head_pos=modrv[dnum].ho_head_pos=0;
+        modrv[dnum].sec_offset=0;
+        
         modrv[dnum].dstat=DS_RESET;
-        //modrv[dnum].spinning=false;
-        //modrv[dnum].spiraling=false;
+        modrv[dnum].estat=modrv[dnum].hstat=0;
+        modrv[dnum].spinning=false;
+        modrv[dnum].spiraling=false;
         
         if (!modrv[dnum].inserted) {
             modrv[dnum].dstat|=DS_EMPTY;

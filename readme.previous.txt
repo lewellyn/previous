@@ -131,7 +131,8 @@ Known issues (version 0.4):
 - Un-emulated hardware may cause problems in certain situations (see above).
 - The kernel sometimes hangs during the boot process after printing "root on"
   (this is called "root on hang"). NeXTstep 3.0 and later are affected.
-- The MO drive has some timing related problems.
+- The MO drive causes problems in certain situations. Diagnostics fail because of
+  bad timings (sector and command delay too long).
 - Keys are not mapped correctly depending on the host keyboard layout.
 - Shortcuts do not work properly or overlap with host commands on some platforms.
 - The clock does not tick accurately. Real time clock power-on test may fail
