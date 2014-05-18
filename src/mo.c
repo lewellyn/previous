@@ -208,6 +208,7 @@ void MO_Uninit(void);
 #define CMD_DELAY       2000
 
 void mo_set_signals(bool complete, bool attn, int delay);
+void mo_push_signals(bool complete, bool attn, int drive);
 void osp_poll_mo_signals(void);
 
 void ecc_read(void);
@@ -1662,7 +1663,7 @@ void mo_insert_disk(int drv) {
     modrv[drv].dstat|=DS_INSERT;
     modrv[drv].spinning=false;
     modrv[drv].spiraling=false;
-    mo_set_signals(false, true, 0);
+    mo_push_signals(true, true, drv);
 }
 
 void mo_start_spiraling(void) {
@@ -1789,10 +1790,10 @@ void mo_set_signals(bool complete, bool attn, int delay) {
     if (delay>0) {
         if (delayed_drive>=0) {
             if (delayed_drive!=dnum) {
-                Log_Printf(LOG_WARN, "[MO] Fatal error: Delayed interrupt from other drive (%i) in progress!",delayed_drive);
-                abort();
+                Log_Printf(LOG_WARN, "[MO] Warning: Delayed interrupt from other drive (%i) in progress!",delayed_drive);
+                mo_push_signals(delayed_compl, delayed_attn, delayed_drive);
             } else {
-                Log_Printf(LOG_WARN, "[MO] Error: Delayed interrupt already in progress!");
+                Log_Printf(LOG_WARN, "[MO] Warning: Delayed interrupt already in progress!");
             }
         }
         delayed_drive=dnum;

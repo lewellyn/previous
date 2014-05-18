@@ -10,7 +10,7 @@
 
 
 /* Name and version for window title: */
-#define PROG_NAME "Previous 0.4"
+#define PROG_NAME "Previous 0.5"
 
 /* Messages for window title: */
 #if defined(__APPLE__)
