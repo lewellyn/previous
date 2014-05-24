@@ -14,8 +14,6 @@
 /* TODO:
  * - Add support for DMA and ECC starve
  * - Add support for ECC uncorrectable sector errors
- * - Modify Reed Solomon ECC encoder to produce
- *   same parity bytes as real hardware
  * - Improve drive error handling (attn conditions)
  */
 
@@ -30,15 +28,11 @@
 #include "rs.h"
 #include "statusbar.h"
 
-#define REAL_ECC    1
 
 #define LOG_MO_REG_LEVEL    LOG_DEBUG
 #define LOG_MO_CMD_LEVEL    LOG_DEBUG
 #define LOG_MO_ECC_LEVEL    LOG_DEBUG
 #define LOG_MO_IO_LEVEL     LOG_DEBUG
-
-#define LOG_ECC_DATA        0
-#define LOG_ECC_ERASURES    0
 
 #define IO_SEG_MASK	0x1FFFF
 
@@ -775,193 +769,6 @@ void mo_formatter_cmd2(void) {
     osp_select(mo.ctrlr_csr2&MOCSR2_DRIVE_SEL);
 }
 
-bool ecc_repeat=false; /* This is for ECC blocks */
-
-
-#if REAL_ECC
-void rs_encode(Uint8 *sector_buf) {
-    Uint8 data_buf[32];
-    Uint8 rs_buf[36];
-    
-    int r,c;
-    int i;
-    
-    /* build structure for encoded sector */
-    for (r=31; r>=0; r--) {
-        for (c=31; c>=0; c--) {
-            sector_buf[c+36*r]=sector_buf[c+32*r];
-        }
-    }
-    /* reset rs buffer */
-    for (i=0; i<36; i++) {
-        rs_buf[i]=0;
-    }
-    
-    /* encode columns */
-    for (c=0; c<32; c++) {
-        /* copy row to rs buffer */
-        for (r=0; r<32; r++) {
-            data_buf[r]=sector_buf[c+36*r];
-        }
-        /* encode */
-        encode_data(data_buf, 32, rs_buf);
-        
-        /* copy parity bytes to sector buffer */
-        for (r=32; r<36; r++) {
-            sector_buf[c+36*r]=rs_buf[r];
-        }
-    }
-    
-    /* encode rows */
-    for (r=0; r<36; r++) {
-        /* copy column to rs buffer */
-        for (c=0; c<32; c++) {
-            data_buf[c]=sector_buf[c+36*r];
-        }
-        /* encode */
-        encode_data(data_buf, 32, rs_buf);
-        
-        /* copy parity bytes to sector buffer */
-        for (c=32; c<36; c++) {
-            sector_buf[c+36*r]=rs_buf[c];
-        }
-    }
-#if LOG_ECC_DATA
-    /* print the result */
-    for (r=0; r<36; r++) {
-        for (c=0; c<36; c++) {
-            printf("%02X ",sector_buf[c+r*36]);
-            if (c%8==7) {
-                printf(" ");
-            }
-        }
-        printf("\n");
-    }
-#endif
-}
-
-void rs_decode(Uint8 *sector_buf)
-{
-    int c,r;
-    int i,e;
-    int erasures[36];
-    int num_erasures=0;
-    int num_errors=0;
-    
-    Uint8 rs_buf[36];
-    Uint8 ecc_buf[1296];
-    
-    memcpy(ecc_buf, sector_buf, 1296);
-    
-#if LOG_ECC_DATA
-    /* print the result */
-    for (r=0; r<36; r++) {
-        for (c=0; c<36; c++) {
-            printf("%02X ",ecc_buf[c+r*36]);
-            if (c%8==7) {
-                printf(" ");
-            }
-        }
-        printf("\n");
-    }
-#endif
-    
-    /* reset rs buffer */
-    for (i=0; i<36; i++) {
-        rs_buf[i]=0;
-    }
-    
-    /* decode rows */
-    for (r=0; r<36; r++) {
-        /* fill with encoded data */
-        for (c=0; c<36; c++) {
-            rs_buf[c]=ecc_buf[c+36*r];
-        }
-        
-        decode_data(rs_buf, 36);
-        e=0;
-        if (check_syndrome()!=0) {
-            e=correct_errors_erasures(rs_buf, 36, 0, NULL);
-        }
-        if (e==-1) {
-            erasures[num_erasures]=r; /* this row is bad */
-            num_erasures++;
-        } else {
-            num_errors+=e;
-        }
-        
-        /* copy back to ecc buffer */
-        for (c=0; c<32; c++) {
-            ecc_buf[c+36*r]=rs_buf[c];
-        }
-    }
-    
-#if LOG_ECC_ERASURES
-    /* print erasures */
-    printf("Erased rows:");
-    for (i=0; i<num_erasures; i++) {
-        printf(" %i",erasures[i]);
-    }
-    printf("\n");
-#endif
-    
-    num_erasures=0;
-
-    
-    /* decode columns */
-    for (c=0; c<32; c++) {
-        /* fill with encoded data */
-        for (r=0; r<36; r++) {
-            rs_buf[r]=ecc_buf[c+36*r];
-        }
-        
-        decode_data(rs_buf, 36);
-        e=0;
-        if (check_syndrome()!=0) {
-            e=correct_errors_erasures(rs_buf, 36, 0, NULL);
-        }
-        if (e==-1) {
-            erasures[num_erasures]=c; /* this column is bad */
-            num_erasures++;
-        } else {
-            num_errors+=e;
-        }
-        
-        /* copy back to sector buffer */
-        for (r=0; r<32; r++) {
-            sector_buf[c+32*r]=rs_buf[r];
-        }
-    }
-    
-#if LOG_ECC_ERASURES
-    /* print erasures */
-    printf("Uncorrectable columns:");
-    for (i=0; i<num_erasures; i++) {
-        printf(" %i",erasures[i]);
-    }
-    printf("\n");
-#endif
-    
-    /* print error count */
-    Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC: Number of corrected errors: %i\n",num_errors);
-    
-#if LOG_ECC_DATA
-    /* print the result */
-    for (r=0; r<32; r++) {
-        for (c=0; c<32; c++) {
-            printf("%02X ",sector_buf[c+r*32]);
-            if (c%8==7) {
-                printf(" ");
-            }
-        }
-        printf("\n");
-    }
-#endif
-    if (mo.ecc_cnt==0) {
-        mo.ecc_cnt=num_errors;
-    }
-}
-#endif
 
 /* ECC emulation:
  *
@@ -981,6 +788,8 @@ void rs_decode(Uint8 *sector_buf)
 
 #define ECC_DELAY SECTOR_IO_DELAY/4 /* must be a fraction of sector delay */
 
+bool ecc_repeat=false; /* This is for ECC blocks */
+
 int eccin=0;
 int eccout=1;
 
@@ -993,11 +802,22 @@ void ecc_decode(void) {
     } else if (ecc_buffer[eccin].size==MO_SECTORSIZE_DISK) {
         Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC decoding buffer.");
         ecc_buffer[eccin].limit=ecc_buffer[eccin].size=MO_SECTORSIZE_DATA;
-#if REAL_ECC
-        if (mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* TODO: remove once we have encoded disk images */
-            rs_decode(ecc_buffer[eccin].data);
+
+        if (mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* TODO: remove this line once we have encoded disk images */
+            int num_errors = rs_decode(ecc_buffer[eccin].data);
+            
+            if (num_errors<0) {
+                Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC: Sector has uncorrectable errors!");
+                abort(); /* TODO: signal ECC error */
+            } else {
+                Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC: Number of corrected errors: %i\n",num_errors);
+                
+                if (mo.ecc_cnt==0) {
+                    mo.ecc_cnt=num_errors;
+                }
+            }
         }
-#endif
+
         ecc_toggle_buffer();
     } else {
         Log_Printf(LOG_WARN, "[OSP] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccin].size);
@@ -1013,11 +833,11 @@ void ecc_encode(void) {
     } else if (ecc_buffer[eccin].limit==MO_SECTORSIZE_DATA) {
         Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC encoding buffer.");
         ecc_buffer[eccin].limit=ecc_buffer[eccin].size=MO_SECTORSIZE_DISK;
-#if REAL_ECC
-        if (mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* TODO: remove once we have encoded disk images */
+
+        if (mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* TODO: remove this line once we have encoded disk images */
             rs_encode(ecc_buffer[eccin].data);
         }
-#endif
+
         ecc_toggle_buffer();
     } else {
         Log_Printf(LOG_WARN, "[OSP] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccin].size);
@@ -1881,7 +1701,4 @@ void MO_Eject(int drive) {
 void MO_Reset(void) {
     MO_Uninit();
     MO_Init();
-#if REAL_ECC
-    initialize_ecc();
-#endif
 }
