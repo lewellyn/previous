@@ -167,8 +167,6 @@ int dnum;
 #define MO_SECTORSIZE_DISK  1296 /* size of encoded sector, like stored on disk */
 #define MO_SECTORSIZE_DATA  1024 /* size of decoded sector, like handled by software */
 
-#define MO_SECTORSIZE_DISK_HACK 1024 /* while ECC is not fully emulated */
-
 
 Uint32 get_logical_sector(Uint32 sector_id) {
     Sint32 tracknum = (sector_id&0xFFFF00)>>8;
@@ -544,6 +542,7 @@ void mo_formatter_cmd(void) {
         fmt_mode = FMT_MODE_IDLE;
         ecc_state = ECC_STATE_DONE;
         mo.ecc_cnt=0;
+        mo.err_stat=0;
         return;
     }
     if (mo.ctrlr_csr1&FMT_ECC_READ) {
@@ -802,22 +801,22 @@ void ecc_decode(void) {
     } else if (ecc_buffer[eccin].size==MO_SECTORSIZE_DISK) {
         Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC decoding buffer.");
         ecc_buffer[eccin].limit=ecc_buffer[eccin].size=MO_SECTORSIZE_DATA;
-
-        if (mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* TODO: remove this line once we have encoded disk images */
-            int num_errors = rs_decode(ecc_buffer[eccin].data);
+        
+        int num_errors = rs_decode(ecc_buffer[eccin].data);
+        
+        if (num_errors<0) {
+            Log_Printf(LOG_WARN, "[OSP] ECC: Sector has uncorrectable errors!");
+            mo.err_stat = ERRSTAT_ECC;
+            osp_interrupt(MOINT_DATA_ERR);
+            //abort(); /* FIXME: Stop ECC and formatter? */
+        } else {
+            Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC: Number of corrected errors: %i\n",num_errors);
             
-            if (num_errors<0) {
-                Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC: Sector has uncorrectable errors!");
-                abort(); /* TODO: signal ECC error */
-            } else {
-                Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC: Number of corrected errors: %i\n",num_errors);
-                
-                if (mo.ecc_cnt==0) {
-                    mo.ecc_cnt=num_errors;
-                }
+            if (mo.ecc_cnt==0) {
+                mo.ecc_cnt=num_errors;
             }
         }
-
+        
         ecc_toggle_buffer();
     } else {
         Log_Printf(LOG_WARN, "[OSP] ECC buffer is not ready (%i bytes)!",ecc_buffer[eccin].size);
@@ -834,9 +833,7 @@ void ecc_encode(void) {
         Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC encoding buffer.");
         ecc_buffer[eccin].limit=ecc_buffer[eccin].size=MO_SECTORSIZE_DISK;
 
-        if (mo.ctrlr_csr2&MOCSR2_ECC_DIS) { /* TODO: remove this line once we have encoded disk images */
-            rs_encode(ecc_buffer[eccin].data);
-        }
+        rs_encode(ecc_buffer[eccin].data);
 
         ecc_toggle_buffer();
     } else {
@@ -1010,8 +1007,8 @@ void mo_read_sector(Uint32 sector_id) {
                dnum, sector_num, sector_counter-1);
     
     /* seek to the position */
-	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
-    fread(ecc_buffer[eccin].data, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
+	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK, SEEK_SET);
+    fread(ecc_buffer[eccin].data, MO_SECTORSIZE_DISK, 1, modrv[dnum].dsk);
     
     ecc_buffer[eccin].limit = ecc_buffer[eccin].size = MO_SECTORSIZE_DISK;
 }
@@ -1025,8 +1022,8 @@ void mo_write_sector(Uint32 sector_id) {
     if (ecc_buffer[eccout].limit==MO_SECTORSIZE_DISK) {
         /* seek to the position */
 #if 0
-        fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
-        fwrite(ecc_buffer[eccout].data, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
+        fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK, SEEK_SET);
+        fwrite(ecc_buffer[eccout].data, MO_SECTORSIZE_DISK, 1, modrv[dnum].dsk);
 #else
         Log_Printf(LOG_MO_IO_LEVEL, "MO Warning: File write disabled!");
 #endif
@@ -1042,12 +1039,12 @@ void mo_erase_sector(Uint32 sector_id) {
                dnum, sector_num, sector_counter-1);
     
     Uint8 erase_buf[MO_SECTORSIZE_DISK];
-    memset(erase_buf, 0, MO_SECTORSIZE_DISK);
+    memset(erase_buf, 0xFF, MO_SECTORSIZE_DISK);
     
     /* seek to the position */
 #if 0
-    fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
-    fwrite(erase_buf, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
+    fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK, SEEK_SET);
+    fwrite(erase_buf, MO_SECTORSIZE_DISK, 1, modrv[dnum].dsk);
 #else
     Log_Printf(LOG_MO_IO_LEVEL, "MO Warning: File write disabled!");
 #endif
@@ -1060,8 +1057,8 @@ void mo_verify_sector(Uint32 sector_id) {
                dnum, sector_num, sector_counter-1);
     
     /* seek to the position */
-	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK_HACK, SEEK_SET);
-    fread(ecc_buffer[eccin].data, MO_SECTORSIZE_DISK_HACK, 1, modrv[dnum].dsk);
+	fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK, SEEK_SET);
+    fread(ecc_buffer[eccin].data, MO_SECTORSIZE_DISK, 1, modrv[dnum].dsk);
     
     ecc_buffer[eccin].limit = ecc_buffer[eccin].size = MO_SECTORSIZE_DISK;
 }

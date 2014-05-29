@@ -16,7 +16,7 @@
 #if defined(__APPLE__)
 #define MOUSE_LOCK_MSG "Mouse is locked. Press cmd-alt-m to release."
 #elif defined(_WIN32_)
-#define MOUSE_LOCK_MSG "Mouse is locked. Press Left_Ctrl-Alt-m to release."
+#define MOUSE_LOCK_MSG "Mouse is locked. Press left_ctrl-alt-m to release."
 #else
 #define MOUSE_LOCK_MSG "Mouse is locked. Press shortcut-m to release."
 #endif
