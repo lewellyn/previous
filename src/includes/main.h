@@ -13,10 +13,12 @@
 #define PROG_NAME "Previous 0.5"
 
 /* Messages for window title: */
-#if defined(__APPLE__)
-#define MOUSE_LOCK_MSG "Mouse is locked. Press cmd-alt-m to release."
-#elif defined(_WIN32_)
+#ifdef _WIN32
 #define MOUSE_LOCK_MSG "Mouse is locked. Press left_ctrl-alt-m to release."
+#elif __linux__
+#define MOUSE_LOCK_MSG "Mouse is locked. Press shortcut-m to release."
+#elif __APPLE__
+#define MOUSE_LOCK_MSG "Mouse is locked. Press cmd-alt-m to release."
 #else
 #define MOUSE_LOCK_MSG "Mouse is locked. Press shortcut-m to release."
 #endif

@@ -23,7 +23,7 @@ endif(ENABLE_OSX_BUNDLE)
 # and set the subsytem of the resulting .exe to "windows GUI" instead of "console"
 if(WIN32)
 	set(GUIWIN_SOURCES gui-win/opencon.c)
-	set(GUIWIN_RES gui-win/hatari-winicon.rc)
+    set(GUIWIN_RES gui-win/previous-winicon.rc)
 	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mwindows")
 endif(WIN32)
 

@@ -13,7 +13,7 @@
 
 /* TODO:
  * - Add support for DMA and ECC starve
- * - Add support for ECC uncorrectable sector errors
+ * - Check support for ECC uncorrectable sector errors
  * - Improve drive error handling (attn conditions)
  */
 
@@ -808,7 +808,7 @@ void ecc_decode(void) {
             Log_Printf(LOG_WARN, "[OSP] ECC: Sector has uncorrectable errors!");
             mo.err_stat = ERRSTAT_ECC;
             osp_interrupt(MOINT_DATA_ERR);
-            //abort(); /* FIXME: Stop ECC and formatter? */
+            /* CHECK: Stop ECC and formatter? */
         } else {
             Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC: Number of corrected errors: %i\n",num_errors);
             
