@@ -196,7 +196,7 @@ void MO_Init(void);
 void MO_Uninit(void);
 
 /* Experimental */
-#define SECTOR_IO_DELAY 2000
+#define SECTOR_IO_DELAY 2500
 #define CMD_DELAY       1000
 
 void mo_set_signals(bool complete, bool attn, int delay);
@@ -785,7 +785,7 @@ void mo_formatter_cmd2(void) {
  *
  */
 
-#define ECC_DELAY SECTOR_IO_DELAY/4 /* must be a fraction of sector delay */
+#define ECC_DELAY SECTOR_IO_DELAY/5 /* must be a fraction of sector delay */
 
 bool ecc_repeat=false; /* This is for ECC blocks */
 
@@ -916,7 +916,8 @@ void ECC_IO_Handler(void) {
                         ecc_sequence_done();
                     } else {
                         Log_Printf(LOG_WARN,"[OSP] No more data! ECC starve!");
-                        //abort();
+                        mo.err_stat = ERRSTAT_STARVE;
+                        osp_interrupt(MOINT_DATA_ERR);
                     }
                 }
             }
@@ -1026,8 +1027,10 @@ void mo_write_sector(Uint32 sector_id) {
 
         ecc_buffer[eccout].size = 0;
         ecc_buffer[eccout].limit = MO_SECTORSIZE_DATA;
+    } else {
+        mo.err_stat = ERRSTAT_STARVE;
+        osp_interrupt(MOINT_DATA_ERR);
     }
-    else abort();
 }
 
 void mo_erase_sector(Uint32 sector_id) {
@@ -1459,7 +1462,7 @@ void mo_eject_disk(int drv) {
 }
 
 void mo_insert_disk(int drv) {
-    Log_Printf(LOG_WARN, "MO disk %i: Insert",dnum);
+    Log_Printf(LOG_WARN, "MO disk %i: Insert",drv);
     
     if (ConfigureParams.MO.drive[drv].bWriteProtected) {
         modrv[drv].dsk = File_Open(ConfigureParams.MO.drive[drv].szImageName, "rb");
@@ -1640,6 +1643,7 @@ void MO_Init(void) {
             modrv[i].connected=true;
             modrv[i].complete=true;
             modrv[i].attn=false;
+            modrv[i].dstat=modrv[i].estat=modrv[i].hstat=0;
             if (ConfigureParams.MO.drive[i].bDiskInserted &&
                 File_Exists(ConfigureParams.MO.drive[i].szImageName)) {
                 modrv[i].inserted=true;
