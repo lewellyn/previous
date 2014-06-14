@@ -296,14 +296,7 @@ void Dialog_SystemDlg(void)
     while (but != DLGSYS_EXIT && but != SDLGUI_QUIT
            && but != SDLGUI_ERROR && !bQuitProgram);
     
- 
- 	/* Read values from dialog: */
- 
-//    if (systemdlg[DLGSYS_CUBE030].state&SG_SELECTED)
-//        ConfigureParams.System.nMachineType = NEXT_CUBE030;
-//    else if (systemdlg[DLGSYS_SLAB].state&SG_SELECTED)
-//        ConfigureParams.System.nMachineType = NEXT_STATION;
-     
+  
     /* Obsolete */
  	ConfigureParams.System.bCompatibleCpu = 1;
  	ConfigureParams.System.bBlitter = 0;

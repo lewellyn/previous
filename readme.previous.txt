@@ -128,11 +128,12 @@ input devices, mainly keyboard.
 
 
 Known issues (version 0.4):
+- Using NeXTstep 3.0 or later on emulated 68030 NeXT Computer causes disk
+  image corruption in certain situations.
 - Un-emulated hardware may cause problems in certain situations (see above).
 - The kernel sometimes hangs during the boot process after printing "root on"
   (this is called "root on hang"). NeXTstep 3.0 and later are affected.
-- The MO drive causes problems in certain situations. Diagnostics fail because of
-  bad timings (sector and command delay too long).
+- The MO drive causes problems (mainly hangs) when both drives are used.
 - Keys are not mapped correctly depending on the host keyboard layout.
 - Shortcuts do not work properly or overlap with host commands on some platforms.
 - The clock does not tick accurately. Real time clock power-on test may fail

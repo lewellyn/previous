@@ -196,8 +196,8 @@ void MO_Init(void);
 void MO_Uninit(void);
 
 /* Experimental */
-#define SECTOR_IO_DELAY 5000
-#define CMD_DELAY       2000
+#define SECTOR_IO_DELAY 2000
+#define CMD_DELAY       1000
 
 void mo_set_signals(bool complete, bool attn, int delay);
 void mo_push_signals(bool complete, bool attn, int drive);
@@ -1021,15 +1021,13 @@ void mo_write_sector(Uint32 sector_id) {
     
     if (ecc_buffer[eccout].limit==MO_SECTORSIZE_DISK) {
         /* seek to the position */
-#if 0
         fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK, SEEK_SET);
         fwrite(ecc_buffer[eccout].data, MO_SECTORSIZE_DISK, 1, modrv[dnum].dsk);
-#else
-        Log_Printf(LOG_MO_IO_LEVEL, "MO Warning: File write disabled!");
-#endif
+
         ecc_buffer[eccout].size = 0;
         ecc_buffer[eccout].limit = MO_SECTORSIZE_DATA;
     }
+    else abort();
 }
 
 void mo_erase_sector(Uint32 sector_id) {
@@ -1042,12 +1040,8 @@ void mo_erase_sector(Uint32 sector_id) {
     memset(erase_buf, 0xFF, MO_SECTORSIZE_DISK);
     
     /* seek to the position */
-#if 0
     fseek(modrv[dnum].dsk, sector_num*MO_SECTORSIZE_DISK, SEEK_SET);
     fwrite(erase_buf, MO_SECTORSIZE_DISK, 1, modrv[dnum].dsk);
-#else
-    Log_Printf(LOG_MO_IO_LEVEL, "MO Warning: File write disabled!");
-#endif
 }
 
 void mo_verify_sector(Uint32 sector_id) {
@@ -1645,6 +1639,7 @@ void MO_Init(void) {
         if (ConfigureParams.MO.drive[i].bDriveConnected) {
             modrv[i].connected=true;
             modrv[i].complete=true;
+            modrv[i].attn=false;
             if (ConfigureParams.MO.drive[i].bDiskInserted &&
                 File_Exists(ConfigureParams.MO.drive[i].szImageName)) {
                 modrv[i].inserted=true;

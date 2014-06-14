@@ -124,7 +124,7 @@ Uint8 translate_key(SDLKey sdlkey) {
     }
 }
 
-#define NEW_MOD_HANDLING   1
+#define NEW_MOD_HANDLING   0
 
 #if NEW_MOD_HANDLING
 Uint8 translate_modifiers(SDLMod modifiers) {
