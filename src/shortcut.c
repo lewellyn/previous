@@ -59,12 +59,14 @@ static void ShortCut_MouseGrab(void)
 	{
 		if (bGrabMouse)
 		{
-			SDL_WM_GrabInput(SDL_GRAB_ON);
+			SDL_SetRelativeMouseMode(SDL_TRUE);
+            SDL_SetWindowGrab(sdlWindow, SDL_TRUE);
             Main_SetTitle(MOUSE_LOCK_MSG);
 		}
 		else
 		{
-			SDL_WM_GrabInput(SDL_GRAB_OFF);
+			SDL_SetRelativeMouseMode(SDL_FALSE);
+            SDL_SetWindowGrab(sdlWindow, SDL_FALSE);
             Main_SetTitle(NULL);
 		}
 	}
@@ -120,13 +122,14 @@ static void ShortCut_BossKey(void)
 
 	if (bGrabMouse)
 	{
-		SDL_WM_GrabInput(SDL_GRAB_OFF);
+		SDL_SetRelativeMouseMode(SDL_FALSE);
+        SDL_SetWindowGrab(sdlWindow, SDL_FALSE);
 		bGrabMouse = false;
 	}
 	Main_PauseEmulation(true);
 
 	/* Minimize Window and give up processing to next one! */
-	SDL_WM_IconifyWindow();
+    fprintf(stderr,"FIXME: minimize window!\n");
 }
 
 
@@ -317,7 +320,7 @@ int ShortCut_CheckKeys(int modkey, int symkey, bool press)
 	SHORTCUTKEYIDX key;
 
 #if defined(__APPLE__)
-    if ((modkey&(KMOD_RALT|KMOD_LALT)) && (modkey&(KMOD_RMETA|KMOD_LMETA)))
+    if (modkey&(KMOD_RALT|KMOD_LALT))
 #else
 	if (modkey & (KMOD_RALT|KMOD_LMETA|KMOD_RMETA|KMOD_MODE))
 #endif
