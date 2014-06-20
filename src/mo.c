@@ -1606,6 +1606,7 @@ void mo_set_signals(bool complete, bool attn, int delay) {
             if (delayed_drive!=dnum) {
                 Log_Printf(LOG_WARN, "[MO] Warning: Delayed interrupt from other drive (%i) in progress!",delayed_drive);
                 mo_push_signals(delayed_compl, delayed_attn, delayed_drive);
+                CycInt_RemovePendingInterrupt(INTERRUPT_MO);
             } else {
                 Log_Printf(LOG_WARN, "[MO] Warning: Delayed interrupt already in progress!");
             }
