@@ -506,7 +506,10 @@ void Main_EventHandler(void)
 			break;
 
 		 case SDL_KEYDOWN:
-			Keymap_KeyDown(&event.key.keysym);
+            if (ConfigureParams.Keyboard.bDisableKeyRepeat && event.key.repeat)
+                break;
+
+            Keymap_KeyDown(&event.key.keysym);
 			break;
 
 		 case SDL_KEYUP:

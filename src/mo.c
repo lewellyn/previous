@@ -75,6 +75,7 @@ struct {
     
     bool spinning;
     bool spiraling;
+    bool seeking;
     
     bool attn;
     bool complete;
@@ -1298,6 +1299,7 @@ void mo_seek(Uint16 command) {
     if (mo_drive_empty()) {
         return;
     }
+    modrv[dnum].seeking = true;
     modrv[dnum].head_pos = (modrv[dnum].ho_head_pos&0xF000) | (command&0x0FFF);
     modrv[dnum].sec_offset = 0; /* CHECK: is this needed? */
     mo_set_signals(true, false, CMD_DELAY);
@@ -1321,6 +1323,7 @@ void mo_jump_head(Uint16 command) {
     if (mo_drive_empty()) {
         return;
     }
+    modrv[dnum].seeking = true;
 
     int offset = command&0x7;
     if (command&0x8) {
@@ -1513,7 +1516,7 @@ void mo_spiraling_operation(void) {
     
     int i;
     for (i=0; i<2; i++) {
-        if (modrv[i].spiraling) {
+        if (modrv[i].spiraling && !modrv[i].seeking) {
             
             /* If the drive is selected, connect to formatter */
             if (i==dnum) {
@@ -1574,22 +1577,24 @@ void mo_push_signals(bool complete, bool attn, int drive) {
     }
     bool interrupt = false;
     
-    if (!modrv[dnum].complete) {
-        modrv[dnum].complete=complete;
-        if (modrv[dnum].complete) {
+    if (!modrv[drive].complete) {
+        modrv[drive].complete=complete;
+        if (modrv[drive].complete) {
             if (drive==dnum && mo.intmask&MOINT_CMD_COMPL) {
                 interrupt=true;
             }
         }
     }
-    if (!modrv[dnum].attn) {
-        modrv[dnum].attn=attn;
-        if (modrv[dnum].attn) {
+    if (!modrv[drive].attn) {
+        modrv[drive].attn=attn;
+        if (modrv[drive].attn) {
             if (drive==dnum && mo.intmask&MOINT_ATTN) {
                 interrupt=true;
             }
         }
     }
+    
+    modrv[drive].seeking=false;
 
     if (interrupt) {
         set_interrupt(INT_DISK, SET_INT);

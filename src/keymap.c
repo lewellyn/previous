@@ -24,12 +24,7 @@ const char Keymap_fileid[] = "Hatari keymap.c : " __DATE__ " " __TIME__;
 
 
 void Keymap_Init(void) {
-#if 0
-    if(ConfigureParams.Keyboard.bDisableKeyRepeat)
-        SDL_EnableKeyRepeat(0, 0);
-    else
-        SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
-#endif
+
 }
 
 Uint8 translate_key(SDL_Keycode sdlkey) {
