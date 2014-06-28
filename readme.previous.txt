@@ -127,9 +127,7 @@ There are remaining problems with the host to emulated machine interface for
 input devices, mainly keyboard.
 
 
-Known issues (version 0.4):
-- Using NeXTstep 3.0 or later on emulated 68030 NeXT Computer causes disk
-  image corruption in certain situations.
+Known issues (version 0.5):
 - Un-emulated hardware may cause problems in certain situations (see above).
 - The kernel sometimes hangs during the boot process after printing "root on"
   (this is called "root on hang"). NeXTstep 3.0 and later are affected.
@@ -140,7 +138,7 @@ Known issues (version 0.4):
   sporadically on fast host systems.
 - FPU only works on x86 hosts.
 - Mac OS X: When minimizing and maximizing the application window the mouse
-  gets unlocked.
+  gets unlocked and sometimes is clicking is ignored (SDL bug).
 - Mac OS X: The native GUI is still showing Hatari's preferences.
 
 
