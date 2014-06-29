@@ -536,6 +536,8 @@ enum {
     FMT_MODE_IDLE
 } fmt_mode;
 
+bool write_timing;
+
 void mo_formatter_cmd(void) {
     
     if (mo.ctrlr_csr1==FMT_RESET) {
@@ -577,6 +579,7 @@ void mo_formatter_cmd(void) {
     }
     if (mo.ctrlr_csr1&FMT_WRITE) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: Write (%02X)\n", mo.ctrlr_csr1);
+        write_timing = false;
         fmt_mode = FMT_MODE_WRITE;
     }
 }
@@ -623,7 +626,7 @@ bool fmt_match_id(Uint32 sector_id) {
         if (mo.ctrlr_csr2&MOCSR2_SECT_TIMER) {
             sector_timer++;
             if (sector_timer>SECTOR_TIMEOUT_COUNT) {
-                Log_Printf(LOG_MO_CMD_LEVEL, "[OSP] Sector timeout!");
+                Log_Printf(LOG_WARN, "[OSP] Sector timeout!");
                 sector_timer=0;
                 fmt_mode=FMT_MODE_IDLE;
                 osp_interrupt(MOINT_TIMEOUT);
@@ -661,10 +664,12 @@ void fmt_io(Uint32 sector_id) {
                 abort();
             }
             /* WARNING: first sector must be mismatch to pre-fill the ECC buffer for writing */
-            if (fmt_match_id(sector_id)) {
+            if (fmt_match_id(sector_id) && write_timing) {
                 /* Write sector from ECC buffer to disk */
                 mo_write_sector(sector_id);
                 fmt_sector_done();
+            } else {
+                write_timing = true;
             }
             /* (Re)fill ECC buffer from memory using DMA and encode data */
             ecc_write();
@@ -845,7 +850,7 @@ void ecc_encode(void) {
 
 void ecc_write(void) {
     if (ecc_state!=ECC_STATE_DONE) {
-        Log_Printf(LOG_WARN,"[OSP] Warning: ECC not accepting command (busy %i)", ecc_state);
+        Log_Printf(LOG_MO_ECC_LEVEL,"[OSP] Warning: ECC not accepting command (busy %i)", ecc_state);
         return;
     }
     ecc_mode=ECC_MODE_WRITE;
@@ -912,14 +917,9 @@ void ECC_IO_Handler(void) {
                 dma_mo_read_memory();
                 
                 if (ecc_buffer[eccin].size==old_size) {
-                    if (ecc_buffer[eccin].size==0) {
-                        Log_Printf(LOG_WARN,"[OSP] No more data! Sequence done.");
-                        ecc_sequence_done();
-                    } else {
-                        Log_Printf(LOG_WARN,"[OSP] No more data! ECC starve!");
-                        mo.err_stat = ERRSTAT_STARVE;
-                        osp_interrupt(MOINT_DATA_ERR);
-                    }
+                    Log_Printf(LOG_WARN,"[OSP] No more data! ECC starve! (%i byte)", old_size);
+                    mo.err_stat = ERRSTAT_STARVE;
+                    osp_interrupt(MOINT_DATA_ERR);
                 }
             }
             if (ecc_buffer[eccin].size==ecc_buffer[eccin].limit) {
@@ -986,7 +986,7 @@ void ECC_IO_Handler(void) {
                 }
                 return;
             }
-            Log_Printf(LOG_WARN, "[OSP] ECC waiting for disk write!");
+            Log_Printf(LOG_MO_ECC_LEVEL, "[OSP] ECC waiting for disk write!");
             break;
 
         default:
@@ -1029,8 +1029,10 @@ void mo_write_sector(Uint32 sector_id) {
         ecc_buffer[eccout].size = 0;
         ecc_buffer[eccout].limit = MO_SECTORSIZE_DATA;
     } else {
-        mo.err_stat = ERRSTAT_STARVE;
-        osp_interrupt(MOINT_DATA_ERR);
+        Log_Printf(LOG_WARN, "MO disk %i: Incomplete write (in: size=%i limit=%i, out: size=%i limit=%i)!", dnum,
+                   ecc_buffer[eccin].size, ecc_buffer[eccin].limit, ecc_buffer[eccout].size, ecc_buffer[eccout].limit);
+        osp_interrupt(MOINT_TIMEOUT);
+        abort();
     }
 }
 
