@@ -1298,27 +1298,20 @@ bool mo_protected(void) {
 }
 
 void mo_seek(Uint16 command) {
-    int seek_distance=0;
     if (mo_drive_empty()) {
         return;
     }
     modrv[dnum].seeking = true;
-    seek_distance = modrv[dnum].head_pos;
     modrv[dnum].head_pos = (modrv[dnum].ho_head_pos&0xF000) | (command&0x0FFF);
     modrv[dnum].sec_offset = 0; /* CHECK: is this needed? */
-
-    if (seek_distance<modrv[dnum].head_pos) {
-        seek_distance = modrv[dnum].head_pos-seek_distance;
-    } else {
-        seek_distance = seek_distance-modrv[dnum].head_pos;
-    }
-    mo_set_signals(true, false, 100000+seek_distance*12800/ConfigureParams.System.nCpuFreq);
+    mo_set_signals(true, false, CMD_DELAY);
 }
 
 void mo_high_order_seek(Uint16 command) {
     if (mo_drive_empty()) {
         return;
     }
+    /* CHECK: only seek command actually moves head? */
     if ((command&0xF)>4) {
         modrv[dnum].dstat|=DS_SEEK;
         mo_set_signals(true, true, CMD_DELAY);
@@ -1372,7 +1365,7 @@ void mo_jump_head(Uint16 command) {
         return;
     }
 
-    mo_set_signals(true, false, 10000+offset*12800/ConfigureParams.System.nCpuFreq);
+    mo_set_signals(true, false, CMD_DELAY);
 }
 
 void mo_recalibrate(void) {
