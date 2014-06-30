@@ -232,19 +232,6 @@ void DlgOptical_Main(void)
 	while (but != DISKDLG_EXIT && but != SDLGUI_QUIT
 	        && but != SDLGUI_ERROR && !bQuitProgram);
     
-    /* Remove this after fixing dual drive issues */
-    if (ConfigureParams.MO.drive[0].bDriveConnected && ConfigureParams.MO.drive[1].bDriveConnected) {
-        if (DlgAlert_Query("WARNING: Using both optical drives causes problems in certain situations. Remove second drive?")) {
-            ConfigureParams.MO.drive[1].bDriveConnected = false;
-            ConfigureParams.MO.drive[1].bDiskInserted = false;
-            sprintf(inserteject1, "Insert");
-            ConfigureParams.MO.drive[1].bWriteProtected = false;
-            modlg[MODLG_PROTECTED1].state &= ~SG_SELECTED;
-            ConfigureParams.MO.drive[1].szImageName[0] = '\0';
-            dlgname_mo[1][0] = '\0';
-        }
-    }
-    /* ----------------------------------------- */
     
     /* Read values from dialog: */
     ConfigureParams.MO.drive[0].bWriteProtected = modlg[MODLG_PROTECTED0].state&SG_SELECTED;
