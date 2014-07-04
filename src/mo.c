@@ -1565,7 +1565,7 @@ void mo_reset(void) {
         } else if (!modrv[dnum].spinning) {
             modrv[dnum].dstat|=DS_STOPPED;
         }
-        mo_set_signals(true,false,100000);
+        mo_set_signals(true,true,100000);
     }
 }
 
