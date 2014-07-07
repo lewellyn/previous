@@ -12,9 +12,9 @@
  */
 
 /* TODO:
- * - Add support for DMA and ECC starve
- * - Check support for ECC uncorrectable sector errors
- * - Improve drive error handling (attn conditions)
+ * - Fix soft timeouts when polling empty second drive
+ * - Add realistic seek timings
+ * - Check drive error handling (attn conditions)
  */
 
 #include "ioMem.h"
@@ -542,6 +542,9 @@ void mo_formatter_cmd(void) {
     
     if (mo.ctrlr_csr1==FMT_RESET) {
         Log_Printf(LOG_MO_CMD_LEVEL,"[OSP] Formatter command: Reset (%02X)\n", mo.ctrlr_csr1);
+        if (fmt_mode!=FMT_MODE_IDLE) {
+            Log_Printf(LOG_WARN,"[OSP] Warning: Formatter reset while busy!\n");
+        }
         fmt_mode = FMT_MODE_IDLE;
         ecc_state = ECC_STATE_DONE;
         mo.ecc_cnt=0;
@@ -1031,7 +1034,6 @@ void mo_write_sector(Uint32 sector_id) {
     } else {
         Log_Printf(LOG_WARN, "MO disk %i: Incomplete write (in: size=%i limit=%i, out: size=%i limit=%i)!", dnum,
                    ecc_buffer[eccin].size, ecc_buffer[eccin].limit, ecc_buffer[eccout].size, ecc_buffer[eccout].limit);
-        osp_interrupt(MOINT_TIMEOUT);
         abort();
     }
 }
@@ -1297,21 +1299,36 @@ bool mo_protected(void) {
     return false;
 }
 
+#define SEEK_TIMING 0
 void mo_seek(Uint16 command) {
+#if SEEK_TIMING
+    int seek_time=modrv[dnum].head_pos;
+#endif
     if (mo_drive_empty()) {
         return;
     }
     modrv[dnum].seeking = true;
     modrv[dnum].head_pos = (modrv[dnum].ho_head_pos&0xF000) | (command&0x0FFF);
-    modrv[dnum].sec_offset = 0; /* CHECK: is this needed? */
+#if SEEK_TIMING
+    if (seek_time>modrv[dnum].head_pos) {
+        seek_time=seek_time-modrv[dnum].head_pos;
+    } else {
+        seek_time=modrv[dnum].head_pos-seek_time;
+    }
+    seek_time*=20;
+    if (seek_time>180000) {
+        seek_time=180000;
+    }
+    mo_set_signals(true, false, 20000+seek_time);
+#else
     mo_set_signals(true, false, CMD_DELAY);
+#endif
 }
 
 void mo_high_order_seek(Uint16 command) {
     if (mo_drive_empty()) {
         return;
     }
-    /* CHECK: only seek command actually moves head? */
     if ((command&0xF)>4) {
         modrv[dnum].dstat|=DS_SEEK;
         mo_set_signals(true, true, CMD_DELAY);
@@ -1334,7 +1351,7 @@ void mo_jump_head(Uint16 command) {
     } else {
         modrv[dnum].head_pos+=offset;
     }
-    modrv[dnum].sec_offset=0; /* CHECK: is this needed? */
+    modrv[dnum].sec_offset=0;
     
     switch (command&0xF0) {
         case RJ_READ:
@@ -1364,8 +1381,11 @@ void mo_jump_head(Uint16 command) {
     if (mo_protected()) {
         return;
     }
-
+#if SEEK_TIMING
+    mo_set_signals(true, false, 10000);
+#else
     mo_set_signals(true, false, CMD_DELAY);
+#endif
 }
 
 void mo_recalibrate(void) {
@@ -1442,7 +1462,7 @@ void mo_start_spinning(void) {
     }
     modrv[dnum].dstat &= ~DS_STOPPED;
     modrv[dnum].spinning=true;
-    mo_set_signals(true, false, CMD_DELAY);
+    mo_set_signals(true, false, 30000000);
 }
 
 void mo_eject_disk(int drv) {
@@ -1482,7 +1502,7 @@ void mo_insert_disk(int drv) {
     modrv[drv].dstat|=DS_INSERT;
     modrv[drv].spinning=false;
     modrv[drv].spiraling=false;
-    mo_push_signals(true, true, drv);
+    mo_push_signals(true, false, drv);
 }
 
 void mo_start_spiraling(void) {
@@ -1550,22 +1570,26 @@ void mo_unimplemented_cmd(void) {
 }
 
 void mo_reset(void) {
-    if (modrv[dnum].connected) {
-        modrv[dnum].head=NO_HEAD;
-        modrv[dnum].head_pos=modrv[dnum].ho_head_pos=0;
-        modrv[dnum].sec_offset=0;
-        
-        modrv[dnum].dstat=DS_RESET;
-        modrv[dnum].estat=modrv[dnum].hstat=0;
-        modrv[dnum].spinning=false;
-        modrv[dnum].spiraling=false;
-        
-        if (!modrv[dnum].inserted) {
-            modrv[dnum].dstat|=DS_EMPTY;
-        } else if (!modrv[dnum].spinning) {
-            modrv[dnum].dstat|=DS_STOPPED;
+    int i;
+    for (i=0; i<2; i++) {
+        if (modrv[i].connected) {
+            modrv[i].head=NO_HEAD;
+            modrv[i].head_pos=modrv[i].ho_head_pos=0;
+            modrv[i].sec_offset=0;
+            
+            modrv[i].dstat=DS_RESET;
+            modrv[i].estat=modrv[i].hstat=0;
+            modrv[i].spinning=true;
+            modrv[i].spiraling=false;
+            
+            if (!modrv[i].inserted) {
+                modrv[i].dstat|=DS_EMPTY;
+            } else if (!modrv[i].spinning) {
+                modrv[i].dstat|=DS_STOPPED;
+            }
+            modrv[i].attn=false;
+            modrv[i].complete=true;
         }
-        mo_set_signals(true,true,100000);
     }
 }
 

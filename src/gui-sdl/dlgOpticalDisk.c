@@ -50,7 +50,7 @@ static SGOBJ modlg[] =
 	{ SGCHECKBOX, 0, 0, 32,7, 17,1, "Write protected" },
 	{ SGTEXT, 0, 0, 4,9, 56,1, NULL },
 
-	{ SGTEXT, 0, 0, 2,14, 14,1, "MO Drive 1:" },
+	{ SGTEXT, 0, 0, 2,14, 14,1, "MO Drive 1:                (disabled)" },
     { SGCHECKBOX, 0, 0, 16, 14, 11, 1, "Connected" },
     
     { SGBOX, 0, 0, 2,16, 60,6, NULL },
@@ -189,7 +189,7 @@ void DlgOptical_Main(void)
                     ConfigureParams.MO.drive[0].bDriveConnected = true;
                 }
                 break;
-                
+#if 0   /* FIXME: Enable this after fixing dual drive issues */
             case MODLG_INSERT1:
                 if (!ConfigureParams.MO.drive[1].bDiskInserted) {
                     if (SDLGui_FileConfSelect(dlgname_mo[1], ConfigureParams.MO.drive[1].szImageName, modlg[MODLG_DISKNAME1].w, false)) {
@@ -224,7 +224,7 @@ void DlgOptical_Main(void)
                     ConfigureParams.MO.drive[1].bDriveConnected = true;
                 }
                 break;
-                
+#endif
             default:
                 break;
         }
@@ -232,19 +232,6 @@ void DlgOptical_Main(void)
 	while (but != DISKDLG_EXIT && but != SDLGUI_QUIT
 	        && but != SDLGUI_ERROR && !bQuitProgram);
     
-    /* Remove this after fixing dual drive issues */
-    if (ConfigureParams.MO.drive[0].bDriveConnected && ConfigureParams.MO.drive[1].bDriveConnected) {
-        if (DlgAlert_Query("WARNING: Using both optical drives causes problems in certain situations. Remove second drive?")) {
-            ConfigureParams.MO.drive[1].bDriveConnected = false;
-            ConfigureParams.MO.drive[1].bDiskInserted = false;
-            sprintf(inserteject1, "Insert");
-            ConfigureParams.MO.drive[1].bWriteProtected = false;
-            modlg[MODLG_PROTECTED1].state &= ~SG_SELECTED;
-            ConfigureParams.MO.drive[1].szImageName[0] = '\0';
-            dlgname_mo[1][0] = '\0';
-        }
-    }
-    /* ----------------------------------------- */
     
     /* Read values from dialog: */
     ConfigureParams.MO.drive[0].bWriteProtected = modlg[MODLG_PROTECTED0].state&SG_SELECTED;
