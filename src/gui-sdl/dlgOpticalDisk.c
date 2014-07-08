@@ -29,6 +29,7 @@ const char DlgOpticalDisk_fileid[] = "Previous dlgOpticalDisk.c : " __DATE__ " "
 
 /* Constant strings */
 #define MODLG_EJECT_WARNING     "WARNING: Don't eject manually if a guest system is running. Risk of data loss. Eject now?"
+#define MODLG_PROTECT_ERROR     "ERROR: Can't change protection of cartridge while it is inserted. Please eject first."
 
 /* Variable strings */
 char inserteject0[16] = "Insert";
@@ -189,6 +190,18 @@ void DlgOptical_Main(void)
                     ConfigureParams.MO.drive[0].bDriveConnected = true;
                 }
                 break;
+            case MODLG_PROTECTED0:
+                if (ConfigureParams.MO.drive[0].bDiskInserted) {
+                    DlgAlert_Notice(MODLG_PROTECT_ERROR);
+                    if (ConfigureParams.MO.drive[0].bWriteProtected) {
+                        modlg[MODLG_PROTECTED0].state|=SG_SELECTED;
+                    } else {
+                        modlg[MODLG_PROTECTED0].state&=~SG_SELECTED;
+                    }
+                } else {
+                    ConfigureParams.MO.drive[0].bWriteProtected = modlg[MODLG_PROTECTED0].state&SG_SELECTED;
+                }
+                break;
 #if 0   /* FIXME: Enable this after fixing dual drive issues */
             case MODLG_INSERT1:
                 if (!ConfigureParams.MO.drive[1].bDiskInserted) {
@@ -224,6 +237,18 @@ void DlgOptical_Main(void)
                     ConfigureParams.MO.drive[1].bDriveConnected = true;
                 }
                 break;
+            case MODLG_PROTECTED1:
+                if (ConfigureParams.MO.drive[1].bDiskInserted) {
+                    DlgAlert_Notice(MODLG_PROTECT_ERROR);
+                    if (ConfigureParams.MO.drive[1].bWriteProtected) {
+                        modlg[MODLG_PROTECTED1].state|=SG_SELECTED;
+                    } else {
+                        modlg[MODLG_PROTECTED1].state&=~SG_SELECTED;
+                    }
+                } else {
+                    ConfigureParams.MO.drive[1].bWriteProtected = modlg[MODLG_PROTECTED1].state&SG_SELECTED;
+                }
+                break;
 #endif
             default:
                 break;
@@ -231,10 +256,5 @@ void DlgOptical_Main(void)
 	}
 	while (but != DISKDLG_EXIT && but != SDLGUI_QUIT
 	        && but != SDLGUI_ERROR && !bQuitProgram);
-    
-    
-    /* Read values from dialog: */
-    ConfigureParams.MO.drive[0].bWriteProtected = modlg[MODLG_PROTECTED0].state&SG_SELECTED;
-    ConfigureParams.MO.drive[1].bWriteProtected = modlg[MODLG_PROTECTED1].state&SG_SELECTED;
 }
 

@@ -1579,7 +1579,11 @@ void mo_reset(void) {
             
             modrv[i].dstat=DS_RESET;
             modrv[i].estat=modrv[i].hstat=0;
-            modrv[i].spinning=true;
+            if (modrv[i].inserted) { /* CHECK: really spin up on reset? */
+                modrv[i].spinning=true;
+            } else {
+                modrv[i].spinning=false;
+            }
             modrv[i].spiraling=false;
             
             if (!modrv[i].inserted) {
